@@ -50,6 +50,9 @@ The daemon is root and can execute binaries; the app is unprivileged. Rules:
 6. Secrets live in the user's Keychain and are read by the app only; they cross into the
    daemon over XPC at start and are held in memory there. OpenVPN credentials are passed
    through the management socket, never written to disk.
+7. sing-box's Clash API (traffic rates, F9) listens on loopback only, behind a secret the
+   daemon generates per start; the secret and the per-connection data (destination hosts)
+   stay inside the daemon — the app receives per-tunnel byte counts and nothing else.
 
 ## Filesystem layout
 

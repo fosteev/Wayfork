@@ -72,6 +72,16 @@ Written as user scenarios. Technical details belong to Phase 2.
 - Local names (`.local`, `.lan`, `.internal`, `.home.arpa`) are built-in exceptions.
 - If the default tunnel is down, unmatched traffic is blocked rather than leaked direct.
 
+**F9. Traffic rates** *(added 2026-08-25)*
+- While On, every tunnel card in the popover shows the current download / upload rate of
+  the traffic leaving through that tunnel, updated once a second. A slim **Direct** row
+  under the cards shows what bypasses the tunnels.
+- The default tunnel (F8) counts everything unmatched; with a default tunnel the Direct row
+  is exceptions and local names only.
+- Hovering a rate shows totals since Turn On and the number of open connections.
+- Rates are shown only for connected/ready tunnels while routing is On; nothing in Settings,
+  nothing in the menu bar. History, graphs and a menu bar readout are Later (L4, L7).
+
 ### Later
 
 **L1. Rule sources beyond a single domain**
@@ -97,7 +107,7 @@ Written as user scenarios. Technical details belong to Phase 2.
 **L4. Tunnel health**
 - Periodic latency/availability checks per tunnel.
 - Failover: a rule can list a fallback tunnel used when the primary is down.
-- Traffic counters per tunnel.
+- Traffic history per tunnel (sparkline, totals per day) on top of the F9 rates.
 
 **L5. Profiles**
 - Named sets of rules (e.g. "work", "home") switchable from the menu bar.
@@ -108,6 +118,7 @@ Written as user scenarios. Technical details belong to Phase 2.
 
 **L7. Nice-to-haves**
 - Global hotkey for the main switch.
+- Current throughput in the menu bar next to the icon (optional, F9 data).
 - Per-tunnel kill switch (block matched domains instead of leaking direct when the
   tunnel is down).
 - CLI for scripting (`wayfork on`, `wayfork rule add …`).
@@ -252,6 +263,29 @@ Added after M3; implemented once the M3 end-to-end check passes. Design in
 - [ ] Manual check: unmatched domain exits through the default tunnel, an exception goes
       direct, LAN names still resolve, default tunnel down → unmatched traffic blocked,
       no default → behaviour identical to M3.
+
+### M3c — Traffic rates (F9)
+
+Design in [05-daemon.md](design/05-daemon.md) ("Traffic sampling"), [02-ux.md](design/02-ux.md)
+(popover) and [03-routing.md](design/03-routing.md) (Clash API section). Design pending
+maintainer approval; implemented after the M3/M3b end-to-end checks.
+
+- [ ] `WayforkDaemonCore`: `ClashAPIConfig` (inject `experimental.clash_api` with a free
+      loopback port and a random secret into the config the daemon writes; `sing-box check`
+      still passes on every golden), `ClashConnections` decoding of `/connections`,
+      `TrafficAccumulator` (per-connection deltas → per-outbound rates and running totals);
+      tests with fixtures.
+- [ ] Daemon: `TrafficSampler` task while sing-box runs (1 Hz GET, bearer secret), totals
+      survive sing-box restarts and reset on `stop`, one WARNING per failure streak;
+      `WayforkClientXPC.trafficChanged`; `--dev-apply` prints a snapshot line per second.
+- [ ] Core/App: `TrafficSnapshot` payload, `TrafficFormat` (rate and total strings, tests),
+      `AppModel.traffic` with a 3 s staleness cut-off, cleared on Off.
+- [ ] Popover: rate label on tunnel cards (line 1, before the action), Direct row after
+      the cards, `.help` tooltips with session totals; no layout jitter (monospaced
+      digits, fixed formatting).
+- [ ] Manual check: rates on an OpenVPN and a VLESS card while downloading through each,
+      Direct row moves for an exception, default tunnel absorbs unmatched traffic,
+      figures freeze/hide on tunnel failure and disappear on Off.
 
 ### M4 — Release
 

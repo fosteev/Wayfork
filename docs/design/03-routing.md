@@ -99,6 +99,11 @@ REALITY, vision). Placeholders in angle brackets.
 }
 ```
 
+The daemon adds `experimental.clash_api` (loopback controller + per-start secret) to this
+config before writing it — traffic rates for F9, see [05-daemon.md](05-daemon.md), "Traffic
+sampling". The generator and the golden files do not contain it. Enabling the Clash API
+turns on sing-box's per-connection byte counting; it has no effect on routing.
+
 Notes on specific choices:
 
 - `route_exclude_address` keeps LAN, link-local and multicast out of TUN entirely. ULA

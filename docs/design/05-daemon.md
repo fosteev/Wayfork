@@ -58,6 +58,7 @@ minimal and stable.
 @objc protocol WayforkClientXPC {          // exported by the app on its connection
     func statusChanged(_ status: Data)     // RuntimeStatus, on every change (coalesced 100 ms)
     func logLines(_ batch: Data)           // [LogLine], every 250 ms or 200 lines
+    func trafficChanged(_ snapshot: Data)  // TrafficSnapshot, once a second while sing-box runs (F9)
 }
 ```
 
@@ -70,6 +71,17 @@ struct RuntimeStatus: Codable {
     var planHash: String?              // hash of the last applied plan
 }
 struct LogLine: Codable { var ts: Date; var source: String; var level: LogLevel; var message: String }
+struct TrafficSnapshot: Codable {
+    var sampledAt: Date
+    var interval: TimeInterval                 // seconds covered by the rates
+    var tunnels: [String: TrafficCounters]     // by tunnel id (OpenVPN and VLESS alike)
+    var direct: TrafficCounters
+}
+struct TrafficCounters: Codable {
+    var downBytesPerSecond: Double; var upBytesPerSecond: Double
+    var downTotal: UInt64; var upTotal: UInt64 // since Turn On
+    var connections: Int                       // open at sample time
+}
 ```
 
 Semantics: `apply` validates the plan, runs `sing-box check` and — when sing-box has to
@@ -158,6 +170,41 @@ so no child outlives it.
 `/sbin/route` executed with an argv array (absolute path, no shell). Interface names are
 validated against `^utun(1[0-9]{2})$` before use. Later can move to a `PF_ROUTE` socket to
 drop the exec.
+
+## Traffic sampling (F9)
+
+Per-tunnel rates come from sing-box's Clash API (`with_clash_api` is in the pinned build),
+which counts bytes per connection for every outbound — OpenVPN (`direct` bound to `utun10N`)
+and VLESS alike. Interface counters would only cover OpenVPN, so one mechanism serves both.
+
+- **Config**: the app's generated config stays as it is (goldens unchanged, `configHash`
+  unaffected). Before `sing-box check` the daemon injects
+  `experimental.clash_api = { "external_controller": "127.0.0.1:<port>", "secret": "<hex>" }`
+  into the JSON it writes (`ClashAPIConfig` in `WayforkDaemonCore`): the port is a free
+  loopback port probed by binding `127.0.0.1:0`, the secret 32 random bytes, both regenerated
+  on every sing-box start and never leaving the daemon. If sing-box loses the bind race it
+  fails to start and the normal `singbox.startFailed` path reports it; the next `apply`
+  probes again.
+- **Sampler**: a `TrafficSampler` task lives on the `Supervisor` while sing-box is running:
+  every second `GET /connections` with `Authorization: Bearer <secret>` over `URLSession`
+  (loopback only; no proxy), decode `{ connections: [{ id, chains, upload, download }] }`.
+  `TrafficAccumulator` attributes a connection to the tunnel whose tag `t-<id>` appears in
+  `chains`, everything else to `direct`, and turns per-connection cumulative counters into
+  per-outbound deltas: connections seen in both samples contribute `now − previous`, new
+  ones their full count, closed ones nothing (≤ 1 s of a closing connection's bytes is lost;
+  acceptable for a rate display). Rates divide by the measured interval; totals accumulate
+  since Turn On and survive sing-box restarts (the per-connection map is cleared, the totals
+  are not), `stop` resets everything. Snapshots are pushed to subscribed clients through
+  `trafficChanged`; nothing is stored.
+- **Failures**: an HTTP or decode error logs one WARNING per failure streak (`traffic:
+  clash api unreachable`) and the sampler keeps trying every second; no snapshot is sent, so
+  the app shows `—` after its 3 s staleness cut-off. Sampling never affects `apply`, `stop`
+  or status.
+- **Privacy**: `/connections` lists destination hosts, so the secret is a trust boundary: it
+  exists only in root-only `run/sing-box.json` (0600) and daemon memory, never in logs,
+  diagnostics or XPC. The daemon forwards aggregates only — no hosts, no addresses.
+- **Developer mode** prints one `traffic:` line per snapshot so the sampler can be verified
+  without the app.
 
 ## Developer mode (no app, no launchd)
 
