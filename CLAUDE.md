@@ -17,7 +17,7 @@ Extension. Binaries (sing-box, openvpn) are bundled. Don't revisit this without 
   Optional scope: `feat(rules): …`. Subject ≤ 72 chars, imperative mood.
 - **No `Co-Authored-By` and no AI signatures** in commits or PRs.
 - **Commit and push only on explicit request.** Never commit on your own initiative.
-- `main` is stable. Work happens in `feat/*`, `fix/*`, `docs/*`.
+- Solo project: commit straight to `main`; branches only for experiments.
 
 ## Swift
 - SwiftUI, Swift 5.10+ (6 when practical), macOS 14+.
