@@ -3,28 +3,35 @@ import WayforkCore
 
 @main
 struct WayforkApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @Environment(\.openWindow) private var openWindow
+    private let model = AppModel.shared
+
     var body: some Scene {
-        MenuBarExtra("Wayfork", systemImage: "arrow.triangle.branch") {
-            PlaceholderView()
+        MenuBarExtra {
+            PopoverView()
+                .environment(model)
+                .onAppear { model.windowOpener = { id in openWindow(id: id) } }
+        } label: {
+            Image(model.menuBarIconName)
+                .help(model.summary)
         }
         .menuBarExtraStyle(.window)
-    }
-}
 
-/// M0 placeholder; replaced by the popover dashboard in M3.
-struct PlaceholderView: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Wayfork \(WayforkCore.version)")
-                .font(.headline)
-            Text("Scaffolding build — nothing is wired up yet.")
-                .foregroundStyle(.secondary)
-            Button("Quit Wayfork") {
-                NSApplication.shared.terminate(nil)
-            }
-            .keyboardShortcut("q")
+        Window("Wayfork Settings", id: AppModel.settingsWindowID) {
+            SettingsView()
+                .environment(model)
+                .onAppear { model.windowOpener = { id in openWindow(id: id) } }
         }
-        .padding(16)
-        .frame(width: 280)
+        .defaultSize(width: 820, height: 560)
+        .windowResizability(.contentMinSize)
+
+        Window("Logs", id: AppModel.logsWindowID) {
+            LogsWindowView()
+                .environment(model)
+                .onAppear { model.windowOpener = { id in openWindow(id: id) } }
+        }
+        .defaultSize(width: 900, height: 500)
+        .windowResizability(.contentMinSize)
     }
 }
