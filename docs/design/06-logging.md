@@ -22,20 +22,24 @@ that is *stored and shown*; it is also passed down: sing-box `log.level`, openvp
 - `wayfork.log` — app's own log.
 - `runtime.log` — every `LogLine` received from the daemon, one line each:
   `2026-08-25T12:00:00.123Z sing-box INFO message`.
-- Rotation by size (5 MB) keeping files for `logRetentionDays`; cleanup on launch and once a
-  day.
+- Rotation by size (5 MB): the full file is renamed to `<name>-<yyyyMMdd-HHmmss>.log` (UTC)
+  and a fresh one started (`AppLogFile` in `WayforkCore`); rotated files older than
+  `logRetentionDays` (by modification date) are deleted on launch, once a day and when the
+  setting changes.
 
 The daemon's raw copies under `/Library/Logs/Wayfork/` are for the case where the app is
 not running; they are included in diagnostics via `collectDiagnostics`.
 
 ## Logs window
 
-- Backed by an in-memory ring of the last 10 000 lines (from `runtime.log` tail on open, then
-  live). Older lines are not paged in; "Open Logs Folder" is the escape hatch.
+- Backed by an in-memory ring of the last 10 000 lines (`runtime.log` tail at app launch,
+  then live). The daemon replays its ring buffers on `subscribe`; lines already present
+  (same timestamp, source and message) are dropped so a reattach does not duplicate them.
+  Older lines are not paged in; "Open Logs Folder" is the escape hatch.
 - Filters: source (multi-select), level (threshold), free-text search (case-insensitive,
   substring). Filters compose.
-- Follow toggle: on by default, auto-off when the user scrolls up, back on via the button or
-  scrolling to the bottom.
+- Follow toggle: on by default; MVP: manual toggle only (auto-off on scroll-up deferred, see
+  [02-ux.md](02-ux.md)).
 - Copy copies the visible (filtered) lines as text; Clear empties the in-memory ring only.
 - "Show Log" from a tunnel's menu opens the window with that source pre-selected.
 

@@ -62,6 +62,16 @@ Written as user scenarios. Technical details belong to Phase 2.
 - Export tunnels and rules to a JSON file (secrets excluded or included on request).
 - Import from that file. Templates in `examples/`.
 
+**F8. Default tunnel ("everything else") and exceptions** *(added 2026-08-25)*
+- Mark one tunnel as the default exit: everything not matched by a rule goes through it
+  instead of direct. Only one tunnel can be the default; without one, unmatched traffic
+  stays direct as before.
+- Exceptions: rules whose target is **Direct**. They have the highest priority, so they
+  carve domains out of the default tunnel — and, without a default, out of a broader
+  tunnel rule (`example.com → Work`, `api.example.com → Direct`).
+- Local names (`.local`, `.lan`, `.internal`, `.home.arpa`) are built-in exceptions.
+- If the default tunnel is down, unmatched traffic is blocked rather than leaked direct.
+
 ### Later
 
 **L1. Rule sources beyond a single domain**
@@ -76,6 +86,13 @@ Written as user scenarios. Technical details belong to Phase 2.
 **L3. More tunnel types**
 - WireGuard configs, Shadowsocks, Trojan, Hysteria2 (all native to sing-box).
 - Subscription URLs that yield a list of servers.
+- VLESS over XHTTP via a bundled Xray-core: sing-box has no XHTTP transport (1.13.19
+  rejects `xhttp`/`splithttp`; upstream declined it), so each XHTTP tunnel runs its own
+  `xray` process with a local SOCKS5 inbound and sing-box reaches it through a `socks`
+  outbound — the OpenVPN per-process model with a port instead of a `utun`. Needs a pinned,
+  signed `xray` binary (`com.wayfork.bin.xray`), an `XrayRuntime` entry in the plan, an
+  xray config generator, `type=xhttp` in the URI parser and a process-path direct rule for
+  xray's own traffic. See [design/04-tunnels.md](design/04-tunnels.md).
 
 **L4. Tunnel health**
 - Periodic latency/availability checks per tunnel.
@@ -191,30 +208,50 @@ plus `wayforkctl plan` exercise the daemon without the app (see
 
 ### M3 — App
 
-- [ ] `AppModel` (`@MainActor`): store, settings, runtime status, derived global state.
-- [ ] `DaemonClient`: `NSXPCConnection`, reconnect on invalidation, version handshake,
+- [x] `AppModel` (`@MainActor`): store, settings, runtime status, derived global state.
+- [x] `DaemonClient`: `NSXPCConnection`, reconnect on invalidation, version handshake,
       status/log subscription.
-- [ ] Helper installation flow: `SMAppService` register/status polling, approval alert,
+- [x] Helper installation flow: `SMAppService` register/status polling, approval alert,
       re-register on version/path mismatch.
-- [ ] Menu bar icon assets (4 variants) and state mapping with pulse while transitioning.
-- [ ] Popover: header + toggle + summary, tunnel cards with actions, quick add, footer.
-- [ ] Settings window shell: sidebar, section title, window sizing.
-- [ ] Settings › Tunnels: rows with inline expansion, OpenVPN/VLESS forms, `+ Add` menu,
+- [x] Menu bar icon assets (4 variants) and state mapping with pulse while transitioning.
+- [x] Popover: header + toggle + summary, tunnel cards with actions, quick add, footer.
+- [x] Settings window shell: sidebar, section title, window sizing.
+- [x] Settings › Tunnels: rows with inline expansion, OpenVPN/VLESS forms, `+ Add` menu,
       `.ovpn` import (picker + drop), Add VLESS sheet with live preview, delete with rules.
-- [ ] Settings › Rules: groups per tunnel, inline editing, drag reorder/move, shadowed and
+- [x] Settings › Rules: groups per tunnel, inline editing, drag reorder/move, shadowed and
       warning chips, search, empty state, live apply with inline errors.
-- [ ] Settings › General: all toggles and fields wired to `Settings`, helper status block,
+- [x] Settings › General: all toggles and fields wired to `Settings`, helper status block,
       About, Export Diagnostics.
-- [ ] Apply pipeline: store change → plan rebuild → `apply` (debounced), reconnect-only and
+- [x] Apply pipeline: store change → plan rebuild → `apply` (debounced), reconnect-only and
       hot-reload paths behave per [03-routing.md](design/03-routing.md).
-- [ ] Logs window: ring buffer, filters, search, follow, copy/clear; `runtime.log` and
+- [x] Logs window: ring buffer, filters, search, follow, copy/clear; `runtime.log` and
       `wayfork.log` mirroring with rotation and retention.
-- [ ] Notifications for permanent failures and engine errors.
-- [ ] Import/export (`wayfork-export.json`, secrets checkbox, Replace/Merge).
-- [ ] Launch at login (`SMAppService.mainApp`), connect on launch, quit stops everything.
+- [x] Notifications for permanent failures and engine errors.
+- [x] Import/export (`wayfork-export.json`, secrets checkbox, Replace/Merge).
+- [x] Launch at login (`SMAppService.mainApp`), connect on launch, quit stops everything.
 - [ ] Manual end-to-end check on a clean user account: fresh install → approve helper →
       one OpenVPN + one VLESS tunnel → rules → domains reach the right exit (`curl
       --resolve`-style checks + Logs), Off restores networking.
+
+### M3b — Default tunnel and exceptions (F8)
+
+Added after M3; implemented once the M3 end-to-end check passes. Design in
+[01-data-model.md](design/01-data-model.md), [03-routing.md](design/03-routing.md) and
+[02-ux.md](design/02-ux.md) (sections marked F8).
+
+- [ ] Model: `Store.defaultTunnelID`, `RuleTarget` (`tunnel` / `direct`) with backward
+      compatible JSON, export/import carry both; tests.
+- [ ] `RuleValidator`: duplicates inside the Direct group, tunnel rules shadowed by an
+      exception, default tunnel disabled / missing secret → warning; tests.
+- [ ] Generator: `rules-direct.json` (user exceptions + built-in local names) as the first
+      route/DNS rule, `route.final` = default tunnel, `dns.final` through the default
+      tunnel (OpenVPN: pushed/custom resolver; VLESS: DoT detoured through the outbound),
+      A/AAAA catch-all to fake-ip; golden files + `sing-box check`; hot reload of exceptions.
+- [ ] UI: "Route everything else through this tunnel" toggle in Settings › Tunnels, Direct
+      group at the top of Settings › Rules, popover summary/card text, "Direct" in quick add.
+- [ ] Manual check: unmatched domain exits through the default tunnel, an exception goes
+      direct, LAN names still resolve, default tunnel down → unmatched traffic blocked,
+      no default → behaviour identical to M3.
 
 ### M4 — Release
 

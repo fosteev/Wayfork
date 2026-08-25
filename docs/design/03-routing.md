@@ -19,6 +19,9 @@ writes them to `run/` and runs `sing-box run -D <run> -c sing-box.json`.
    are geo-consistent with the exit.
 5. **OpenVPN's own control traffic goes direct**, matched by process path, so it never
    loops through a tunnel.
+6. **Exceptions come first, the default tunnel last** (F8). `rules-direct` (user
+   exceptions + built-in local names) is the first route and DNS rule; `route.final` is
+   the default tunnel's outbound when one is set, `direct` otherwise.
 
 ## Generated config
 
@@ -121,6 +124,54 @@ Notes on specific choices:
 - `dns.final` for AAAA of matched domains: fake v6 addresses are returned, and the outbound
   dials by domain, so IPv6-only clients still work through IPv4 tunnels.
 
+## Default tunnel and exceptions (F8)
+
+With `Store.defaultTunnelID` set to `Work` the config above changes as follows:
+
+```json
+"dns": {
+  "servers": [ …, { "type": "tls", "tag": "dns-t-<home>", "server": "1.1.1.1", "detour": "t-<home>" } ],
+  "rules": [
+    { "rule_set": "rules-direct", "server": "dns-direct" },
+    { "rule_set": ["rules-t-<work>", "rules-t-<home>"], "query_type": ["A", "AAAA"], "server": "fakeip" },
+    { "query_type": ["A", "AAAA"], "server": "fakeip" }
+  ],
+  "final": "dns-t-<work>"
+},
+"route": {
+  "rules": [
+    { "action": "sniff" },
+    { "protocol": "dns", "action": "hijack-dns" },
+    { "process_path": ["<bundle>/Contents/Resources/bin/openvpn"], "outbound": "direct" },
+    { "rule_set": "rules-direct", "outbound": "direct" },
+    { "rule_set": "rules-t-<work>", "outbound": "t-<work>" },
+    { "rule_set": "rules-t-<home>", "outbound": "t-<home>" },
+    { "ip_is_private": true, "outbound": "direct" }
+  ],
+  "rule_set": [ { "type": "local", "tag": "rules-direct", "format": "source", "path": "rules-direct.json" }, … ],
+  "final": "t-<work>"
+}
+```
+
+- `rules-direct.json` is always emitted (possibly holding only the built-in entries) and
+  the `rules-direct` route/DNS rules are always present, so adding or editing an exception
+  is a rule-set rewrite (hot reload), not a restart. Built-in entries: `domain_suffix`
+  `.local`, `.lan`, `.internal`, `.home.arpa`, `.localhost`, plus `localhost`.
+- Every A/AAAA query that is not an exception gets a fake IP, so the default outbound dials
+  by domain: VLESS resolves server-side, an OpenVPN default resolves through its own
+  `domain_resolver` (pushed/custom DNS via the tunnel). Other query types (HTTPS, MX, …)
+  go to `dns.final`, which is the default tunnel's resolver: `dns-t-<id>` for OpenVPN; for
+  a VLESS default a DoT server (`1.1.1.1:853`) detoured through the VLESS outbound. Without
+  a default tunnel the DNS section is exactly the M3 one.
+- `ip_is_private` stays after the rule-sets and still sends LAN IPs direct; LAN *names* are
+  covered by the built-in exceptions (resolved by `dns-direct`, routed `direct`).
+- Kill-switch by construction: if the default OpenVPN tunnel is down, `bind_interface`
+  dials on `utun10N` fail and unmatched connections are refused instead of leaking direct;
+  a VLESS default that is unreachable fails per connection the same way. The popover says
+  so while the default tunnel is not connected.
+- `rules-direct` also carries user exceptions when there is no default tunnel: then it only
+  overrides broader tunnel rules; `route.final` stays `direct`.
+
 ## Rule-set files
 
 One file per tunnel, `format: source`, regenerated whenever rules change:
@@ -148,8 +199,8 @@ Entries are grouped by kind into a single rule object per tunnel (sing-box ORs t
 Disabled rules and rules whose tunnel is disabled are omitted. A tunnel with zero active
 rules still gets an (empty) rule-set file so the main config doesn't change.
 
-Order between tunnels: route rules are emitted one per tunnel in store order, and each
-rule-set keeps its tunnel's rule order. Identical patterns under a later tunnel are shadowed
+Order between groups: `rules-direct` first, then one route rule per tunnel in store order,
+and each rule-set keeps its group's rule order. Identical patterns under a later tunnel are shadowed
 and dropped (the UI flags them). Overlaps between different patterns (`a.example.com` exact
 under Home, `example.com` suffix under Work) resolve by tunnel order — Work wins if it
 comes first. L2 "where does this domain go?" makes this inspectable.
@@ -159,6 +210,8 @@ comes first. L2 "where does this domain go?" makes this inspectable.
 | Change | Action |
 |--------|--------|
 | Rule added/edited/removed/reordered/toggled | rewrite `rules-*.json` → sing-box reloads local rule-sets on file change (verify; else restart) |
+| Exception (Direct rule) added/edited/removed | rewrite `rules-direct.json` → same hot reload |
+| Default tunnel set/cleared/changed | `route.final` / `dns.final` change → restart |
 | Tunnel enabled/disabled, added, removed | outbounds change → `sing-box check` → restart sing-box (< 1 s) |
 | Tunnel DNS changed, `discoveredDNS` updated | dns section changes → restart |
 | `directDNS`, log level | restart |

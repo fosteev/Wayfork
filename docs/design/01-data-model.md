@@ -10,6 +10,7 @@ struct Store: Codable {
     var tunnels: [Tunnel]
     var rules: [Rule]                 // ordered within a tunnel; see "Rule order" below
     var settings: Settings
+    var defaultTunnelID: UUID?        // F8: "everything else" exit; nil → direct
 }
 
 struct Tunnel: Codable, Identifiable {
@@ -58,9 +59,15 @@ struct Rule: Codable, Identifiable {
     var id: UUID
     var pattern: String               // normalized: lowercase, punycode, no trailing dot
     var match: RuleMatch              // suffix | exact | wildcard
-    var tunnelID: UUID
+    var target: RuleTarget            // F8: .tunnel(id) | .direct (an exception)
     var isEnabled: Bool
     var note: String?
+    var tunnelID: UUID? { target.tunnelID }
+}
+
+enum RuleTarget: Codable {
+    case tunnel(UUID)
+    case direct
 }
 
 struct Settings: Codable {
@@ -92,9 +99,25 @@ character. `suffix` is the default; typing `*` switches the row to `wildcard`.
 
 ### Rule order
 
-Rules are edited grouped by tunnel. Effective order = tunnels in store order, and within
-a tunnel the rules in list order. A pattern that also appears under an earlier tunnel is
-**shadowed** (never matches) and flagged in the UI; the generator drops it.
+Rules are edited grouped by target. Effective order = the **Direct** group first
+(exceptions always win), then tunnels in store order, and within a group the rules in list
+order. A pattern that also appears in an earlier group is **shadowed** (never matches) and
+flagged in the UI; the generator drops it.
+
+### Default tunnel and exceptions (F8)
+
+`Store.defaultTunnelID` names the tunnel that takes everything no rule matched; nil (the
+default) keeps unmatched traffic direct. It must reference an existing tunnel; if that
+tunnel is disabled or lacks its secret, the plan behaves as if no default were set and the
+UI warns. Exceptions are ordinary rules with `target: .direct`; they are meaningful with a
+default tunnel (carve-outs) and without one (override a broader tunnel rule). Duplicates
+are rejected per group like everywhere else.
+
+JSON stays schema 1: a tunnel rule keeps `"tunnelID": "<uuid>"`, a direct rule has
+`"target": "direct"` and no `tunnelID`; a rule with neither is invalid. `defaultTunnelID`
+is optional. Export files carry both fields the same way; on import a `defaultTunnelID`
+pointing at a skipped tunnel is dropped with a warning, and on Merge the file's value
+replaces the current one only when it is non-nil.
 
 Validation: pattern is a hostname (labels of `[a-z0-9-]`, IDNA converted to punycode) with
 `*` allowed only for wildcard; no scheme, path or port (the UI strips `https://…/` when
@@ -159,5 +182,7 @@ File: `wayfork-export.json`
   actions: **Replace all** or **Merge** (add new, update existing by `id`; rules referencing
   unknown tunnels are skipped with a warning). `settings` are imported only on Replace.
 - `slot` values from the file are ignored; slots are re-assigned on import.
+- `defaultTunnelID` and `target: "direct"` rules are exported and imported as described in
+  "Default tunnel and exceptions".
 - `examples/` ships `export.example.json`, `tunnel.example.ovpn` and `vless.example.txt`
   with placeholders only.

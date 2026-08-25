@@ -144,7 +144,7 @@ vless://<uuid>@<host>:<port>?<query>#<name>
 | Query key | Meaning | Mapping |
 |-----------|---------|---------|
 | `encryption` | must be `none` (or absent) | else `import.vless.invalid` |
-| `type` | transport: `tcp` (default), `ws`, `grpc` | `VLESSTransport`; `kcp`, `http`, `httpupgrade`, `xhttp` → `import.vless.unsupported` |
+| `type` | transport: `tcp` (default), `ws`, `grpc` | `VLESSTransport`; `kcp`, `http`, `httpupgrade`, `xhttp` → `import.vless.unsupported` (XHTTP is planned via a bundled Xray-core, ROADMAP L3; the pinned sing-box has no such transport) |
 | `security` | `none`, `tls`, `reality` | `VLESSSecurity` |
 | `sni` | TLS server name | `sni` (defaults to host) |
 | `fp` | uTLS fingerprint | `fingerprint` |
