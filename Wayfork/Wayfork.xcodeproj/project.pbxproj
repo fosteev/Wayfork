@@ -11,6 +11,7 @@
 		0F000000000000000000001E /* WayforkDaemon in Embed Daemon */ = {isa = PBXBuildFile; fileRef = 0F0000000000000000000031 /* WayforkDaemon */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		0F000000000000000000001F /* com.wayfork.daemon.plist in Embed Launchd Plist */ = {isa = PBXBuildFile; fileRef = 0F000000000000000000003B /* com.wayfork.daemon.plist */; };
 		0F0000000000000000000039 /* WayforkCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0F0000000000000000000038 /* WayforkCore */; };
+		0F0000000000000000000071 /* WayforkDaemonCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0F0000000000000000000070 /* WayforkDaemonCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -94,6 +95,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				0F0000000000000000000039 /* WayforkCore in Frameworks */,
+				0F0000000000000000000071 /* WayforkDaemonCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -174,6 +176,7 @@
 			name = WayforkDaemon;
 			packageProductDependencies = (
 				0F0000000000000000000038 /* WayforkCore */,
+				0F0000000000000000000070 /* WayforkDaemonCore */,
 			);
 			productName = WayforkDaemon;
 			productReference = 0F0000000000000000000031 /* WayforkDaemon */;
@@ -520,6 +523,10 @@
 		0F0000000000000000000038 /* WayforkCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = WayforkCore;
+		};
+		0F0000000000000000000070 /* WayforkDaemonCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = WayforkDaemonCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
