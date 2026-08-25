@@ -114,7 +114,9 @@ public enum RuntimePlanBuilder {
                 openVPNBinaryPath: openVPNBinaryPath(bundlePath: bundlePath)))
         let plan = RuntimePlan(
             singBox: SingBoxPlan(config: generated.config, ruleSets: generated.ruleSets),
-            openVPN: openVPN)
+            openVPN: openVPN,
+            autoReconnect: store.settings.autoReconnect,
+            logLevel: store.settings.logLevel)
         return RuntimePlanBuildResult(
             plan: plan, warnings: warnings, routedTunnels: generated.routedTunnels)
     }

@@ -12,13 +12,38 @@ public struct RuntimePlan: Codable, Sendable, Hashable {
     public var singBox: SingBoxPlan
     /// One entry per enabled OpenVPN tunnel. VLESS tunnels only exist inside the sing-box config.
     public var openVPN: [OpenVPNRuntime]
+    /// `Settings.autoReconnect`: whether the daemon restarts an OpenVPN process after a
+    /// transient failure. Not part of any hash; takes effect on the next failure.
+    public var autoReconnect: Bool
+    /// `Settings.logLevel`: sets `openvpn --verb`. Part of the OpenVPN diff key, so a change
+    /// restarts every OpenVPN process (sing-box restarts anyway: `log.level` is in the config).
+    public var logLevel: LogLevel
 
     public init(
-        version: Int = RuntimePlan.currentVersion, singBox: SingBoxPlan, openVPN: [OpenVPNRuntime]
+        version: Int = RuntimePlan.currentVersion,
+        singBox: SingBoxPlan,
+        openVPN: [OpenVPNRuntime],
+        autoReconnect: Bool = true,
+        logLevel: LogLevel = .info
     ) {
         self.version = version
         self.singBox = singBox
         self.openVPN = openVPN
+        self.autoReconnect = autoReconnect
+        self.logLevel = logLevel
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case version, singBox, openVPN, autoReconnect, logLevel
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        version = try c.decode(Int.self, forKey: .version)
+        singBox = try c.decode(SingBoxPlan.self, forKey: .singBox)
+        openVPN = try c.decode([OpenVPNRuntime].self, forKey: .openVPN)
+        autoReconnect = try c.decodeIfPresent(Bool.self, forKey: .autoReconnect) ?? true
+        logLevel = try c.decodeIfPresent(LogLevel.self, forKey: .logLevel) ?? .info
     }
 
     /// Hash over everything the daemon acts on; reported back as `RuntimeStatus.planHash`.
