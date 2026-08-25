@@ -12,12 +12,14 @@ struct PopoverView: View {
             Divider()
             if model.store.tunnels.isEmpty {
                 emptyState
+            } else if enabledTunnels.isEmpty {
+                allDisabledState
             } else {
-                ForEach(model.store.tunnels) { tunnel in
+                ForEach(enabledTunnels) { tunnel in
                     TunnelCardView(tunnel: tunnel)
                 }
             }
-            if !model.globalState.isOff, !model.store.tunnels.isEmpty {
+            if !model.globalState.isOff, !enabledTunnels.isEmpty {
                 Divider()
                 QuickAddView()
             }
@@ -50,6 +52,18 @@ struct PopoverView: View {
                 .padding(.leading, 26)
                 .lineLimit(2)
         }
+    }
+
+    /// Disabled tunnels are managed in Settings; the popover only lists enabled ones.
+    private var enabledTunnels: [Tunnel] { model.store.tunnels.filter(\.isEnabled) }
+
+    private var allDisabledState: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("All tunnels are disabled.").font(.system(size: 12))
+            Button("Manage tunnels…") { model.openSettings(section: .tunnels) }
+                .controlSize(.small)
+        }
+        .padding(.vertical, 4)
     }
 
     private var emptyState: some View {
