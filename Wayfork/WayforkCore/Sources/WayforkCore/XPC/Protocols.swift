@@ -26,4 +26,6 @@ import Foundation
     func statusChanged(_ status: Data)
     /// `[LogLine]`, every 250 ms or 200 lines.
     func logLines(_ batch: Data)
+    /// `TrafficSnapshot`, once a second while sing-box runs (F9).
+    func trafficChanged(_ snapshot: Data)
 }

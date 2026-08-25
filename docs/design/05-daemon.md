@@ -207,6 +207,19 @@ and VLESS alike. Interface counters would only cover OpenVPN, so one mechanism s
   diagnostics or XPC. The daemon forwards aggregates only — no hosts, no addresses.
 - **Developer mode** prints one `traffic:` line per snapshot so the sampler can be verified
   without the app.
+- Implementation notes (2026-08-25): the endpoint is generated per config *write*
+  (`SingBoxEngine.check` → `ClashAPIEndpoint.generate` + `ClashAPIConfig.inject`, port probed
+  by binding `127.0.0.1:0`), so a crash restart reuses the file on disk with its port and
+  secret; an `apply` that restarts sing-box regenerates both. The injected file is
+  re-serialized by `JSONSerialization` (sorted keys); the app's `configHash` stays that of
+  the original text. `TrafficSampler` (daemon) polls with an ephemeral `URLSession`
+  (`connectionProxyDictionary = [:]`, 0.9 s timeout) and drops a sample that completes after
+  `pause`; `SingBoxEngine` starts it after startup verification and pauses it on stop/exit,
+  `Supervisor.performStop` resets it. `TrafficAccumulator` (`WayforkDaemonCore`) attributes a
+  connection by the first `t-<id>` tag in `chains` (`Tunnel.tunnelID(fromOutboundTag:)`);
+  `dns-out`, `block` and chain-less entries count as Direct. A counter that shrank under a
+  reused id, or an id that moved to another outbound, is treated as a new connection. The
+  snapshot lists only tunnels seen since Turn On; the app reads a missing entry as zero.
 
 ## Developer mode (no app, no launchd)
 

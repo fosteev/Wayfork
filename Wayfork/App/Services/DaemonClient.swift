@@ -24,6 +24,7 @@ final class DaemonClient {
 
     var onStatus: ((RuntimeStatus) -> Void)?
     var onLogLines: (([LogLine]) -> Void)?
+    var onTraffic: ((TrafficSnapshot) -> Void)?
     /// The daemon process went away (crash, unregister, update); the connection object is
     /// still usable and relaunches the daemon on the next message.
     var onInterruption: (() -> Void)?
@@ -38,7 +39,8 @@ final class DaemonClient {
         guard connection == nil else { return }
         let receiver = ClientReceiver(
             onStatus: { [weak self] status in self?.onStatus?(status) },
-            onLogLines: { [weak self] lines in self?.onLogLines?(lines) })
+            onLogLines: { [weak self] lines in self?.onLogLines?(lines) },
+            onTraffic: { [weak self] snapshot in self?.onTraffic?(snapshot) })
         let connection = NSXPCConnection(
             machServiceName: WayforkIdentifiers.machService, options: .privileged)
         connection.remoteObjectInterface = NSXPCInterface(with: WayforkDaemonXPC.self)
@@ -156,13 +158,16 @@ private final class ReplyOnce: Sendable {
 private final class ClientReceiver: NSObject, WayforkClientXPC, @unchecked Sendable {
     private let onStatus: @MainActor @Sendable (RuntimeStatus) -> Void
     private let onLogLines: @MainActor @Sendable ([LogLine]) -> Void
+    private let onTraffic: @MainActor @Sendable (TrafficSnapshot) -> Void
 
     init(
         onStatus: @escaping @MainActor @Sendable (RuntimeStatus) -> Void,
-        onLogLines: @escaping @MainActor @Sendable ([LogLine]) -> Void
+        onLogLines: @escaping @MainActor @Sendable ([LogLine]) -> Void,
+        onTraffic: @escaping @MainActor @Sendable (TrafficSnapshot) -> Void
     ) {
         self.onStatus = onStatus
         self.onLogLines = onLogLines
+        self.onTraffic = onTraffic
     }
 
     func statusChanged(_ status: Data) {
@@ -174,6 +179,14 @@ private final class ClientReceiver: NSObject, WayforkClientXPC, @unchecked Senda
     func logLines(_ batch: Data) {
         guard let decoded = try? XPCCodec.decode([LogLine].self, from: batch) else { return }
         let handler = onLogLines
+        Task { @MainActor in handler(decoded) }
+    }
+
+    func trafficChanged(_ snapshot: Data) {
+        guard let decoded = try? XPCCodec.decode(TrafficSnapshot.self, from: snapshot) else {
+            return
+        }
+        let handler = onTraffic
         Task { @MainActor in handler(decoded) }
     }
 }

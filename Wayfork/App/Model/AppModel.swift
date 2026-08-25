@@ -32,6 +32,9 @@ final class AppModel {
     /// Shown instead of the summary while waiting for the helper approval.
     private(set) var helperMessage: String?
     private(set) var daemonInfo: DaemonInfo?
+    /// Latest traffic sample (F9); nil while off and when no sample arrived for
+    /// `TrafficFormat.staleAfter` seconds, so the popover shows `—` instead of stale figures.
+    private(set) var traffic: TrafficSnapshot?
     /// Tunnels whose OpenVPN body / VLESS UUID is not in Keychain (imported without secrets).
     private(set) var missingSecrets: Set<UUID> = []
     private(set) var iconPulse = false
@@ -66,6 +69,7 @@ final class AppModel {
     private var startingTimeoutTask: Task<Void, Never>?
     private var pulseTask: Task<Void, Never>?
     private var pruneTask: Task<Void, Never>?
+    private var trafficStaleTask: Task<Void, Never>?
     private(set) var lastPlan: RuntimePlan?
     private var bootstrapped = false
 
@@ -78,6 +82,7 @@ final class AppModel {
         self.repository = repository
         client.onStatus = { [weak self] status in self?.handleStatus(status) }
         client.onLogLines = { [weak self] lines in self?.logs.receive(lines) }
+        client.onTraffic = { [weak self] snapshot in self?.handleTraffic(snapshot) }
         client.onInterruption = { [weak self] in self?.handleDaemonInterruption() }
         client.onInvalidation = { [weak self] in self?.handleDaemonInvalidation() }
     }
@@ -144,6 +149,13 @@ final class AppModel {
     func tunnelState(_ id: UUID) -> TunnelState? {
         status?.tunnels[id.uuidString.lowercased()]
     }
+
+    /// Traffic figures of a tunnel; nil when there is no fresh sample (shown as `—`).
+    func trafficCounters(for tunnel: Tunnel) -> TrafficCounters? {
+        traffic?.counters(forTunnel: tunnel.id.uuidString.lowercased())
+    }
+
+    var directTraffic: TrafficCounters? { traffic?.direct }
 
     func ruleCount(for tunnelID: UUID) -> Int {
         store.rules(for: tunnelID).count
@@ -351,6 +363,7 @@ final class AppModel {
         } else {
             status = nil
         }
+        clearTraffic()
         setTransition(nil)
     }
 
@@ -512,6 +525,7 @@ final class AppModel {
         logs.app(.warning, "helper connection interrupted")
         daemonInfo = nil
         status = nil
+        clearTraffic()
         guard desiredOn else { return }
         Task {
             do {
@@ -527,6 +541,7 @@ final class AppModel {
         logs.app(.warning, "helper connection lost")
         daemonInfo = nil
         status = nil
+        clearTraffic()
         refreshHelperState()
         if desiredOn {
             desiredOn = false
@@ -545,6 +560,7 @@ final class AppModel {
         let old = status
         status = new
         syncDiscoveredDNS(new)
+        if !new.engine.isRunning { clearTraffic() }
         if case .starting = transition, globalState != .starting {
             startingTimeoutTask?.cancel()
             setTransition(nil)
@@ -569,6 +585,25 @@ final class AppModel {
                 id: "engine", title: "Routing engine failed",
                 body: StatusText.failureMessage(code: reason))
         }
+    }
+
+    // MARK: - Traffic (F9)
+
+    private func handleTraffic(_ snapshot: TrafficSnapshot) {
+        guard desiredOn, status?.engine.isRunning == true else { return }
+        traffic = snapshot
+        trafficStaleTask?.cancel()
+        trafficStaleTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(TrafficFormat.staleAfter))
+            guard let self, !Task.isCancelled else { return }
+            traffic = nil
+        }
+    }
+
+    private func clearTraffic() {
+        trafficStaleTask?.cancel()
+        trafficStaleTask = nil
+        traffic = nil
     }
 
     private func syncDiscoveredDNS(_ status: RuntimeStatus) {

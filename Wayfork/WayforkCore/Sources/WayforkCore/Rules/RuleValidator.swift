@@ -96,7 +96,8 @@ public enum RuleValidator {
             if rule.isIP {
                 guard let range = IPv4Prefix(rule.pattern) else { continue }
                 for server in serverAddresses where range.contains(server.address) {
-                    issues[rule.id, default: []].append(.coversTunnelServer(tunnelName: server.tunnel))
+                    issues[rule.id, default: []].append(
+                        .coversTunnelServer(tunnelName: server.tunnel))
                 }
                 for network in localNetworks where range.overlaps(network.prefix) {
                     issues[rule.id, default: []].append(
@@ -105,8 +106,11 @@ public enum RuleValidator {
                 }
             } else {
                 for server in serverNames
-                where RulePattern.matches(host: server.host, pattern: rule.pattern, match: rule.match) {
-                    issues[rule.id, default: []].append(.coversTunnelServer(tunnelName: server.tunnel))
+                where RulePattern.matches(
+                    host: server.host, pattern: rule.pattern, match: rule.match)
+                {
+                    issues[rule.id, default: []].append(
+                        .coversTunnelServer(tunnelName: server.tunnel))
                 }
             }
         }

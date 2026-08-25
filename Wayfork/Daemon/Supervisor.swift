@@ -18,6 +18,7 @@ actor Supervisor {
     let env: DaemonEnvironment
     let hub: ClientHub
     private let engine: SingBoxEngine
+    private let sampler: TrafficSampler
     private let events: AsyncStream<SupervisorEvent>
     private let eventSink: AsyncStream<SupervisorEvent>.Continuation
     private var sessions: [String: OpenVPNSession] = [:]
@@ -38,7 +39,8 @@ actor Supervisor {
         buildID = CodeSignature.uniqueIdentifier(ofExecutableAt: env.executablePath)
         (events, eventSink) = AsyncStream.makeStream(
             of: SupervisorEvent.self, bufferingPolicy: .unbounded)
-        engine = SingBoxEngine(env: env, hub: hub, events: eventSink)
+        sampler = TrafficSampler(hub: hub)
+        engine = SingBoxEngine(env: env, hub: hub, events: eventSink, sampler: sampler)
     }
 
     // MARK: - Startup
@@ -273,6 +275,7 @@ actor Supervisor {
     private func performStop() async {
         hub.post(.info, "stop requested")
         await engine.stop()
+        await sampler.reset()
         await stopSessions(Array(sessions.keys))
         wipeRunDirectory()
         plan = nil

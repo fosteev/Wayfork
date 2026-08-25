@@ -121,6 +121,14 @@ actor ClientHub {
         }
     }
 
+    // MARK: - Traffic (F9)
+
+    /// Forwards a sample to the subscriber; nothing is stored, nothing is replayed.
+    func pushTraffic(_ snapshot: TrafficSnapshot) {
+        guard let client, let data = try? XPCCodec.encode(snapshot) else { return }
+        client.proxy.trafficChanged(data)
+    }
+
     // MARK: - Logs
 
     private func ingest(_ line: LogLine) {

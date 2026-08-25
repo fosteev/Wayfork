@@ -113,10 +113,13 @@ private func validationError(_ plan: RuntimePlan) -> DaemonError? {
 @Test func planValidation() {
     #expect(validationError(plan([runtime(idA)], ruleSets: ["rules-t-\(idA).json": "{}"])) == nil)
     #expect(validationError(plan([], ruleSets: ["rules-direct.json": "{}"])) == nil)
-    #expect(validationError(plan([runtime(idA)], ruleSets: ["rules-t-\(idA)-ip.json": "{}"])) == nil)
+    #expect(
+        validationError(plan([runtime(idA)], ruleSets: ["rules-t-\(idA)-ip.json": "{}"])) == nil)
     #expect(validationError(plan([], ruleSets: ["rules-direct-ip.json": "{}"])) == nil)
     #expect(PlanValidator.ruleSetID(fromFileName: "rules-t-\(idA)-ip.json") == idA)
-    #expect(reason(validationError(plan([], ruleSets: ["rules-t--ip.json": "{}"]))).contains("rules-t-<id>.json"))
+    #expect(
+        reason(validationError(plan([], ruleSets: ["rules-t--ip.json": "{}"]))).contains(
+            "rules-t-<id>.json"))
     #expect(
         reason(validationError(plan([runtime(idA), runtime(idB, interface: "utun101")])))
             .contains("used twice"))

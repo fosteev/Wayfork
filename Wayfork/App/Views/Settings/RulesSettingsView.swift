@@ -343,7 +343,9 @@ private struct RuleRowView: View {
         .contextMenu {
             if rule.isApp {
                 Button("Reveal in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: rule.pattern)])
+                    NSWorkspace.shared.activateFileViewerSelecting([
+                        URL(fileURLWithPath: rule.pattern)
+                    ])
                 }
                 .disabled(!AppBundleInfo.info(for: rule.pattern).exists)
             } else {

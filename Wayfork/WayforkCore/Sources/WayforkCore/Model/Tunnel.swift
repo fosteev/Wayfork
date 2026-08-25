@@ -193,7 +193,17 @@ public struct Tunnel: Codable, Sendable, Hashable, Identifiable {
     }
 
     /// sing-box outbound tag: `t-<id>`.
-    public var outboundTag: String { "t-\(id.uuidString.lowercased())" }
+    public var outboundTag: String { "\(Tunnel.outboundTagPrefix)\(id.uuidString.lowercased())" }
+
+    public static let outboundTagPrefix = "t-"
+
+    /// The tunnel id behind an outbound tag; nil for `direct`, `block` and other outbounds.
+    public static func tunnelID(fromOutboundTag tag: String) -> String? {
+        guard tag.hasPrefix(outboundTagPrefix), tag.count > outboundTagPrefix.count else {
+            return nil
+        }
+        return String(tag.dropFirst(outboundTagPrefix.count))
+    }
 
     /// sing-box rule-set tag: `rules-t-<id>`; the file is `<tag>.json`.
     public var ruleSetTag: String { "rules-\(outboundTag)" }

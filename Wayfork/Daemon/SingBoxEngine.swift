@@ -16,12 +16,16 @@ actor SingBoxEngine {
     private let env: DaemonEnvironment
     private let hub: ClientHub
     private let events: AsyncStream<SupervisorEvent>.Continuation
+    private let sampler: TrafficSampler
 
     /// Hash of the config the running (or last started) process was started with.
     private(set) var configHash: String?
     /// Rule-set files currently on disk.
     private(set) var ruleSets: [String: String] = [:]
     private var checkedConfigHash: String?
+    /// Clash API endpoint written into the config by `check` / used by the running process.
+    private var checkedEndpoint: ClashAPIEndpoint?
+    private var endpoint: ClashAPIEndpoint?
     private var process: ManagedProcess?
     private var generation = 0
     private var stopping = false
@@ -33,11 +37,14 @@ actor SingBoxEngine {
         didSet { if state != oldValue { events.yield(.engine(state)) } }
     }
 
-    init(env: DaemonEnvironment, hub: ClientHub, events: AsyncStream<SupervisorEvent>.Continuation)
-    {
+    init(
+        env: DaemonEnvironment, hub: ClientHub, events: AsyncStream<SupervisorEvent>.Continuation,
+        sampler: TrafficSampler
+    ) {
         self.env = env
         self.hub = hub
         self.events = events
+        self.sampler = sampler
     }
 
     var isRunning: Bool { process != nil }
@@ -62,13 +69,22 @@ actor SingBoxEngine {
         }
     }
 
-    /// Writes the candidate config next to the live one, runs `sing-box check` on it and
-    /// promotes it to `sing-box.json` only when the check passes.
+    /// Writes the candidate config next to the live one — with a fresh Clash API endpoint
+    /// injected for traffic sampling (F9) — runs `sing-box check` on it and promotes it to
+    /// `sing-box.json` only when the check passes.
     func check(config: String, hash: String) async throws(DaemonError) {
         try BinaryValidator.validate(path: env.singBoxPath, name: "sing-box", teamID: env.teamID)
+        let endpoint: ClashAPIEndpoint
+        let injected: String
+        do {
+            endpoint = try ClashAPIEndpoint.generate()
+            injected = try ClashAPIConfig.inject(endpoint, into: config)
+        } catch {
+            throw .internalError(message: "cannot prepare clash api: \(error)")
+        }
         let candidate = env.runPath(RunLayout.singBoxConfig + ".check")
         do {
-            try AtomicFile.write(config, to: candidate)
+            try AtomicFile.write(injected, to: candidate)
         } catch {
             throw .internalError(message: "cannot write config: \(error)")
         }
@@ -91,6 +107,7 @@ actor SingBoxEngine {
             throw .internalError(message: "cannot install config: errno \(code)")
         }
         checkedConfigHash = hash
+        checkedEndpoint = endpoint
     }
 
     // MARK: - Lifecycle
@@ -104,6 +121,7 @@ actor SingBoxEngine {
         try BinaryValidator.validate(path: env.singBoxPath, name: "sing-box", teamID: env.teamID)
         state = .starting
         configHash = checkedConfigHash
+        endpoint = checkedEndpoint
         generation += 1
         let generation = generation
         let hub = hub
@@ -168,12 +186,16 @@ actor SingBoxEngine {
         crashes.reset()
         backoff.reset()
         state = .running(since: Date())
+        if let endpoint {
+            await sampler.start(endpoint)
+        }
     }
 
     func stop() async {
         restartTask?.cancel()
         restartTask = nil
         stopping = true
+        await sampler.pause()
         if let process {
             hub.post(.info, "stopping sing-box (pid \(process.pid))")
             _ = await process.terminate(timeout: SingBoxEngine.stopTimeout)
@@ -190,10 +212,11 @@ actor SingBoxEngine {
 
     // MARK: - Exit handling
 
-    private func handleExit(_ exit: ProcessExit, generation: Int) {
+    private func handleExit(_ exit: ProcessExit, generation: Int) async {
         guard generation == self.generation, let exited = process, !stopping else { return }
         let uptime = Date().timeIntervalSince(exited.startedAt)
         process = nil
+        await sampler.pause()
         unlink(env.runPath(RunLayout.singBoxPID))
         hub.post(.error, "sing-box exited unexpectedly (\(exit)) after \(Int(uptime)) s")
         if crashes.recordExit() {

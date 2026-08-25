@@ -72,6 +72,22 @@ final class ConsoleClient: NSObject, WayforkClientXPC, Sendable {
         }
     }
 
+    func trafficChanged(_ snapshot: Data) {
+        guard let snapshot = try? XPCCodec.decode(TrafficSnapshot.self, from: snapshot) else {
+            return
+        }
+        var parts = ["traffic:"]
+        for (id, counters) in snapshot.tunnels.sorted(by: { $0.key < $1.key }) {
+            parts.append("\(id.prefix(8)) \(Self.describe(counters))")
+        }
+        parts.append("direct \(Self.describe(snapshot.direct))")
+        print(parts.joined(separator: "  "))
+    }
+
+    private static func describe(_ counters: TrafficCounters) -> String {
+        "\(TrafficFormat.rateLabel(counters)) (\(TrafficFormat.bytes(counters.downTotal))/\(TrafficFormat.bytes(counters.upTotal)), \(counters.connections) conn)"
+    }
+
     func print(_ text: String) {
         FileHandle.standardError.write(Data((text + "\n").utf8))
     }

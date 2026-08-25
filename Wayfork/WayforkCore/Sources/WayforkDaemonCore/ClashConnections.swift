@@ -1,0 +1,56 @@
+import Foundation
+
+/// One entry of `GET /connections`, reduced to what the sampler needs. `upload` and
+/// `download` are cumulative for the connection's lifetime.
+public struct ClashConnection: Sendable, Hashable {
+    public var id: String
+    /// Outbound chain, e.g. `["t-<tunnel id>"]` or `["direct"]`.
+    public var chains: [String]
+    public var upload: UInt64
+    public var download: UInt64
+
+    public init(id: String, chains: [String], upload: UInt64, download: UInt64) {
+        self.id = id
+        self.chains = chains
+        self.upload = upload
+        self.download = download
+    }
+}
+
+extension ClashConnection: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case id, chains, upload, download
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        chains = try c.decodeIfPresent([String].self, forKey: .chains) ?? []
+        upload = UInt64(max(0, try c.decodeIfPresent(Int64.self, forKey: .upload) ?? 0))
+        download = UInt64(max(0, try c.decodeIfPresent(Int64.self, forKey: .download) ?? 0))
+    }
+}
+
+/// `GET /connections` of sing-box's Clash API. Other fields (`downloadTotal`, `memory`,
+/// per-connection `metadata` with destination hosts) are ignored and never leave the daemon.
+public struct ClashConnections: Decodable, Sendable {
+    public var connections: [ClashConnection]
+
+    public init(connections: [ClashConnection]) {
+        self.connections = connections
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case connections
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // Clash-style servers send `null` instead of an empty list.
+        connections = try c.decodeIfPresent([ClashConnection].self, forKey: .connections) ?? []
+    }
+
+    public static func decode(_ data: Data) throws -> ClashConnections {
+        try JSONDecoder().decode(ClashConnections.self, from: data)
+    }
+}

@@ -150,3 +150,57 @@ public enum XPCCodec {
         try JSONCoding.decoder.decode(type, from: data)
     }
 }
+
+/// Traffic figures of one exit — a tunnel or Direct (F9). Rates cover
+/// `TrafficSnapshot.interval`; totals run since Turn On.
+public struct TrafficCounters: Codable, Sendable, Hashable {
+    public var downBytesPerSecond: Double
+    public var upBytesPerSecond: Double
+    public var downTotal: UInt64
+    public var upTotal: UInt64
+    /// Connections open at sample time.
+    public var connections: Int
+
+    public init(
+        downBytesPerSecond: Double = 0, upBytesPerSecond: Double = 0, downTotal: UInt64 = 0,
+        upTotal: UInt64 = 0, connections: Int = 0
+    ) {
+        self.downBytesPerSecond = downBytesPerSecond
+        self.upBytesPerSecond = upBytesPerSecond
+        self.downTotal = downTotal
+        self.upTotal = upTotal
+        self.connections = connections
+    }
+
+    public static let zero = TrafficCounters()
+
+    /// Nothing moved during the sampled interval.
+    public var isIdle: Bool { downBytesPerSecond == 0 && upBytesPerSecond == 0 }
+}
+
+/// One traffic sample, pushed by the daemon once a second while sing-box runs
+/// (docs/design/05-daemon.md, "Traffic sampling").
+public struct TrafficSnapshot: Codable, Sendable, Hashable {
+    public var sampledAt: Date
+    /// Seconds covered by the rates (time since the previous sample).
+    public var interval: TimeInterval
+    /// By tunnel id (OpenVPN and VLESS alike). A tunnel that carried nothing since Turn On
+    /// is absent; `counters(forTunnel:)` reads that as zero.
+    public var tunnels: [String: TrafficCounters]
+    /// Everything that bypasses the tunnels.
+    public var direct: TrafficCounters
+
+    public init(
+        sampledAt: Date, interval: TimeInterval, tunnels: [String: TrafficCounters],
+        direct: TrafficCounters
+    ) {
+        self.sampledAt = sampledAt
+        self.interval = interval
+        self.tunnels = tunnels
+        self.direct = direct
+    }
+
+    public func counters(forTunnel id: String) -> TrafficCounters {
+        tunnels[id] ?? .zero
+    }
+}

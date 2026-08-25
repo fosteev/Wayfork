@@ -291,20 +291,20 @@ Added after M3; implemented once the M3 end-to-end check passes. Design in
 ### M3c — Traffic rates (F9)
 
 Design in [05-daemon.md](design/05-daemon.md) ("Traffic sampling"), [02-ux.md](design/02-ux.md)
-(popover) and [03-routing.md](design/03-routing.md) (Clash API section). Design pending
-maintainer approval; implemented after the M3/M3b end-to-end checks.
+(popover) and [03-routing.md](design/03-routing.md) (Clash API section). Implemented
+2026-08-25; manual check pending.
 
-- [ ] `WayforkDaemonCore`: `ClashAPIConfig` (inject `experimental.clash_api` with a free
+- [x] `WayforkDaemonCore`: `ClashAPIConfig` (inject `experimental.clash_api` with a free
       loopback port and a random secret into the config the daemon writes; `sing-box check`
       still passes on every golden), `ClashConnections` decoding of `/connections`,
       `TrafficAccumulator` (per-connection deltas → per-outbound rates and running totals);
       tests with fixtures.
-- [ ] Daemon: `TrafficSampler` task while sing-box runs (1 Hz GET, bearer secret), totals
+- [x] Daemon: `TrafficSampler` task while sing-box runs (1 Hz GET, bearer secret), totals
       survive sing-box restarts and reset on `stop`, one WARNING per failure streak;
       `WayforkClientXPC.trafficChanged`; `--dev-apply` prints a snapshot line per second.
-- [ ] Core/App: `TrafficSnapshot` payload, `TrafficFormat` (rate and total strings, tests),
+- [x] Core/App: `TrafficSnapshot` payload, `TrafficFormat` (rate and total strings, tests),
       `AppModel.traffic` with a 3 s staleness cut-off, cleared on Off.
-- [ ] Popover: rate label on tunnel cards (line 1, before the action), Direct row after
+- [x] Popover: rate label on tunnel cards (line 1, before the action), Direct row after
       the cards, `.help` tooltips with session totals; no layout jitter (monospaced
       digits, fixed formatting).
 - [ ] Manual check: rates on an OpenVPN and a VLESS card while downloading through each,

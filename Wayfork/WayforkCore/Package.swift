@@ -23,7 +23,8 @@ let package = Package(
         ),
         .testTarget(
             name: "WayforkDaemonCoreTests",
-            dependencies: ["WayforkDaemonCore"]
+            dependencies: ["WayforkDaemonCore"],
+            resources: [.copy("Fixtures")]
         ),
     ],
     swiftLanguageModes: [.v6]

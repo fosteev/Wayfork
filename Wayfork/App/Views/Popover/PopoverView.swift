@@ -18,6 +18,9 @@ struct PopoverView: View {
                 ForEach(enabledTunnels) { tunnel in
                     TunnelCardView(tunnel: tunnel)
                 }
+                if model.globalState.isRunning {
+                    DirectRowView()
+                }
             }
             if !model.globalState.isOff, !enabledTunnels.isEmpty {
                 Divider()
@@ -123,7 +126,10 @@ struct TunnelCardView: View {
                 StatusGlyphView(glyph: card.glyph)
                 Text(tunnel.name).fontWeight(.semibold).lineLimit(1)
                 TypeBadge(kind: tunnel.kind)
-                Spacer()
+                Spacer(minLength: 4)
+                if showsRate(card) {
+                    RateLabel(counters: model.trafficCounters(for: tunnel))
+                }
                 actionButton(card.action)
             }
             Text(card.detail)
@@ -142,6 +148,11 @@ struct TunnelCardView: View {
         .opacity(card.isDimmed ? 0.55 : 1)
         .contentShape(Rectangle())
         .onTapGesture { model.openSettings(section: .tunnels, tunnel: tunnel.id) }
+    }
+
+    /// Rates only for connected / ready tunnels while routing is on (F9).
+    private func showsRate(_ card: TunnelPresentation) -> Bool {
+        model.globalState.isRunning && card.glyph == .up
     }
 
     @ViewBuilder
@@ -169,6 +180,42 @@ struct TunnelCardView: View {
             Button("Enable") { model.setEnabled(tunnelID: tunnel.id, true) }
                 .controlSize(.small)
         }
+    }
+}
+
+/// `↓ 1.2 MB/s ↑ 85 KB/s` with the session totals as tooltip; `↓ — ↑ —` without a fresh
+/// sample. Monospaced digits and fixed formatting keep the card from jittering (F9).
+struct RateLabel: View {
+    let counters: TrafficCounters?
+
+    var body: some View {
+        Text(TrafficFormat.rateLabel(counters))
+            .font(.system(size: 11))
+            .monospacedDigit()
+            .foregroundStyle(counters?.isIdle == false ? .secondary : .tertiary)
+            .lineLimit(1)
+            .fixedSize()
+            .help(counters.map(TrafficFormat.tooltip) ?? TrafficFormat.staleTooltip)
+    }
+}
+
+/// Slim row after the cards: what bypasses the tunnels (F9). No background, no action.
+struct DirectRowView: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Text(
+                TrafficFormat.directRowTitle(hasDefaultTunnel: model.effectiveDefaultTunnel != nil)
+            )
+            .font(.system(size: 12))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            Spacer(minLength: 4)
+            RateLabel(counters: model.directTraffic)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 2)
     }
 }
 

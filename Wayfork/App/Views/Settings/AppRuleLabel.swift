@@ -18,7 +18,8 @@ enum AppBundleInfo {
     static func info(for path: String) -> Info {
         let exists = FileManager.default.fileExists(atPath: path)
         if let cached = cache[path], cached.exists == exists { return cached }
-        var name = exists ? FileManager.default.displayName(atPath: path) : RulePattern.appName(path)
+        var name =
+            exists ? FileManager.default.displayName(atPath: path) : RulePattern.appName(path)
         if name.hasSuffix(".app") { name.removeLast(4) }
         let icon =
             exists

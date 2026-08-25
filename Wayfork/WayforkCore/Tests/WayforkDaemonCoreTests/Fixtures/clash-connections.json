@@ -1,0 +1,112 @@
+{
+  "downloadTotal": 1638400,
+  "uploadTotal": 81920,
+  "connections": [
+    {
+      "id": "0f8a9c8e-1d2b-4c3a-9e8f-7a6b5c4d3e2f",
+      "metadata": {
+        "network": "tcp",
+        "type": "TUN",
+        "sourceIP": "172.19.0.1",
+        "destinationIP": "198.18.0.5",
+        "sourcePort": "52344",
+        "destinationPort": "443",
+        "host": "example.com",
+        "dnsMode": "fake-ip",
+        "processPath": "",
+        "specialProxy": ""
+      },
+      "upload": 4096,
+      "download": 1048576,
+      "start": "2026-08-25T20:00:00.000000+03:00",
+      "chains": ["t-aaaaaaaa-0000-0000-0000-000000000001"],
+      "rule": "rule_set=rules-t-aaaaaaaa-0000-0000-0000-000000000001",
+      "rulePayload": ""
+    },
+    {
+      "id": "6c1e5b2a-9d4f-4e8b-a7c3-2f1d0e9b8a7c",
+      "metadata": {
+        "network": "udp",
+        "type": "TUN",
+        "sourceIP": "172.19.0.1",
+        "destinationIP": "198.18.0.9",
+        "sourcePort": "60001",
+        "destinationPort": "443",
+        "host": "video.example.net",
+        "dnsMode": "fake-ip",
+        "processPath": "/Applications/Safari.app/Contents/MacOS/Safari",
+        "specialProxy": ""
+      },
+      "upload": 2048,
+      "download": 524288,
+      "start": "2026-08-25T20:00:01.000000+03:00",
+      "chains": ["t-aaaaaaaa-0000-0000-0000-000000000002"],
+      "rule": "rule_set=rules-t-aaaaaaaa-0000-0000-0000-000000000002",
+      "rulePayload": ""
+    },
+    {
+      "id": "b3d2c1a0-7e6f-4d5c-8b9a-1f2e3d4c5b6a",
+      "metadata": {
+        "network": "tcp",
+        "type": "TUN",
+        "sourceIP": "172.19.0.1",
+        "destinationIP": "93.184.216.34",
+        "sourcePort": "52345",
+        "destinationPort": "80",
+        "host": "",
+        "dnsMode": "normal",
+        "processPath": "",
+        "specialProxy": ""
+      },
+      "upload": 512,
+      "download": 65536,
+      "start": "2026-08-25T20:00:02.000000+03:00",
+      "chains": ["direct"],
+      "rule": "final",
+      "rulePayload": ""
+    },
+    {
+      "id": "e4f5a6b7-c8d9-4e0f-a1b2-c3d4e5f6a7b8",
+      "metadata": {
+        "network": "udp",
+        "type": "TUN",
+        "sourceIP": "172.19.0.1",
+        "destinationIP": "1.1.1.1",
+        "sourcePort": "50533",
+        "destinationPort": "53",
+        "host": "",
+        "dnsMode": "normal",
+        "processPath": "",
+        "specialProxy": ""
+      },
+      "upload": 64,
+      "download": 128,
+      "start": "2026-08-25T20:00:03.000000+03:00",
+      "chains": ["dns-out"],
+      "rule": "protocol=dns",
+      "rulePayload": ""
+    },
+    {
+      "id": "9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d",
+      "metadata": {
+        "network": "tcp",
+        "type": "TUN",
+        "sourceIP": "172.19.0.1",
+        "destinationIP": "198.18.0.12",
+        "sourcePort": "52346",
+        "destinationPort": "443",
+        "host": "blocked.example",
+        "dnsMode": "fake-ip",
+        "processPath": "",
+        "specialProxy": ""
+      },
+      "upload": 0,
+      "download": 0,
+      "start": "2026-08-25T20:00:04.000000+03:00",
+      "chains": null,
+      "rule": "final",
+      "rulePayload": ""
+    }
+  ],
+  "memory": 12345678
+}
