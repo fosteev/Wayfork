@@ -200,6 +200,11 @@ public struct Tunnel: Codable, Sendable, Hashable, Identifiable {
 
     public var ruleSetFileName: String { "\(ruleSetTag).json" }
 
+    /// F11: the tunnel's IP rules, `rules-t-<id>-ip`; referenced by route rules only.
+    public var ipRuleSetTag: String { "\(ruleSetTag)-ip" }
+
+    public var ipRuleSetFileName: String { "\(ipRuleSetTag).json" }
+
     /// `utun<101 + slot>` for OpenVPN tunnels; VLESS tunnels have no interface.
     public var interfaceName: String? {
         guard kind.isOpenVPN else { return nil }

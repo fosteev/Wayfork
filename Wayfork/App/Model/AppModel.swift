@@ -125,7 +125,21 @@ final class AppModel {
 
     var settings: Settings { store.settings }
 
-    var ruleIssues: [UUID: [RuleIssue]] { RuleValidator.validate(store) }
+    var ruleIssues: [UUID: [RuleIssue]] {
+        RuleValidator.validate(store, localNetworks: localNetworks)
+    }
+
+    /// The Mac's own networks for the "covers your LAN" chip (F11), looked up at most every
+    /// 10 s — `ruleIssues` is evaluated per row render.
+    @ObservationIgnored private var localNetworksCache: (at: Date, networks: [LocalNetwork])?
+    private var localNetworks: [LocalNetwork] {
+        if let cache = localNetworksCache, Date().timeIntervalSince(cache.at) < 10 {
+            return cache.networks
+        }
+        let networks = LocalNetwork.current()
+        localNetworksCache = (Date(), networks)
+        return networks
+    }
 
     func tunnelState(_ id: UUID) -> TunnelState? {
         status?.tunnels[id.uuidString.lowercased()]

@@ -88,6 +88,12 @@
         "path" : "rules-direct.json",
         "tag" : "rules-direct",
         "type" : "local"
+      },
+      {
+        "format" : "source",
+        "path" : "rules-direct-ip.json",
+        "tag" : "rules-direct-ip",
+        "type" : "local"
       }
     ],
     "rules" : [
@@ -106,7 +112,10 @@
       },
       {
         "outbound" : "direct",
-        "rule_set" : "rules-direct"
+        "rule_set" : [
+          "rules-direct",
+          "rules-direct-ip"
+        ]
       },
       {
         "ip_is_private" : true,

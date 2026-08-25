@@ -141,14 +141,32 @@
       },
       {
         "format" : "source",
+        "path" : "rules-direct-ip.json",
+        "tag" : "rules-direct-ip",
+        "type" : "local"
+      },
+      {
+        "format" : "source",
         "path" : "rules-t-00000000-0000-4000-8000-000000000001.json",
         "tag" : "rules-t-00000000-0000-4000-8000-000000000001",
         "type" : "local"
       },
       {
         "format" : "source",
+        "path" : "rules-t-00000000-0000-4000-8000-000000000001-ip.json",
+        "tag" : "rules-t-00000000-0000-4000-8000-000000000001-ip",
+        "type" : "local"
+      },
+      {
+        "format" : "source",
         "path" : "rules-t-00000000-0000-4000-8000-000000000002.json",
         "tag" : "rules-t-00000000-0000-4000-8000-000000000002",
+        "type" : "local"
+      },
+      {
+        "format" : "source",
+        "path" : "rules-t-00000000-0000-4000-8000-000000000002-ip.json",
+        "tag" : "rules-t-00000000-0000-4000-8000-000000000002-ip",
         "type" : "local"
       }
     ],
@@ -168,15 +186,24 @@
       },
       {
         "outbound" : "direct",
-        "rule_set" : "rules-direct"
+        "rule_set" : [
+          "rules-direct",
+          "rules-direct-ip"
+        ]
       },
       {
         "outbound" : "t-00000000-0000-4000-8000-000000000001",
-        "rule_set" : "rules-t-00000000-0000-4000-8000-000000000001"
+        "rule_set" : [
+          "rules-t-00000000-0000-4000-8000-000000000001",
+          "rules-t-00000000-0000-4000-8000-000000000001-ip"
+        ]
       },
       {
         "outbound" : "t-00000000-0000-4000-8000-000000000002",
-        "rule_set" : "rules-t-00000000-0000-4000-8000-000000000002"
+        "rule_set" : [
+          "rules-t-00000000-0000-4000-8000-000000000002",
+          "rules-t-00000000-0000-4000-8000-000000000002-ip"
+        ]
       },
       {
         "ip_is_private" : true,

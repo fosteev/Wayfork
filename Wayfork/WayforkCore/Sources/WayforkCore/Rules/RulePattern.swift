@@ -12,6 +12,13 @@ public enum RulePatternError: Error, Equatable, Sendable {
     case wildcardRequired
     /// An `app` rule whose pattern is not an absolute path ending in `.app` (F10).
     case notAnAppBundle
+    /// An `ip` rule whose pattern is not an IPv4 address or subnet (F11).
+    case invalidIP
+    /// A domain rule whose pattern is an IPv4 address — the UI points at the IP match (F11).
+    case looksLikeIP
+    /// An `ip` rule inside a reserved range (loopback, link-local, multicast, Wayfork's own
+    /// fake-IP and TUN ranges) or `/0` (F11).
+    case reservedRange
 }
 
 /// Normalization, validation and matching of rule patterns (docs/design/01-data-model.md).
@@ -19,17 +26,37 @@ public enum RulePattern {
     public static let maxLength = 253
     public static let maxLabelLength = 63
 
-    /// `wildcard` if the input contains `*`, otherwise `suffix` — what the UI picks while typing.
+    /// `wildcard` if the input contains `*`, `ip` if it is an IPv4 address or subnet,
+    /// otherwise `suffix` — what the UI picks while typing.
     public static func inferMatch(_ raw: String) -> RuleMatch {
-        raw.contains("*") ? .wildcard : .suffix
+        if raw.contains("*") { return .wildcard }
+        return ipPrefix(fromInput: raw) != nil ? .ip : .suffix
+    }
+
+    /// Ranges an IP rule may not lie inside (F11): unroutable ones plus Wayfork's own. A
+    /// wider rule that overlaps one is emitted minus the reserved part.
+    public static let reservedRanges: [IPv4Prefix] = [
+        "0.0.0.0/8", "127.0.0.0/8", "169.254.0.0/16", "224.0.0.0/4", "240.0.0.0/4",
+        SingBoxConfigGenerator.fakeIPv4Range, SingBoxConfigGenerator.tunAddress,
+    ].compactMap { IPv4Prefix($0) }
+
+    /// The address or subnet in the input, if it is one: `10.8.0.0/24`, `10.8.0.5`,
+    /// `http://10.8.0.5:8080/x` (URL parts stripped); nil for anything else.
+    public static func ipPrefix(fromInput raw: String) -> IPv4Prefix? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let prefix = IPv4Prefix(trimmed) { return prefix }
+        // `10.8.0.0/33` is a bad CIDR, not the address `10.8.0.0` with a path.
+        if trimmed.contains("/"), !trimmed.contains("://") { return nil }
+        return IPv4Prefix(stripURLParts(trimmed))
     }
 
     /// Turns user input into the stored form: URL parts stripped, lowercased, NFC, IDNA
     /// labels converted to punycode, trailing dot removed. For `app`, a bundle path: a
-    /// `file://` URL becomes a path, trailing slashes go, case is kept (F10). Throws
-    /// `RulePatternError`.
+    /// `file://` URL becomes a path, trailing slashes go, case is kept (F10). For `ip`, the
+    /// canonical address or CIDR with host bits cleared (F11). Throws `RulePatternError`.
     public static func normalize(_ raw: String, match: RuleMatch) throws -> String {
         if match == .app { return try normalizeAppPath(raw) }
+        if match == .ip { return try normalizeIP(raw) }
         var s = stripURLParts(raw.trimmingCharacters(in: .whitespacesAndNewlines))
         s = s.lowercased().precomposedStringWithCanonicalMapping
         while s.hasSuffix(".") {
@@ -46,7 +73,7 @@ public enum RulePattern {
             if hasWildcard { throw RulePatternError.wildcardNotAllowed }
         case .wildcard:
             if !hasWildcard { throw RulePatternError.wildcardRequired }
-        case .app:
+        case .app, .ip:
             preconditionFailure("handled above")
         }
 
@@ -59,16 +86,16 @@ public enum RulePattern {
             labels.append(ascii)
         }
         if labels.allSatisfy({ $0.allSatisfy(\.isNumber) }) {
-            // Looks like an IPv4 address; IP rules are a Later feature.
-            throw RulePatternError.invalidHostname(s)
+            // Digits only: an IPv4 address (there is a match kind for those) or a typo.
+            throw labels.count == 4 ? RulePatternError.looksLikeIP : .invalidHostname(s)
         }
         let result = labels.joined(separator: ".")
         guard result.count <= maxLength else { throw RulePatternError.tooLong }
         return result
     }
 
-    /// Does `host` (already normalized) fall under the pattern? Never for an `app` rule —
-    /// those match processes, not names.
+    /// Does `host` (already normalized) fall under the pattern? Never for an `app` or `ip`
+    /// rule — those match processes and addresses, not names.
     public static func matches(host: String, pattern: String, match: RuleMatch) -> Bool {
         switch match {
         case .exact:
@@ -78,7 +105,7 @@ public enum RulePattern {
         case .wildcard:
             guard let regex = try? Regex(wildcardRegex(pattern)) else { return false }
             return host.wholeMatch(of: regex) != nil
-        case .app:
+        case .app, .ip:
             return false
         }
     }
@@ -110,6 +137,16 @@ public enum RulePattern {
     }
 
     // MARK: - Helpers
+
+    private static func normalizeIP(_ raw: String) throws -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw RulePatternError.empty }
+        guard let prefix = ipPrefix(fromInput: trimmed) else { throw RulePatternError.invalidIP }
+        guard prefix.bits > 0, !reservedRanges.contains(where: { $0.contains(prefix) }) else {
+            throw RulePatternError.reservedRange
+        }
+        return prefix.canonical
+    }
 
     private static func normalizeAppPath(_ raw: String) throws -> String {
         var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)

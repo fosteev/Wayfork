@@ -263,10 +263,10 @@ sing-box logs the failed lookup at debug level, nothing else changes.
 ### IP rules (F11)
 
 IP rules live in their own rule-set files, `rules-t-<id>-ip.json` and `rules-direct-ip.json`:
-one rule object holding every active range of the group, emitted as stored.
+one rule object holding every active range of the group, always with a prefix length.
 
 ```json
-{ "version": 3, "rules": [ { "ip_cidr": ["10.8.0.0/24", "203.0.113.7"] } ] }
+{ "version": 3, "rules": [ { "ip_cidr": ["10.8.0.0/24", "203.0.113.7/32"] } ] }
 ```
 
 Why a second file rather than another headless rule in `rules-t-<id>.json`: the DNS rules
@@ -308,6 +308,13 @@ while Wayfork is on.
 Changing the exclusion list changes `sing-box.json`, so adding, removing or toggling a
 tunnel IP rule inside a private range restarts sing-box (< 1 s, the fake-ip cache
 survives); every other IP-rule change is a hot reload.
+
+Implementation notes (2026-08-25): `RuleSetGenerator.renderIP` and
+`SingBoxConfigGenerator.routeExcludeAddresses(carving:)`; the carve uses
+`IPv4Prefix.subtracting(all:)` with the TUN /30 and the active tunnel IP rules as holes, so
+`10.8.0.0/24 → Work` turns `10.0.0.0/8` into 16 prefixes. Golden variant `ip-rules` passes
+`sing-box check` on 1.13.19. A tunnel that is enabled but unusable (no secret) carves
+nothing — its rules are not emitted either.
 
 ## Hot reload vs restart
 

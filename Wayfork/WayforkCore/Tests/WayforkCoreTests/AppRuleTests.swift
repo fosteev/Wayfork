@@ -14,7 +14,8 @@ import Testing
             == "/Applications/Foo Bar.app")
     // Case is kept: paths are case-preserving.
     #expect(
-        try RulePattern.normalize("/Users/me/Apps/Beta.APP", match: .app) == "/Users/me/Apps/Beta.APP")
+        try RulePattern.normalize("/Users/me/Apps/Beta.APP", match: .app)
+            == "/Users/me/Apps/Beta.APP")
     #expect(throws: RulePatternError.empty) { try RulePattern.normalize("  ", match: .app) }
     for bad in ["Telegram.app", "/Applications/Telegram", "/Applications/../x.app", ".app"] {
         #expect(throws: RulePatternError.notAnAppBundle, "\(bad)") {
@@ -33,7 +34,8 @@ import Testing
 
 @Test func appRulesMatchProcessesNotHosts() throws {
     #expect(
-        !RulePattern.matches(host: "telegram.org", pattern: "/Applications/Telegram.app", match: .app))
+        !RulePattern.matches(
+            host: "telegram.org", pattern: "/Applications/Telegram.app", match: .app))
     let regex = RulePattern.appPathRegex("/Applications/Foo (Beta).app")
     #expect(regex == "^/Applications/Foo \\(Beta\\)\\.app/")
     let compiled = try Regex(regex)
@@ -53,7 +55,8 @@ import Testing
     let duplicate = Rule(pattern: telegram, match: .app, tunnelID: Fixtures.workID)
     let shadowed = Rule(pattern: telegram, match: .app, tunnelID: Fixtures.homeID)
     // A bundle whose name looks like a tunnel's server host never "covers" that server.
-    let lookalike = Rule(pattern: "/Applications/vpn.example.org.app", match: .app, tunnelID: Fixtures.homeID)
+    let lookalike = Rule(
+        pattern: "/Applications/vpn.example.org.app", match: .app, tunnelID: Fixtures.homeID)
     let store = Fixtures.store(rules: [first, duplicate, shadowed, lookalike])
     let issues = RuleValidator.validate(store)
     #expect(issues[first.id] == nil)

@@ -46,7 +46,7 @@ import Testing
     #expect(throws: RulePatternError.invalidHostname("")) {
         try RulePattern.normalize("a..b", match: .suffix)
     }
-    #expect(throws: RulePatternError.invalidHostname("1.2.3.4")) {
+    #expect(throws: RulePatternError.looksLikeIP) {
         try RulePattern.normalize("1.2.3.4", match: .exact)
     }
     #expect(throws: RulePatternError.tooLong) {

@@ -184,7 +184,7 @@ struct QuickAddView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                TextField("Route domain…", text: $input)
+                TextField("Route domain or IP…", text: $input)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
                     .invalidOutline(error != nil)

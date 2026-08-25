@@ -278,7 +278,7 @@ private struct RuleRowView: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 100, alignment: .leading)
             } else if let binding = Binding($editing) {
-                TextField("domain", text: binding.text)
+                TextField("example.com or 10.0.0.0/24", text: binding.text)
                     .font(.system(size: 12, design: .monospaced))
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 230)
@@ -290,10 +290,11 @@ private struct RuleRowView: View {
                     }
                     .onAppear { focused = true }
                     .onChange(of: binding.wrappedValue.text) { _, text in
-                        if text.contains("*") { binding.wrappedValue.match = .wildcard }
+                        binding.wrappedValue.match = inferredMatch(
+                            text, current: binding.wrappedValue.match)
                     }
                 Picker("Match", selection: binding.match) {
-                    ForEach(RuleMatch.domainCases, id: \.self) { Text(matchTitle($0)).tag($0) }
+                    ForEach(RuleMatch.typedCases, id: \.self) { Text(matchTitle($0)).tag($0) }
                 }
                 .labelsHidden()
                 .controlSize(.small)
@@ -312,7 +313,7 @@ private struct RuleRowView: View {
                             error = model.updateRule(id: rule.id, pattern: rule.pattern, match: $0)
                         })
                 ) {
-                    ForEach(RuleMatch.domainCases, id: \.self) { Text(matchTitle($0)).tag($0) }
+                    ForEach(RuleMatch.typedCases, id: \.self) { Text(matchTitle($0)).tag($0) }
                 }
                 .labelsHidden()
                 .controlSize(.small)
@@ -389,6 +390,11 @@ private struct RuleRowView: View {
                     .foregroundStyle(.secondary)
             case .tunnelMissing:
                 Chip(text: "no tunnel", tint: .red)
+            case .coversLocalNetwork(let interface, let network):
+                Chip(text: "warning", tint: .orange)
+                    .help(
+                        "Covers your LAN (\(interface), \(network)); devices in it go through the tunnel while Wayfork is on"
+                    )
             }
         }
     }
@@ -441,7 +447,7 @@ private struct NewRuleRow: View {
         HStack(spacing: 10) {
             Toggle("Enabled", isOn: .constant(true)).toggleStyle(.checkbox).labelsHidden()
                 .disabled(true)
-            TextField("example.com", text: text)
+            TextField("example.com or 10.0.0.0/24", text: text)
                 .font(.system(size: 12, design: .monospaced))
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 230)
@@ -450,10 +456,10 @@ private struct NewRuleRow: View {
                 .onExitCommand(perform: cancel)
                 .onAppear { focused = true }
                 .onChange(of: editing?.text ?? "") { _, value in
-                    if value.contains("*") { editing?.match = .wildcard }
+                    editing?.match = inferredMatch(value, current: editing?.match ?? .suffix)
                 }
             Picker("Match", selection: match) {
-                ForEach(RuleMatch.domainCases, id: \.self) { Text(matchTitle($0)).tag($0) }
+                ForEach(RuleMatch.typedCases, id: \.self) { Text(matchTitle($0)).tag($0) }
             }
             .labelsHidden()
             .controlSize(.small)
@@ -487,5 +493,16 @@ private func matchTitle(_ match: RuleMatch) -> String {
     case .exact: "Exact"
     case .wildcard: "Wildcard"
     case .app: "App"
+    case .ip: "IP"
+    }
+}
+
+/// Match to use after typing (F11): `*` → wildcard, an address or subnet → IP, and back to
+/// suffix when an IP is edited into a name; Exact and Wildcard are otherwise left alone.
+private func inferredMatch(_ text: String, current: RuleMatch) -> RuleMatch {
+    switch RulePattern.inferMatch(text) {
+    case .wildcard: .wildcard
+    case .ip: .ip
+    default: current == .ip ? .suffix : current
     }
 }

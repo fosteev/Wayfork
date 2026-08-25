@@ -336,19 +336,20 @@ Design in [01-data-model.md](design/01-data-model.md) ("Application rules"),
 
 Design in [01-data-model.md](design/01-data-model.md) ("IP rules"),
 [03-routing.md](design/03-routing.md) ("IP rules") and [02-ux.md](design/02-ux.md)
-(Rules, Quick add). Shares the schema 2 bump with M3d. Design pending maintainer approval.
+(Rules, Quick add). Shares the schema 2 bump with M3d. Implemented 2026-08-25; manual check
+pending.
 
-- [ ] Model: `RuleMatch.ip`, `RulePattern.normalize` for IPv4 addresses / CIDRs (canonical
+- [x] Model: `RuleMatch.ip`, `RulePattern.normalize` for IPv4 addresses / CIDRs (canonical
       form, host bits cleared, reserved ranges rejected), `inferMatch` picks `ip`,
       `IPv4Prefix` moves to `Support` with parsing / containment tests; export unchanged.
-- [ ] `RuleValidator`: duplicate / shadowed as for domains, `coversTunnelServer` for
+- [x] `RuleValidator`: duplicate / shadowed as for domains, `coversTunnelServer` for
       IP-literal servers, `coversLocalNetwork` from a caller-supplied interface list; tests.
-- [ ] Generator: `rules-t-<id>-ip.json` / `rules-direct-ip.json` (`ip_cidr`, always
+- [x] Generator: `rules-t-<id>-ip.json` / `rules-direct-ip.json` (`ip_cidr`, always
       emitted, route-only), route rules reference both sets, `route_exclude_address` minus
       the active tunnel IP rules; golden variant `ip-rules`; `sing-box check`.
-- [ ] Daemon: `PlanValidator` / `RunLayout` accept the `-ip` files; nothing else changes
+- [x] Daemon: `PlanValidator` / `RunLayout` accept the `-ip` files; nothing else changes
       (the config diff already decides reload vs restart).
-- [ ] UI: **IP** in the match popup, auto-switch while typing, placeholder and search cover
+- [x] UI: **IP** in the match popup, auto-switch while typing, placeholder and search cover
       IPs, "covers your LAN" chip, quick add accepts IPs.
 - [ ] Manual check: `curl` to a public IP through a tunnel, an office subnet reachable
       through OpenVPN by IP, a Direct IP exception under a default tunnel, LAN and the

@@ -22,7 +22,8 @@ public enum SingBoxConfigGenerator {
     public struct Output: Sendable, Equatable {
         /// `sing-box.json`
         public var config: String
-        /// `rules-t-<id>.json` → contents, one per routed tunnel.
+        /// Rule-set file name → contents: `rules-t-<id>.json` and `rules-t-<id>-ip.json` per
+        /// routed tunnel plus `rules-direct.json` / `rules-direct-ip.json`.
         public var ruleSets: [String: String]
         /// Tunnels that made it into the config, in store order.
         public var routedTunnels: [Tunnel]
@@ -67,15 +68,15 @@ public enum SingBoxConfigGenerator {
             ["action": "sniff"],
             ["protocol": "dns", "action": "hijack-dns"],
             ["process_path": [input.openVPNBinaryPath], "outbound": "direct"],
-            ["rule_set": RuleSetGenerator.directTag, "outbound": "direct"],
+            [
+                "rule_set": [RuleSetGenerator.directTag, RuleSetGenerator.directIPTag],
+                "outbound": "direct",
+            ],
         ]
         var ruleSetRefs: [[String: Any]] = [
-            [
-                "type": "local",
-                "tag": RuleSetGenerator.directTag,
-                "format": "source",
-                "path": RuleSetGenerator.directFileName,
-            ]
+            localRuleSet(tag: RuleSetGenerator.directTag, path: RuleSetGenerator.directFileName),
+            localRuleSet(
+                tag: RuleSetGenerator.directIPTag, path: RuleSetGenerator.directIPFileName),
         ]
 
         for tunnel in routed {
@@ -99,15 +100,21 @@ public enum SingBoxConfigGenerator {
                     vlessOutbound(
                         meta, tag: tunnel.outboundTag, uuid: input.vlessUUIDs[tunnel.id] ?? ""))
             }
-            routeRules.append(["rule_set": tunnel.ruleSetTag, "outbound": tunnel.outboundTag])
-            ruleSetRefs.append([
-                "type": "local",
-                "tag": tunnel.ruleSetTag,
-                "format": "source",
-                "path": tunnel.ruleSetFileName,
+            routeRules.append([
+                "rule_set": [tunnel.ruleSetTag, tunnel.ipRuleSetTag],
+                "outbound": tunnel.outboundTag,
             ])
+            ruleSetRefs.append(localRuleSet(tag: tunnel.ruleSetTag, path: tunnel.ruleSetFileName))
+            ruleSetRefs.append(
+                localRuleSet(tag: tunnel.ipRuleSetTag, path: tunnel.ipRuleSetFileName))
         }
         routeRules.append(["ip_is_private": true, "outbound": "direct"])
+
+        // F11: a tunnel IP rule inside the LAN ranges must enter the TUN, so its range is
+        // carved out of the exclusion list. Direct IP rules stay excluded — direct either way.
+        let carved = routed.flatMap { tunnel in
+            (activeRules[tunnel.id] ?? []).filter(\.isIP).compactMap { IPv4Prefix($0.pattern) }
+        }
 
         dnsServers.append([
             "type": "fakeip",
@@ -167,7 +174,7 @@ public enum SingBoxConfigGenerator {
         let config: [String: Any] = [
             "log": ["level": store.settings.logLevel.singBoxLevel, "timestamp": true],
             "dns": dns,
-            "inbounds": [tunInbound()],
+            "inbounds": [tunInbound(carving: carved)],
             "outbounds": outbounds,
             "route": route,
             "experimental": [
@@ -213,18 +220,22 @@ public enum SingBoxConfigGenerator {
     /// exclusion covered the TUN subnet, the replies of the system stack's TCP redirect
     /// (addressed to the TUN's next address, 172.19.0.2) would leave through the physical
     /// interface and every TCP connection would hang while UDP kept working (2026-08-25).
-    public static func routeExcludeAddresses() -> [String] {
-        guard let tun = IPv4Prefix(tunAddress) else { return lanRanges }
+    public static func routeExcludeAddresses(carving carved: [IPv4Prefix] = []) -> [String] {
+        let holes = [IPv4Prefix(tunAddress)].compactMap { $0 } + carved
         return lanRanges.flatMap { text -> [String] in
-            guard let range = IPv4Prefix(text), range.contains(tun) else { return [text] }
-            return range.subtracting(tun).map(\.description)
+            guard let range = IPv4Prefix(text) else { return [text] }
+            return range.subtracting(all: holes).map(\.description)
         }
+    }
+
+    static func localRuleSet(tag: String, path: String) -> [String: Any] {
+        ["type": "local", "tag": tag, "format": "source", "path": path]
     }
 
     /// IPv4-only on purpose: an `inet6` address here makes `auto_route` install an IPv6
     /// default route, which makes the host look dual-stack to every application even on an
     /// IPv4-only network (docs/design/03-routing.md, "Notes on specific choices").
-    static func tunInbound() -> [String: Any] {
+    static func tunInbound(carving carved: [IPv4Prefix] = []) -> [String: Any] {
         [
             "type": "tun",
             "tag": "tun-in",
@@ -233,7 +244,7 @@ public enum SingBoxConfigGenerator {
             "mtu": 1500,
             "auto_route": true,
             "strict_route": false,
-            "route_exclude_address": routeExcludeAddresses(),
+            "route_exclude_address": routeExcludeAddresses(carving: carved),
             "stack": "system",
         ]
     }

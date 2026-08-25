@@ -12,11 +12,15 @@ public enum RuleMatch: String, Codable, Sendable, CaseIterable {
     /// F10: the pattern is an absolute `.app` bundle path; every process inside the bundle
     /// (helpers included) matches, whatever it talks to.
     case app
+    /// F11: the pattern is an IPv4 address or subnet (`10.8.0.0/24`); connections opened to
+    /// an address in it match, names never do.
+    case ip
 
-    /// The kinds a hostname pattern can take — what the match popup offers.
-    public static let domainCases: [RuleMatch] = [.suffix, .exact, .wildcard]
+    /// The kinds a typed pattern can take — what the match popup offers.
+    public static let typedCases: [RuleMatch] = [.suffix, .exact, .wildcard, .ip]
 
     public var isApp: Bool { self == .app }
+    public var isIP: Bool { self == .ip }
 }
 
 /// Where a rule sends its traffic (F8): a tunnel, or `direct` for an exception.
@@ -36,7 +40,7 @@ public enum RuleTarget: Sendable, Hashable {
 public struct Rule: Codable, Sendable, Hashable, Identifiable {
     public var id: UUID
     /// Normalized by `RulePattern.normalize`: lowercase, punycode, no trailing dot for
-    /// domains; an absolute bundle path for `match == .app`.
+    /// domains; an absolute bundle path for `app`; a canonical address / CIDR for `ip`.
     public var pattern: String
     public var match: RuleMatch
     public var target: RuleTarget
@@ -49,6 +53,8 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
     public var isException: Bool { target.isDirect }
     /// An application rule (F10).
     public var isApp: Bool { match.isApp }
+    /// An IP rule (F11).
+    public var isIP: Bool { match.isIP }
 
     public init(
         id: UUID = UUID(),

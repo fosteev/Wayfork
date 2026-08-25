@@ -1,13 +1,16 @@
 import Foundation
 
-/// Produces `rules-t-<id>.json` and `rules-direct.json` contents
-/// (docs/design/03-routing.md, "Rule-set files").
+/// Produces `rules-t-<id>.json` and `rules-direct.json` contents, plus the route-only
+/// `…-ip.json` twins holding the IP rules (docs/design/03-routing.md, "Rule-set files").
 public enum RuleSetGenerator {
     public static let version = 3
 
     /// Tag and file of the Direct rule-set: user exceptions plus the built-in local names.
     public static let directTag = "rules-direct"
     public static let directFileName = "rules-direct.json"
+    /// Tag and file of the Direct IP rule-set (F11).
+    public static let directIPTag = "rules-direct-ip"
+    public static let directIPFileName = "rules-direct-ip.json"
 
     /// Built-in exceptions: names that must never leave the local network (F8).
     public static let builtInDirectSuffixes = [
@@ -15,17 +18,38 @@ public enum RuleSetGenerator {
     ]
     public static let builtInDirectDomains = ["localhost"]
 
-    /// One rule-set file per tunnel plus the Direct file: file name → JSON text. Every
-    /// tunnel in `tunnels` gets a file, even with no rules, and the Direct file is always
-    /// present, so the main config stays unchanged when rules come and go.
+    /// Two rule-set files per tunnel (domains + apps, IPs) plus the two Direct files: file
+    /// name → JSON text. Every tunnel in `tunnels` gets its files, even with no rules, and
+    /// the Direct files are always present, so the main config stays unchanged when rules
+    /// come and go.
     public static func generate(
         tunnels: [Tunnel], activeRules: [UUID: [Rule]], exceptions: [Rule] = []
     ) -> [String: String] {
-        var files: [String: String] = [directFileName: renderDirect(exceptions: exceptions)]
+        var files: [String: String] = [
+            directFileName: renderDirect(exceptions: exceptions),
+            directIPFileName: renderIP(rules: exceptions),
+        ]
         for tunnel in tunnels {
-            files[tunnel.ruleSetFileName] = render(rules: activeRules[tunnel.id] ?? [])
+            let rules = activeRules[tunnel.id] ?? []
+            files[tunnel.ruleSetFileName] = render(rules: rules)
+            files[tunnel.ipRuleSetFileName] = renderIP(rules: rules)
         }
         return files
+    }
+
+    /// `…-ip.json` (F11): the group's IP rules as one `ip_cidr` rule, each range minus the
+    /// reserved ranges a wide pattern may overlap. Never referenced by DNS rules — there
+    /// sing-box would match `ip_cidr` against the answer and skip the domain rules.
+    public static func renderIP(rules: [Rule]) -> String {
+        let ranges = rules.filter(\.isIP)
+            .compactMap { IPv4Prefix($0.pattern) }
+            .flatMap { $0.subtracting(all: RulePattern.reservedRanges) }
+            .map(\.description)
+        let document: [String: Any] = [
+            "version": version,
+            "rules": ranges.isEmpty ? [] : [["ip_cidr": ranges]],
+        ]
+        return JSONText.render(document)
     }
 
     /// Rule-set JSON for one tunnel's rules: one rule object for the domain items and, when
@@ -56,6 +80,8 @@ public enum RuleSetGenerator {
                 domainRegex.append(RulePattern.wildcardRegex(rule.pattern))
             case .app:
                 processPathRegex.append(RulePattern.appPathRegex(rule.pattern))
+            case .ip:
+                continue  // `renderIP`
             }
         }
         var domainRule: [String: Any] = [:]

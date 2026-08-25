@@ -14,12 +14,12 @@ public enum PlanValidator {
         try checkSize(plan.singBox.config, name: RunLayout.singBoxConfig, allowEmpty: false)
         for (name, contents) in plan.singBox.ruleSets {
             guard
-                name == RunLayout.directRuleSet
+                name == RunLayout.directRuleSet || name == RunLayout.directIPRuleSet
                     || ruleSetID(fromFileName: name).map(isTunnelID) == true
             else {
                 throw .planInvalid(
                     reason:
-                        "rule-set file name \"\(name)\" is not rules-t-<id>.json or \(RunLayout.directRuleSet)"
+                        "rule-set file name \"\(name)\" is not rules-t-<id>.json, rules-t-<id>-ip.json, \(RunLayout.directRuleSet) or \(RunLayout.directIPRuleSet)"
                 )
             }
             try checkSize(contents, name: name, allowEmpty: false)
@@ -62,10 +62,11 @@ public enum PlanValidator {
         }
     }
 
-    /// `rules-t-<id>.json` → `<id>`.
+    /// `rules-t-<id>.json` or `rules-t-<id>-ip.json` → `<id>`.
     public static func ruleSetID(fromFileName name: String) -> String? {
         guard name.hasPrefix("rules-t-"), name.hasSuffix(".json") else { return nil }
-        let id = name.dropFirst("rules-t-".count).dropLast(".json".count)
+        var id = name.dropFirst("rules-t-".count).dropLast(".json".count)
+        if id.hasSuffix("-ip") { id = id.dropLast(3) }
         return id.isEmpty ? nil : String(id)
     }
 

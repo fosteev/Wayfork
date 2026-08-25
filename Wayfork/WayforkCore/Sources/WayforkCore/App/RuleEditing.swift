@@ -44,6 +44,9 @@ public enum RuleEditing {
         case .wildcardNotAllowed: "`*` only allowed in wildcard rules"
         case .wildcardRequired: "Wildcard rules need a `*`"
         case .notAnAppBundle: "Choose an application bundle (.app)"
+        case .invalidIP: "Not a valid IP address or subnet"
+        case .looksLikeIP: "This is an IP address — pick the IP match"
+        case .reservedRange: "This range is reserved"
         }
     }
 }

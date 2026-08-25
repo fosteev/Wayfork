@@ -14,6 +14,9 @@ public enum RuleIssue: Equatable, Sendable, Hashable {
     /// The pattern covers the server host of a tunnel — its own control traffic would
     /// try to go through a tunnel (docs/design/03-routing.md).
     case coversTunnelServer(tunnelName: String)
+    /// An IP rule overlaps one of the Mac's own networks (F11): the LAN devices in the range
+    /// go through the tunnel while Wayfork is on.
+    case coversLocalNetwork(interface: String, network: String)
 }
 
 /// Why `Store.defaultTunnelID` is not taking "everything else" right now (F8).
@@ -27,7 +30,10 @@ public enum DefaultTunnelIssue: Equatable, Sendable, Hashable {
 
 public enum RuleValidator {
     /// Issues per rule id. Rules without problems are absent from the result.
-    public static func validate(_ store: Store) -> [UUID: [RuleIssue]] {
+    /// `localNetworks` (the app passes `LocalNetwork.current()`) feeds `coversLocalNetwork`.
+    public static func validate(_ store: Store, localNetworks: [LocalNetwork] = [])
+        -> [UUID: [RuleIssue]]
+    {
         var issues: [UUID: [RuleIssue]] = [:]
         let tunnelsByID = Dictionary(uniqueKeysWithValues: store.tunnels.map { ($0.id, $0) })
         // Group order for shadowing: Direct first, then tunnels in store order.
@@ -65,12 +71,16 @@ public enum RuleValidator {
             }
         }
 
-        let serverHosts = store.tunnels.flatMap { tunnel in
-            tunnel.kind.serverHosts.compactMap { host -> (String, String)? in
-                guard let normalized = try? RulePattern.normalize(host, match: .exact) else {
-                    return nil
+        // Tunnel servers: names are matched by domain rules, IP literals by IP rules.
+        var serverNames: [(host: String, tunnel: String)] = []
+        var serverAddresses: [(address: IPv4Prefix, tunnel: String)] = []
+        for tunnel in store.tunnels {
+            for host in tunnel.kind.serverHosts {
+                if let address = IPv4Prefix(host) {
+                    serverAddresses.append((address, tunnel.name))
+                } else if let normalized = try? RulePattern.normalize(host, match: .exact) {
+                    serverNames.append((normalized, tunnel.name))
                 }
-                return (normalized, tunnel.name)
             }
         }
 
@@ -83,9 +93,21 @@ public enum RuleValidator {
             } else {
                 issues[rule.id, default: []].append(.tunnelMissing)
             }
-            for (host, name) in serverHosts
-            where RulePattern.matches(host: host, pattern: rule.pattern, match: rule.match) {
-                issues[rule.id, default: []].append(.coversTunnelServer(tunnelName: name))
+            if rule.isIP {
+                guard let range = IPv4Prefix(rule.pattern) else { continue }
+                for server in serverAddresses where range.contains(server.address) {
+                    issues[rule.id, default: []].append(.coversTunnelServer(tunnelName: server.tunnel))
+                }
+                for network in localNetworks where range.overlaps(network.prefix) {
+                    issues[rule.id, default: []].append(
+                        .coversLocalNetwork(
+                            interface: network.interface, network: network.prefix.description))
+                }
+            } else {
+                for server in serverNames
+                where RulePattern.matches(host: server.host, pattern: rule.pattern, match: rule.match) {
+                    issues[rule.id, default: []].append(.coversTunnelServer(tunnelName: server.tunnel))
+                }
             }
         }
         return issues
@@ -132,7 +154,7 @@ public enum RuleValidator {
             let blocking = issues[rule.id]?.contains { issue in
                 switch issue {
                 case .duplicate, .shadowed, .tunnelDisabled, .tunnelMissing: true
-                case .coversTunnelServer: false
+                case .coversTunnelServer, .coversLocalNetwork: false
                 }
             }
             return blocking != true

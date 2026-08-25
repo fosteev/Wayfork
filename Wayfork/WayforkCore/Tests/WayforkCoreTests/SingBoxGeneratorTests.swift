@@ -79,23 +79,27 @@ private func generate(_ store: Store, uuids: [UUID: String] = [Fixtures.homeID: 
         rules[2]["process_path"] as? [String] == [
             "/Applications/Wayfork.app/Contents/Resources/bin/openvpn"
         ])
-    #expect(rules[3]["rule_set"] as? String == "rules-direct")
+    #expect(rules[3]["rule_set"] as? [String] == ["rules-direct", "rules-direct-ip"])
     #expect(rules[3]["outbound"] as? String == "direct")
-    #expect(rules[4]["rule_set"] as? String == work.ruleSetTag)
-    #expect(rules[5]["rule_set"] as? String == home.ruleSetTag)
+    #expect(rules[4]["rule_set"] as? [String] == [work.ruleSetTag, work.ipRuleSetTag])
+    #expect(rules[5]["rule_set"] as? [String] == [home.ruleSetTag, home.ipRuleSetTag])
     #expect(rules[6]["ip_is_private"] as? Bool == true)
     #expect(route["final"] as? String == "direct")
     #expect(route["default_domain_resolver"] as? String == "dns-direct")
     let ruleSets = try #require(route["rule_set"] as? [[String: Any]])
     #expect(
         ruleSets.map { $0["path"] as? String } == [
-            "rules-direct.json", work.ruleSetFileName, home.ruleSetFileName,
+            "rules-direct.json", "rules-direct-ip.json", work.ruleSetFileName,
+            work.ipRuleSetFileName, home.ruleSetFileName, home.ipRuleSetFileName,
         ])
     #expect(output.defaultTunnel == nil)
 
     #expect(
         output.ruleSets.keys.sorted()
-            == ["rules-direct.json", home.ruleSetFileName, work.ruleSetFileName].sorted())
+            == [
+                "rules-direct.json", "rules-direct-ip.json", home.ruleSetFileName,
+                home.ipRuleSetFileName, work.ruleSetFileName, work.ipRuleSetFileName,
+            ].sorted())
     let direct = try json(output.ruleSets["rules-direct.json"]!)
     let directRule = try #require((direct["rules"] as? [[String: Any]])?.first)
     #expect(directRule["domain"] as? [String] == ["localhost"])
@@ -132,16 +136,16 @@ private func generate(_ store: Store, uuids: [UUID: String] = [Fixtures.homeID: 
     #expect(servers[1]["server"] as? String == "10.1.1.1")
     #expect((config["log"] as? [String: Any])?["level"] as? String == "debug")
     #expect(output.routedTunnels.map(\.id) == [Fixtures.workID])
-    #expect(output.ruleSets.count == 2)
+    #expect(output.ruleSets.count == 4)
 
-    // Nothing routed at all: only the Direct rule-set remains, still a valid config.
+    // Nothing routed at all: only the Direct rule-sets remain, still a valid config.
     var empty = store
     empty.tunnels = []
     let bare = generate(empty, uuids: [:])
     let bareConfig = try json(bare.config)
     #expect(((bareConfig["dns"] as? [String: Any])?["rules"] as? [Any])?.count == 1)
-    #expect(((bareConfig["route"] as? [String: Any])?["rule_set"] as? [Any])?.count == 1)
-    #expect(bare.ruleSets.keys.sorted() == ["rules-direct.json"])
+    #expect(((bareConfig["route"] as? [String: Any])?["rule_set"] as? [Any])?.count == 2)
+    #expect(bare.ruleSets.keys.sorted() == ["rules-direct-ip.json", "rules-direct.json"])
 }
 
 // MARK: - F8: default tunnel and exceptions
@@ -271,7 +275,7 @@ private func defaultTunnelStore(defaultID: UUID) -> Store {
     #expect(result.plan.openVPN[0].interface == "utun101")
     #expect(result.plan.openVPN[0].id == Fixtures.workID.uuidString.lowercased())
     #expect(result.plan.openVPN[0].credentials?.username == "u")
-    #expect(result.plan.singBox.ruleSets.count == 2)  // Work + rules-direct.json
+    #expect(result.plan.singBox.ruleSets.count == 4)  // Work (+ -ip) + the two Direct files
     #expect(result.plan.singBox.configHash == Hashing.sha256Hex(result.plan.singBox.config))
 
     // Same input → identical plan hash; a rule change → different plan, same config hash.
@@ -339,6 +343,13 @@ private func configVariants() -> [(String, SingBoxConfigGenerator.Output)] {
     apps.rules.append(
         Rule(pattern: "/Applications/Bank (Beta).app", match: .app, target: .direct))
     variants.append(("app-rules", generate(apps)))
+    var ips = twoTunnelStore()
+    ips.rules += [
+        Rule(pattern: "10.8.0.0/24", match: .ip, tunnelID: Fixtures.workID),
+        Rule(pattern: "203.0.113.7", match: .ip, tunnelID: Fixtures.homeID),
+        Rule(pattern: "192.168.50.0/24", match: .ip, target: .direct),
+    ]
+    variants.append(("ip-rules", generate(ips)))
     return variants
 }
 
@@ -374,6 +385,42 @@ private func configVariants() -> [(String, SingBoxConfigGenerator.Output)] {
         let log = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         #expect(process.terminationStatus == 0, "sing-box check failed for \(name): \(log)")
     }
+}
+
+@Test func ipRulesCarveTheirRangesOutOfTheTunExclusions() throws {
+    let store = Fixtures.store(rules: [
+        Rule(pattern: "10.8.0.0/24", match: .ip, tunnelID: Fixtures.workID),
+        Rule(pattern: "203.0.113.7", match: .ip, tunnelID: Fixtures.homeID),
+        Rule(pattern: "192.168.50.0/24", match: .ip, target: .direct),
+    ])
+    let output = generate(store)
+    let config = try json(output.config)
+    let inbound = try #require((config["inbounds"] as? [[String: Any]])?.first)
+    let excludes = try #require(inbound["route_exclude_address"] as? [String])
+        .compactMap { IPv4Prefix($0) }
+    let carved = IPv4Prefix("10.8.0.0/24")!
+    #expect(!excludes.contains { $0.overlaps(carved) })
+    // The rest of 10/8 stays out of the TUN; a Direct IP rule never carves.
+    #expect(excludes.contains { $0.contains(IPv4Prefix("10.9.0.0/16")!) })
+    #expect(excludes.contains { $0.contains(IPv4Prefix("192.168.50.0/24")!) })
+    let route = try #require(config["route"] as? [String: Any])
+    let rules = try #require(route["rules"] as? [[String: Any]])
+    #expect(rules[3]["rule_set"] as? [String] == ["rules-direct", "rules-direct-ip"])
+    #expect(
+        rules[4]["rule_set"] as? [String] == [Fixtures.work.ruleSetTag, Fixtures.work.ipRuleSetTag])
+    // DNS rules keep referencing the domain sets only.
+    let dnsRules = try #require((config["dns"] as? [String: Any])?["rules"] as? [[String: Any]])
+    #expect(
+        dnsRules[1]["rule_set"] as? [String] == [
+            Fixtures.work.ruleSetTag, Fixtures.home.ruleSetTag,
+        ])
+    #expect(
+        output.ruleSets.keys.sorted()
+            == [
+                "rules-direct-ip.json", "rules-direct.json", Fixtures.work.ipRuleSetFileName,
+                Fixtures.work.ruleSetFileName, Fixtures.home.ipRuleSetFileName,
+                Fixtures.home.ruleSetFileName,
+            ].sorted())
 }
 
 @Test func routeExcludeCarvesOutTheTunSubnet() throws {
