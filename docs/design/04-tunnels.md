@@ -56,8 +56,13 @@ Spawned via `posix_spawn`, no shell:
   --verb 3
   --machine-readable-output
   --suppress-timestamps
+  --dns-updown disable
 ```
 
+- `--dns-updown disable`: OpenVPN 2.7 ships a `dns-updown` script that would rewrite the
+  system resolver from pushed `dhcp-option DNS`. The bundled binary is built with
+  `--disable-dns-updown-by-default` (see `scripts/fetch-bins.sh`) and the flag makes the
+  intent explicit — DNS is sing-box's job.
 - `--route-nopull` ignores pushed routes and DHCP options (DNS), leaving the default route
   alone; the interface still gets its `ifconfig` from the server.
 - `--dev utunN` with a fixed high unit number avoids collisions with system VPNs and other
@@ -138,7 +143,7 @@ vless://<uuid>@<host>:<port>?<query>#<name>
 | `sni` | TLS server name | `sni` (defaults to host) |
 | `fp` | uTLS fingerprint | `fingerprint` |
 | `alpn` | comma-separated | `alpn` |
-| `pbk`, `sid` | REALITY public key / short id | required when `security=reality` |
+| `pbk`, `sid` | REALITY public key / short id | `pbk` required when `security=reality`; `sid` optional (sing-box accepts an empty short id) |
 | `spx` | REALITY spider | ignored |
 | `flow` | `xtls-rprx-vision` | `flow`; other values → unsupported |
 | `path`, `host` | WebSocket path / Host header | `.ws(path:host:)` |

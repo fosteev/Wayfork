@@ -98,7 +98,9 @@ a tunnel the rules in list order. A pattern that also appears under an earlier t
 
 Validation: pattern is a hostname (labels of `[a-z0-9-]`, IDNA converted to punycode) with
 `*` allowed only for wildcard; no scheme, path or port (the UI strips `https://…/` when
-pasting a URL). Duplicates (same pattern + match) are rejected. A rule pointing at a
+pasting a URL). Duplicates (same pattern + match under the same tunnel) are rejected; the
+same pattern + match under a *different* tunnel is legal and simply shadowed when that
+tunnel comes later (`RuleValidator`). A rule pointing at a
 disabled or missing tunnel is shown greyed and does not match anything (traffic goes
 direct; kill switch is L7).
 

@@ -143,23 +143,23 @@ config generator, XPC payloads — no UI, no privileges, fully unit-testable).
 
 ### M1 — Core (WayforkCore)
 
-- [ ] Models from [01-data-model.md](design/01-data-model.md) (`Store`, `Tunnel`, `Rule`,
+- [x] Models from [01-data-model.md](design/01-data-model.md) (`Store`, `Tunnel`, `Rule`,
       `Settings`, …), `Codable` with schema version and a migration hook; tests.
-- [ ] `StoreRepository`: atomic debounced writes, corrupt-file recovery, slot allocation.
-- [ ] `KeychainStore`: generic-password CRUD per [01-data-model.md](design/01-data-model.md),
+- [x] `StoreRepository`: atomic debounced writes, corrupt-file recovery, slot allocation.
+- [x] `KeychainStore`: generic-password CRUD per [01-data-model.md](design/01-data-model.md),
       orphan cleanup.
-- [ ] Rule pattern normalization and validation (lowercase, IDNA/punycode, wildcard rules,
+- [x] Rule pattern normalization and validation (lowercase, IDNA/punycode, wildcard rules,
       duplicates, shadowing detection); tests.
-- [ ] OpenVPN config parser: directives, inline blocks, file inlining, strip list, rejects,
+- [x] OpenVPN config parser: directives, inline blocks, file inlining, strip list, rejects,
       `needsCredentials` / `needsKeyPassphrase` / remotes; tests with fixtures.
-- [ ] VLESS URI parser → `VLESSMeta` + UUID, validation of unsupported combos; tests.
-- [ ] sing-box config generator + rule-set generator from [03-routing.md](design/03-routing.md);
+- [x] VLESS URI parser → `VLESSMeta` + UUID, validation of unsupported combos; tests.
+- [x] sing-box config generator + rule-set generator from [03-routing.md](design/03-routing.md);
       golden-file tests; a test that runs `sing-box check` on every golden config when the
       binary is present.
-- [ ] `RuntimePlan` builder (store + Keychain → plan), plan/config hashing.
-- [ ] XPC payload types (`DaemonInfo`, `RuntimeStatus`, `TunnelState`, `LogLine`,
+- [x] `RuntimePlan` builder (store + Keychain → plan), plan/config hashing.
+- [x] XPC payload types (`DaemonInfo`, `RuntimeStatus`, `TunnelState`, `LogLine`,
       `ApplyResult`, `DaemonError`) and the two `@objc` protocols.
-- [ ] Diagnostics sanitizer; tests.
+- [x] Diagnostics sanitizer; tests.
 
 ### M2 — Daemon
 
