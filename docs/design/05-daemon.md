@@ -36,7 +36,9 @@ argv builders. `Wayfork/Daemon/` only wires those to XPC, `Security` and the fil
   developer's certificate.
 - App update: handshake compares `version`, `bundlePath` and `buildID` (the CDHash of the
   daemon executable — a rebuild of the same version is a different daemon, and launchd keeps
-  the old process alive otherwise); mismatch → `unregister()` then `register()`. Seen
+  the old process alive otherwise, and the daemon hashes its executable once at startup —
+  hashing on request reports the *replaced* file and hides a stale process); mismatch →
+  `unregister()` then `register()`. Seen
   2026-08-25: approval survives the re-registration, no second Login Items prompt.
 
 ## XPC interface

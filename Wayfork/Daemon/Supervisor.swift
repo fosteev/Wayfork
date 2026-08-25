@@ -27,10 +27,15 @@ actor Supervisor {
     private var queue: Task<Void, Never>?
     private var applyGeneration = 0
     private var binaryVersions: (singBox: String, openVPN: String)?
+    /// CDHash of the executable this process was started from, taken once at startup: after
+    /// the app bundle is replaced the file at `env.executablePath` is already the *new*
+    /// daemon, and hashing it on request made a stale process look up to date.
+    private let buildID: String?
 
     init(env: DaemonEnvironment, hub: ClientHub) {
         self.env = env
         self.hub = hub
+        buildID = CodeSignature.uniqueIdentifier(ofExecutableAt: env.executablePath)
         (events, eventSink) = AsyncStream.makeStream(
             of: SupervisorEvent.self, bufferingPolicy: .unbounded)
         engine = SingBoxEngine(env: env, hub: hub, events: eventSink)
@@ -126,7 +131,7 @@ actor Supervisor {
         }
         return DaemonInfo(
             version: env.version, bundlePath: env.bundlePath,
-            buildID: CodeSignature.uniqueIdentifier(ofExecutableAt: env.executablePath),
+            buildID: buildID,
             singBoxVersion: binaryVersions?.singBox ?? "",
             openVPNVersion: binaryVersions?.openVPN ?? "")
     }
