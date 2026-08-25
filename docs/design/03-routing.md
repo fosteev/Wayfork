@@ -226,6 +226,7 @@ Mapping from `RuleMatch`:
 | `exact`    | `domain: [p]` |
 | `wildcard` | `domain_regex: ["^" + escape(p).replace("\\*", ".+") + "$"]` |
 | `app`      | `process_path_regex: ["^" + escape(p) + "/"]` in a **separate** rule object (F10) |
+| `ip`       | `ip_cidr: [p]` in the separate `rules-…-ip.json` file, referenced by route rules only (F11) |
 
 Domain entries are grouped by kind into a single rule object per tunnel (sing-box ORs the
 domain items of one rule).
@@ -238,7 +239,6 @@ and dropped (the UI flags them). Overlaps between different patterns (`a.example
 under Home, `example.com` suffix under Work) resolve by tunnel order — Work wins if it
 comes first. L2 "where does this domain go?" makes this inspectable.
 
-## Hot reload vs restart
 ### Application rules (F10)
 
 An app rule becomes a second headless rule in the same rule-set file. It must not share an
@@ -260,11 +260,62 @@ like a domain-routed connection. An app exception in `rules-direct.json` works t
 short-lived processes; such a connection falls through to the domain rules and the default —
 sing-box logs the failed lookup at debug level, nothing else changes.
 
+### IP rules (F11)
+
+IP rules live in their own rule-set files, `rules-t-<id>-ip.json` and `rules-direct-ip.json`:
+one rule object holding every active range of the group, emitted as stored.
+
+```json
+{ "version": 3, "rules": [ { "ip_cidr": ["10.8.0.0/24", "203.0.113.7"] } ] }
+```
+
+Why a second file rather than another headless rule in `rules-t-<id>.json`: the DNS rules
+reference the domain rule-sets, and in a DNS rule sing-box treats `ip_cidr` items of a
+rule-set as an address filter on the *answer* — the query is performed first and the rule
+is skipped when the answer does not match. With fake-ip answers the tunnel DNS rule would
+then never match and every domain rule would silently stop working. Route-only files leave
+DNS exactly as it is. Each route rule references both sets —
+`{ "rule_set": ["rules-t-<id>", "rules-t-<id>-ip"], "outbound": "t-<id>" }`; rule-sets of
+one rule are ORed — and the `rules-direct` rule gets `rules-direct-ip` the same way. Both
+files are always emitted (possibly with `"rules": []`), so a rule change is a rewrite, not a
+restart; the daemon's `PlanValidator` / `RunLayout` accept the `-ip` names.
+
+What matches: the connection's destination address — connections opened to an IP literal,
+or to a name resolved outside sing-box (browser DoH, another client's cache). A connection
+opened by name through the system resolver carries a fake IP and is decided by the domain
+rules alone; an IP rule does not apply to it even when the real address is in the range.
+Resolving every unmatched name before the IP rules (sing-box's `resolve` action) would cost
+a direct lookup per connection and leak the names — not done. Because `sniff` runs first,
+an IP-literal connection with a TLS SNI is also offered to the domain rules; whichever
+group comes first wins, as always.
+
+Private ranges: `route_exclude_address` keeps `10.0.0.0/8`, `172.16.0.0/12`,
+`192.168.0.0/16` and `100.64.0.0/10` out of the TUN, so an IP rule inside them would never
+be seen. The generator therefore subtracts the ranges of the **active tunnel IP rules** from
+the exclusion list with `IPv4Prefix.subtracting` — the mechanism of the TUN /30 carve-out:
+`10.8.0.0/24 → Office` turns `10.0.0.0/8` into the prefixes that cover it minus that /24,
+the subnet enters the TUN, hits the rule-set and leaves through the tunnel's
+`bind_interface` outbound. This is the OpenVPN office case, where `--route-nopull` dropped
+the pushed route. Direct IP rules never carve (excluded is direct already); `ip_is_private`
+still comes after the rule-sets, so a carved-in address that no rule claims (a Direct
+exception inside a carved range) goes direct. Ranges that overlap a reserved range are
+emitted minus the reserved part (`172.16.0.0/12 → X` never covers `172.19.0.0/30`,
+`198.0.0.0/8` never covers the fake-IP range). A carved-in range that overlaps the Mac's own
+LAN is legal but flagged by the UI: the interface's connected route and the TUN's split
+routes then compete for those addresses, and LAN devices in the range may be unreachable
+while Wayfork is on.
+
+Changing the exclusion list changes `sing-box.json`, so adding, removing or toggling a
+tunnel IP rule inside a private range restarts sing-box (< 1 s, the fake-ip cache
+survives); every other IP-rule change is a hot reload.
+
+## Hot reload vs restart
 
 | Change | Action |
 |--------|--------|
 | Rule added/edited/removed/reordered/toggled | rewrite `rules-*.json` → sing-box reloads local rule-sets on file change (verify; else restart) |
 | Exception (Direct rule) added/edited/removed | rewrite `rules-direct.json` → same hot reload |
+| IP rule (F11) | rewrite `rules-…-ip.json` → hot reload; a *tunnel* IP rule inside a private range also changes `route_exclude_address` → restart |
 | Default tunnel set/cleared/changed | `route.final` / `dns.final` change → restart |
 | Tunnel enabled/disabled, added, removed | outbounds change → `sing-box check` → restart sing-box (< 1 s) |
 | Tunnel DNS changed, `discoveredDNS` updated | dns section changes → restart |

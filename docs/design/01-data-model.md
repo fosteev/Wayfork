@@ -58,7 +58,7 @@ struct VLESSMeta: Codable {           // UUID is in Keychain
 struct Rule: Codable, Identifiable {
     var id: UUID
     var pattern: String               // normalized: lowercase, punycode, no trailing dot
-    var match: RuleMatch              // suffix | exact | wildcard
+    var match: RuleMatch              // suffix | exact | wildcard | app (F10) | ip (F11)
     var target: RuleTarget            // F8: .tunnel(id) | .direct (an exception)
     var isEnabled: Bool
     var note: String?
@@ -154,6 +154,35 @@ for any two overlapping domain rules.
 but a build that does not know `"match": "app"` must refuse the file rather than fail on
 the first app rule — `newerSchema` does exactly that. Export files carry app rules unchanged;
 `ExportDocument.currentVersion` is bumped for the same reason.
+
+### IP rules (F11)
+
+`RuleMatch.ip` marks a rule whose `pattern` is an IPv4 address (`203.0.113.7`) or a subnet
+in CIDR form (`10.8.0.0/24`). Normalization: trimmed, URL parts stripped as for domains
+(`http://10.8.0.5:8080/x` → `10.8.0.5`), four decimal octets, optional `/1`…`/32`; host
+bits are cleared (`10.8.0.5/24` → `10.8.0.0/24`) and `/32` is stored as the bare address.
+Rejected: IPv6 (the TUN is IPv4-only until Later), `/0` (that is what the default tunnel is
+for) and anything *inside* a reserved range — `0.0.0.0/8`, `127.0.0.0/8`, `169.254.0.0/16`,
+`224.0.0.0/4`, `240.0.0.0/4`, the fake-IP range `198.18.0.0/15` and the TUN subnet
+`172.19.0.0/30`. A wider pattern that merely overlaps a reserved range is accepted; the
+generator carves the reserved part out. `RulePattern.inferMatch` returns `ip` when the
+input parses as an address or CIDR, so the UI needs no separate entry point; `normalize`
+with a domain match and IP-looking input fails with a dedicated reason so the UI can point
+at the IP match. `IPv4Prefix` (already used by the generator) is the parsed form and moves
+to `Support`.
+
+Duplicates and shadowing: identical `pattern` + `match`, as for domains. Overlapping ranges
+in different groups resolve by group order like overlapping domain patterns
+(`10.0.0.0/8 → Office`, `10.1.2.0/24 → Direct`: Direct wins because its group comes first).
+An IP rule matches connections opened to an address in its range and never a hostname
+(`RulePattern.matches` is false for hosts), so it does not cover a site reached by name
+whose address happens to fall into the range — see [03-routing.md](03-routing.md).
+
+Validation issues: `coversTunnelServer` when a tunnel's server is an IP literal inside the
+range; `coversLocalNetwork(interface:)` when the range overlaps one of the Mac's own IPv4
+networks (passed in by the app from `getifaddrs`; Core stays free of network lookups).
+Neither blocks the rule. `store.json` uses the same schema 2 as F10 (a build that does not
+know `"match": "ip"` refuses the file); export files carry IP rules unchanged.
 
 ## Persistence
 

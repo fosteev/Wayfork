@@ -223,6 +223,7 @@ delete it afterwards. This is how M2 is verified before the app exists.
 |------|------|------|
 | `run/sing-box.json` | 0600 | contains VLESS UUIDs and REALITY keys → root-only; written as `sing-box.json.check`, promoted by `rename` after `sing-box check` passes |
 | `run/rules-t-<id>.json` | 0600 | rewritten in place via temp file + `rename` so sing-box's watcher sees one change |
+| `run/rules-direct.json`, `run/rules-t-<id>-ip.json`, `run/rules-direct-ip.json` | 0600 | Direct exceptions (F8) and IP rule-sets (F11); same rewrite |
 | `run/t-<id>.ovpn` | 0600 | contains private keys |
 | `run/t-<id>.sock` | 0600 | management socket |
 | `run/*.pid` | 0600 | |

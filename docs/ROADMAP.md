@@ -93,11 +93,24 @@ Written as user scenarios. Technical details belong to Phase 2.
   proxy is seen as that proxy's process, not as the app.
 - Quick add from the menu bar has no application entry. Rules by IP / CIDR are F11.
 
+**F11. Rules by IP address / subnet** *(added 2026-08-25)*
+- A rule can name an IPv4 address or subnet instead of a domain: `10.8.0.0/24 → Office`,
+  `203.0.113.7 → Home`, `192.0.2.0/24 → Direct`. It is typed into the same field as a
+  domain; the match type switches to **IP** on its own.
+- Matches connections opened *to* an address in the range: SSH/RDP/DB clients pointed at
+  an IP, internal servers without names, apps that resolve names on their own (DoH). A site
+  reached by name is decided by the domain rules even when the name resolves into the range.
+- Private ranges (`10/8`, `172.16/12`, `192.168/16`, `100.64/10`) normally stay out of
+  Wayfork entirely; a tunnel rule inside them pulls exactly that subnet in — what an
+  OpenVPN office network needs, since `--route-nopull` drops the pushed routes. The UI
+  warns when a rule covers the Mac's own LAN.
+- IPv6 rules come with IPv6 support (Later); loopback, link-local, multicast and Wayfork's
+  own ranges are rejected.
+
 ### Later
 
 **L1. Rule sources beyond a single domain**
 - Domain lists from a URL or file (e.g. GeoSite-style lists), auto-refreshed.
-- Rules by IP / CIDR and by process (application-based routing).
 - Import rules from a Surge / Clash / sing-box rule-set.
 
 **L2. Rule testing**
@@ -298,12 +311,6 @@ maintainer approval; implemented after the M3/M3b end-to-end checks.
       Direct row moves for an exception, default tunnel absorbs unmatched traffic,
       figures freeze/hide on tunnel failure and disappear on Off.
 
-### M4 — Release
-
-- [ ] `scripts/release.sh`: archive, Developer ID signing, notarization, stapling, DMG.
-- [ ] README: install, first run, adding tunnels and rules, troubleshooting, limitations
-      (browser DoH, IPv4-only while on — no AAAA answers, no kill switch yet).
-- [ ] `CHANGELOG.md`, version tagging `v0.1.0`.
 ### M3d — Application rules (F10)
 
 Design in [01-data-model.md](design/01-data-model.md) ("Application rules"),
@@ -325,3 +332,31 @@ Design in [01-data-model.md](design/01-data-model.md) ("Application rules"),
       app exception keeps a domain-routed site direct, helper processes are covered, DNS
       still resolves, a removed app leaves the rule flagged but harmless.
 
+### M3e — IP rules (F11)
+
+Design in [01-data-model.md](design/01-data-model.md) ("IP rules"),
+[03-routing.md](design/03-routing.md) ("IP rules") and [02-ux.md](design/02-ux.md)
+(Rules, Quick add). Shares the schema 2 bump with M3d. Design pending maintainer approval.
+
+- [ ] Model: `RuleMatch.ip`, `RulePattern.normalize` for IPv4 addresses / CIDRs (canonical
+      form, host bits cleared, reserved ranges rejected), `inferMatch` picks `ip`,
+      `IPv4Prefix` moves to `Support` with parsing / containment tests; export unchanged.
+- [ ] `RuleValidator`: duplicate / shadowed as for domains, `coversTunnelServer` for
+      IP-literal servers, `coversLocalNetwork` from a caller-supplied interface list; tests.
+- [ ] Generator: `rules-t-<id>-ip.json` / `rules-direct-ip.json` (`ip_cidr`, always
+      emitted, route-only), route rules reference both sets, `route_exclude_address` minus
+      the active tunnel IP rules; golden variant `ip-rules`; `sing-box check`.
+- [ ] Daemon: `PlanValidator` / `RunLayout` accept the `-ip` files; nothing else changes
+      (the config diff already decides reload vs restart).
+- [ ] UI: **IP** in the match popup, auto-switch while typing, placeholder and search cover
+      IPs, "covers your LAN" chip, quick add accepts IPs.
+- [ ] Manual check: `curl` to a public IP through a tunnel, an office subnet reachable
+      through OpenVPN by IP, a Direct IP exception under a default tunnel, LAN and the
+      router untouched, adding a LAN-range rule restarts sing-box cleanly.
+
+### M4 — Release
+
+- [ ] `scripts/release.sh`: archive, Developer ID signing, notarization, stapling, DMG.
+- [ ] README: install, first run, adding tunnels and rules, troubleshooting, limitations
+      (browser DoH, IPv4-only while on — no AAAA answers, no kill switch yet).
+- [ ] `CHANGELOG.md`, version tagging `v0.1.0`.
