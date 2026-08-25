@@ -93,6 +93,16 @@ final class AppModel {
         Bundle.main.bundleURL.resolvingSymlinksInPath().path
     }
 
+    /// CDHash of the daemon inside this bundle; the running daemon must report the same one.
+    var daemonBuildID: String? {
+        CodeSignature.uniqueIdentifier(ofExecutableAt: bundlePath + "/Contents/MacOS/WayforkDaemon")
+    }
+
+    private func matchesThisBuild(_ info: DaemonInfo) -> Bool {
+        info.version == appVersion && info.bundlePath == bundlePath
+            && info.buildID == daemonBuildID
+    }
+
     var globalState: GlobalState {
         GlobalStateDerivation.derive(store: store, status: status, transition: transition)
     }
@@ -359,10 +369,10 @@ final class AppModel {
     private func ensureConnected() async throws {
         client.connect()
         var info = try await client.getInfo()
-        if info.version != appVersion || info.bundlePath != bundlePath {
+        if !matchesThisBuild(info) {
             logs.app(
                 .info,
-                "helper \(info.version) at \(info.bundlePath) does not match app \(appVersion) at \(bundlePath); reinstalling"
+                "helper \(info.version) (\(info.buildID?.prefix(8) ?? "unsigned")) at \(info.bundlePath) does not match app \(appVersion) (\(daemonBuildID?.prefix(8) ?? "unsigned")) at \(bundlePath); reinstalling"
             )
             client.disconnect()
             try await helper.reinstall()
@@ -372,9 +382,10 @@ final class AppModel {
             }
             client.connect()
             info = try await client.getInfo()
-            if info.version != appVersion || info.bundlePath != bundlePath {
+            if !matchesThisBuild(info) {
                 throw AppError.helper(
-                    "The helper still reports version \(info.version) at \(info.bundlePath).")
+                    "The helper still reports version \(info.version) (\(info.buildID?.prefix(8) ?? "unsigned")) at \(info.bundlePath)."
+                )
             }
         }
         daemonInfo = info

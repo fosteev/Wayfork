@@ -44,6 +44,7 @@ REALITY, vision). Placeholders in angle brackets.
         "query_type": ["A", "AAAA"], "server": "fakeip" }
     ],
     "final": "dns-direct",
+    "strategy": "ipv4_only",
     "independent_cache": true
   },
 
@@ -121,8 +122,15 @@ Notes on specific choices:
   new connection via `libproc`. If lookup fails the packet still goes `direct` by `final`,
   so the worst case is a tunnel domain rule matching the VPN server's hostname — the
   importer warns when a rule pattern covers a tunnel's own server host.
-- `dns.final` for AAAA of matched domains: fake v6 addresses are returned, and the outbound
-  dials by domain, so IPv6-only clients still work through IPv4 tunnels.
+- `dns.strategy: ipv4_only`: every AAAA query that sing-box answers (hijacked system
+  queries included) gets an empty NOERROR reply, so applications only ever connect over
+  IPv4 while Wayfork is on. Without this, `auto_route` installs an IPv6 default route into
+  the TUN and on an IPv4-only network every AAAA from the upstream resolver ends in a
+  `direct` dial failing with "no route to host" (seen 2026-08-25: Safari/Telegram retried
+  over v4 after the RST, but each connection paid for the failed attempt). Verified against
+  sing-box 1.13.19 with a hijacked TCP query. Literal-IPv6 destinations still go through
+  TUN → `direct`. Native IPv6 for direct traffic on dual-stack networks is a Later item; the
+  fake-ip `inet6_range` stays configured for that.
 
 ## Default tunnel and exceptions (F8)
 

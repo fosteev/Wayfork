@@ -27,6 +27,15 @@ public enum ProcessExit: Sendable, Hashable {
     case signaled(signal: Int32)
 }
 
+/// Result of `ManagedProcess.awaitStartup`.
+public enum StartupOutcome: Sendable, Hashable {
+    /// The started signal fired.
+    case started
+    /// Neither the signal nor an exit happened within the grace period.
+    case survived
+    case exited(ProcessExit)
+}
+
 public enum ProcessOutputStream: Sendable {
     case stdout
     case stderr
@@ -216,9 +225,43 @@ public final class ManagedProcess: Sendable {
         }
     }
 
+    /// Resolves once the process has exited and both pipes are drained. Not cancellable:
+    /// a task waiting here blocks until the process is gone (see `waitForExit()`).
     public var exit: ProcessExit {
         get async {
             await runtime.exit()
+        }
+    }
+
+    /// Like `exit`, but returns nil as soon as the calling task is cancelled. Use this in
+    /// task groups that race the exit against other events; `exit` would keep the group
+    /// alive until the process dies.
+    public func waitForExit() async -> ProcessExit? {
+        await runtime.waitForExit()
+    }
+
+    /// Races three events after a spawn: the caller's "started" signal (typically fed from
+    /// a log line), the process exiting, and `grace` elapsing with the process still alive.
+    /// Returns as soon as the first one happens; the process keeps running.
+    public func awaitStartup(startedSignal: AsyncStream<Void>, grace: Duration) async
+        -> StartupOutcome
+    {
+        await withTaskGroup(of: StartupOutcome.self) { group in
+            group.addTask {
+                for await _ in startedSignal { return .started }
+                return .survived  // stream finished or task cancelled: let the others decide
+            }
+            group.addTask {
+                if let exit = await self.waitForExit() { return .exited(exit) }
+                return .survived
+            }
+            group.addTask {
+                try? await Task.sleep(for: grace)
+                return .survived
+            }
+            let first = await group.next() ?? .survived
+            group.cancelAll()
+            return first
         }
     }
 }
@@ -236,6 +279,10 @@ private struct ManagedProcessState {
     var reapedExit: ProcessExit?
     var deliveredExit: ProcessExit?
     var continuations: [CheckedContinuation<ProcessExit, Never>] = []
+    var exitWaiters: [Int: CheckedContinuation<ProcessExit?, Never>] = [:]
+    /// Waiters whose task was cancelled before they registered their continuation.
+    var cancelledExitWaiters: Set<Int> = []
+    var nextExitWaiterID = 0
     var readSources: [DispatchSourceRead] = []
     var processSource: DispatchSourceProcess?
 }
@@ -289,6 +336,34 @@ private final class ManagedProcessRuntime: Sendable {
             if let completed {
                 continuation.resume(returning: completed)
             }
+        }
+    }
+
+    func waitForExit() async -> ProcessExit? {
+        let id = state.withLock { state -> Int in
+            state.nextExitWaiterID += 1
+            return state.nextExitWaiterID
+        }
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation {
+                (continuation: CheckedContinuation<ProcessExit?, Never>) in
+                let immediate = state.withLock { state -> ProcessExit?? in
+                    if let deliveredExit = state.deliveredExit { return .some(deliveredExit) }
+                    if state.cancelledExitWaiters.remove(id) != nil { return .some(nil) }
+                    state.exitWaiters[id] = continuation
+                    return nil
+                }
+                if let immediate {
+                    continuation.resume(returning: immediate)
+                }
+            }
+        } onCancel: {
+            let waiter = state.withLock { state -> CheckedContinuation<ProcessExit?, Never>? in
+                if let waiter = state.exitWaiters.removeValue(forKey: id) { return waiter }
+                if state.deliveredExit == nil { state.cancelledExitWaiters.insert(id) }
+                return nil
+            }
+            waiter?.resume(returning: nil)
         }
     }
 
@@ -389,7 +464,8 @@ private final class ManagedProcessRuntime: Sendable {
     private func finishIfReady() {
         let completion = state.withLock {
             state -> (
-                ProcessExit, [CheckedContinuation<ProcessExit, Never>]
+                ProcessExit, [CheckedContinuation<ProcessExit, Never>],
+                [CheckedContinuation<ProcessExit?, Never>]
             )? in
             guard state.closedPipeCount == 2, let processExit = state.reapedExit,
                 state.deliveredExit == nil
@@ -399,14 +475,20 @@ private final class ManagedProcessRuntime: Sendable {
             state.deliveredExit = processExit
             let continuations = state.continuations
             state.continuations.removeAll()
-            return (processExit, continuations)
+            let waiters = Array(state.exitWaiters.values)
+            state.exitWaiters.removeAll()
+            state.cancelledExitWaiters.removeAll()
+            return (processExit, continuations, waiters)
         }
-        guard let (processExit, continuations) = completion else {
+        guard let (processExit, continuations, waiters) = completion else {
             return
         }
         handlers.onExit(processExit)
         for continuation in continuations {
             continuation.resume(returning: processExit)
+        }
+        for waiter in waiters {
+            waiter.resume(returning: processExit)
         }
     }
 }

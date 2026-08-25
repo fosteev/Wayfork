@@ -122,3 +122,65 @@ private func startProcess(_ spec: ProcessSpec) throws -> (ManagedProcess, Proces
             return false
         })
 }
+
+// MARK: - Cancellable exit waits (regression: `apply` hung forever after "sing-box started")
+
+@Test func managedProcessWaitForExitReturnsNilWhenCancelled() async throws {
+    let (process, _) = try startProcess(ProcessSpec(executable: "/bin/sleep", arguments: ["30"]))
+    defer { process.signal(SIGKILL) }
+    let waiter = Task { await process.waitForExit() }
+    try await Task.sleep(for: .milliseconds(100))
+    let clock = ContinuousClock()
+    let start = clock.now
+    waiter.cancel()
+    #expect(await waiter.value == nil)
+    #expect(clock.now - start < .seconds(2))
+}
+
+@Test func managedProcessWaitForExitReturnsNilWhenAlreadyCancelled() async throws {
+    let (process, _) = try startProcess(ProcessSpec(executable: "/bin/sleep", arguments: ["30"]))
+    defer { process.signal(SIGKILL) }
+    let waiter = Task {
+        try? await Task.sleep(for: .seconds(10))  // cancelled before we reach waitForExit
+        return await process.waitForExit()
+    }
+    waiter.cancel()
+    #expect(await waiter.value == nil)
+}
+
+@Test func managedProcessWaitForExitDeliversTheExit() async throws {
+    let (process, _) = try startProcess(ProcessSpec(executable: "/bin/sleep", arguments: ["0.2"]))
+    #expect(await process.waitForExit() == .exited(status: 0))
+    #expect(await process.waitForExit() == .exited(status: 0))  // after the fact
+}
+
+@Test func awaitStartupReturnsStartedWhileProcessKeepsRunning() async throws {
+    let (process, _) = try startProcess(ProcessSpec(executable: "/bin/sleep", arguments: ["30"]))
+    defer { process.signal(SIGKILL) }
+    let (signal, continuation) = AsyncStream.makeStream(of: Void.self)
+    Task {
+        try? await Task.sleep(for: .milliseconds(100))
+        continuation.yield()
+    }
+    let clock = ContinuousClock()
+    let start = clock.now
+    let outcome = await process.awaitStartup(startedSignal: signal, grace: .seconds(10))
+    #expect(outcome == .started)
+    #expect(clock.now - start < .seconds(5), "must not wait for the process to exit")
+}
+
+@Test func awaitStartupReturnsSurvivedAfterGrace() async throws {
+    let (process, _) = try startProcess(ProcessSpec(executable: "/bin/sleep", arguments: ["30"]))
+    defer { process.signal(SIGKILL) }
+    let (signal, _) = AsyncStream.makeStream(of: Void.self)
+    let outcome = await process.awaitStartup(startedSignal: signal, grace: .milliseconds(200))
+    #expect(outcome == .survived)
+}
+
+@Test func awaitStartupReportsEarlyExit() async throws {
+    let (process, _) = try startProcess(
+        ProcessSpec(executable: "/bin/sh", arguments: ["-c", "exit 3"]))
+    let (signal, _) = AsyncStream.makeStream(of: Void.self)
+    let outcome = await process.awaitStartup(startedSignal: signal, grace: .seconds(10))
+    #expect(outcome == .exited(.exited(status: 3)))
+}

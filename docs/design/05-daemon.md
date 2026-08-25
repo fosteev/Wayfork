@@ -34,8 +34,10 @@ argv builders. `Wayfork/Daemon/` only wires those to XPC, `Security` and the fil
 - Requires the app to be signed with a real Team ID (Apple Development or Developer ID).
   Ad-hoc builds cannot use `SMAppService`; `scripts/dev-sign.sh` signs debug builds with the
   developer's certificate.
-- App update: handshake compares `daemonVersion` and `bundlePath`; mismatch →
-  `unregister()` then `register()`.
+- App update: handshake compares `version`, `bundlePath` and `buildID` (the CDHash of the
+  daemon executable — a rebuild of the same version is a different daemon, and launchd keeps
+  the old process alive otherwise); mismatch → `unregister()` then `register()`. Seen
+  2026-08-25: approval survives the re-registration, no second Login Items prompt.
 
 ## XPC interface
 

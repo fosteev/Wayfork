@@ -133,9 +133,9 @@ stopped.
 **Daemon crash**: launchd restarts it on next connection; the cleanup above handles orphans.
 The daemon does not exit on idle in MVP.
 
-**App update**: the daemon reports its version and bundle path in the handshake. Mismatch
-(or `.notFound` status after the app was moved) → `unregister()` + `register()`; may require
-re-approval in System Settings.
+**App update**: the daemon reports its version, bundle path and executable CDHash in the
+handshake. Mismatch (or `.notFound` status after the app was moved) → `unregister()` +
+`register()`; may require re-approval in System Settings.
 
 ## State machines
 

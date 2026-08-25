@@ -139,7 +139,8 @@ actor SingBoxEngine {
         try? AtomicFile.write("\(spawned.pid)\n", to: env.runPath(RunLayout.singBoxPID))
         hub.post(.info, "sing-box started (pid \(spawned.pid))")
 
-        let outcome = await Self.awaitStartup(started: started, process: spawned)
+        let outcome = await spawned.awaitStartup(
+            startedSignal: started, grace: SingBoxEngine.startupGrace)
         guard process === spawned else { return }  // stopped meanwhile
         var failure: String?
         switch outcome {
@@ -188,27 +189,6 @@ actor SingBoxEngine {
     }
 
     // MARK: - Exit handling
-
-    private enum StartupOutcome { case started, survived, exited(ProcessExit) }
-
-    private static func awaitStartup(started: AsyncStream<Void>, process: ManagedProcess) async
-        -> StartupOutcome
-    {
-        await withTaskGroup(of: StartupOutcome.self) { group in
-            group.addTask {
-                for await _ in started { return .started }
-                return .exited(await process.exit)
-            }
-            group.addTask { .exited(await process.exit) }
-            group.addTask {
-                try? await Task.sleep(for: SingBoxEngine.startupGrace)
-                return .survived
-            }
-            let first = await group.next() ?? .survived
-            group.cancelAll()
-            return first
-        }
-    }
 
     private func handleExit(_ exit: ProcessExit, generation: Int) {
         guard generation == self.generation, let exited = process, !stopping else { return }

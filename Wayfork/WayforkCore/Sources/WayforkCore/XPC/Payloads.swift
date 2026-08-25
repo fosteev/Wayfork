@@ -5,13 +5,19 @@ import Foundation
 public struct DaemonInfo: Codable, Sendable, Hashable {
     public var version: String
     public var bundlePath: String
+    /// CDHash of the running daemon executable (`CodeSignature.uniqueIdentifier`); nil for
+    /// unsigned builds. Optional so that an older daemon still decodes.
+    public var buildID: String?
     public var singBoxVersion: String
     public var openVPNVersion: String
 
-    public init(version: String, bundlePath: String, singBoxVersion: String, openVPNVersion: String)
-    {
+    public init(
+        version: String, bundlePath: String, buildID: String? = nil, singBoxVersion: String,
+        openVPNVersion: String
+    ) {
         self.version = version
         self.bundlePath = bundlePath
+        self.buildID = buildID
         self.singBoxVersion = singBoxVersion
         self.openVPNVersion = openVPNVersion
     }

@@ -95,6 +95,10 @@ public enum SingBoxConfigGenerator {
         var dns: [String: Any] = [
             "servers": dnsServers,
             "final": "dns-direct",
+            // AAAA answers are suppressed while Wayfork is on: the TUN owns the IPv6 default
+            // route, so on an IPv4-only network every AAAA the system resolver hands out
+            // would end in "no route to host" inside sing-box. Tunnels are IPv4-only anyway.
+            "strategy": "ipv4_only",
             "independent_cache": true,
         ]
         if !routed.isEmpty {

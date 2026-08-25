@@ -257,5 +257,5 @@ Added after M3; implemented once the M3 end-to-end check passes. Design in
 
 - [ ] `scripts/release.sh`: archive, Developer ID signing, notarization, stapling, DMG.
 - [ ] README: install, first run, adding tunnels and rules, troubleshooting, limitations
-      (browser DoH, IPv4-only OpenVPN, no kill switch yet).
+      (browser DoH, IPv4-only while on — no AAAA answers, no kill switch yet).
 - [ ] `CHANGELOG.md`, version tagging `v0.1.0`.

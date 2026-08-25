@@ -34,7 +34,8 @@
         "tag" : "fakeip",
         "type" : "fakeip"
       }
-    ]
+    ],
+    "strategy" : "ipv4_only"
   },
   "experimental" : {
     "cache_file" : {

@@ -126,6 +126,7 @@ actor Supervisor {
         }
         return DaemonInfo(
             version: env.version, bundlePath: env.bundlePath,
+            buildID: CodeSignature.uniqueIdentifier(ofExecutableAt: env.executablePath),
             singBoxVersion: binaryVersions?.singBox ?? "",
             openVPNVersion: binaryVersions?.openVPN ?? "")
     }

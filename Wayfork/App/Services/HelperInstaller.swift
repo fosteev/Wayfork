@@ -43,10 +43,23 @@ final class HelperInstaller {
         try await daemon.unregister()
     }
 
-    /// `unregister()` then `register()`; used after an app update or move.
+    /// `unregister()` then `register()`; used after an app update or move. launchd tears the
+    /// old job down asynchronously and `register()` fails with "Operation not permitted"
+    /// while it is still there (seen 2026-08-25), so the registration is retried for a few
+    /// seconds.
     func reinstall() async throws {
         try? await unregister()
-        try register()
+        var attempt = 0
+        while true {
+            do {
+                try register()
+                return
+            } catch {
+                attempt += 1
+                guard attempt < 12 else { throw error }
+                try await Task.sleep(for: .milliseconds(500))
+            }
+        }
     }
 
     static func openLoginItems() {
