@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Match the Xcode the project is developed with (LastUpgradeCheck 2600).
+  DEVELOPER_DIR: /Applications/Xcode_26.0.app/Contents/Developer
+
+jobs:
+  lint:
+    name: swift-format lint
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - run: scripts/format.sh --lint
+
+  test:
+    name: WayforkCore tests
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - run: swift test --package-path Wayfork/WayforkCore
+
+  build:
+    name: Build app + daemon
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - run: >
+          xcodebuild
+          -project Wayfork/Wayfork.xcodeproj
+          -scheme Wayfork
+          -configuration Release
+          -destination 'generic/platform=macOS'
+          -derivedDataPath build/DerivedData
+          CODE_SIGNING_ALLOWED=NO
+          build
+      - name: Check bundle layout
+        run: |
+          APP=build/DerivedData/Build/Products/Release/Wayfork.app
+          test -x "$APP/Contents/MacOS/Wayfork"
+          test -x "$APP/Contents/MacOS/WayforkDaemon"
+          test -f "$APP/Contents/Library/LaunchDaemons/com.wayfork.daemon.plist"
+          plutil -lint "$APP/Contents/Info.plist"
+          test "$(plutil -extract LSUIElement raw -o - "$APP/Contents/Info.plist")" = "true"
