@@ -357,7 +357,15 @@ pending.
 
 ### M4 — Release
 
-- [ ] `scripts/release.sh`: archive, Developer ID signing, notarization, stapling, DMG.
-- [ ] README: install, first run, adding tunnels and rules, troubleshooting, limitations
-      (browser DoH, IPv4-only while on — no AAAA answers, no kill switch yet).
-- [ ] `CHANGELOG.md`, version tagging `v0.1.0`.
+Scripts and docs written 2026-08-25; the first notarized build and the tag wait for the
+maintainer (Developer ID identity and notarytool profile are not on the build machine).
+
+- [x] `scripts/release.sh`: archive, Developer ID signing, notarization, stapling, DMG
+      (smoke-tested with `--skip-notarize` and an Apple Development identity: archive,
+      inside-out re-signing with timestamps + hardened runtime, DMG, checksum).
+- [x] README: install, first run, adding tunnels and rules, troubleshooting, limitations
+      (browser DoH, IPv4-only while on — no AAAA answers, no kill switch yet, F10/F11
+      caveats), releasing.
+- [x] `CHANGELOG.md` for 0.1.0 (date filled in at tagging).
+- [ ] First notarized build (`scripts/release.sh --version 0.1.0`), tag `v0.1.0`, GitHub
+      release with the DMG and its `.sha256`.
