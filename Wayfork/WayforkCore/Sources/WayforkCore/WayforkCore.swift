@@ -16,3 +16,6 @@ public enum WayforkIdentifiers {
     /// Keychain service name for every secret stored by the app.
     public static let keychainService = "com.wayfork"
 }
+
+/// `Settings` collides with SwiftUI's `Settings` scene in app code; use this alias there.
+public typealias WayforkSettings = Settings

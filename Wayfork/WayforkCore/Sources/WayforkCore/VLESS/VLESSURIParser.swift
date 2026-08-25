@@ -111,7 +111,7 @@ public enum VLESSURIParser {
                 fingerprint: query["fp"],
                 alpn: alpn,
                 realityPublicKey: query["pbk"],
-                realityShortID: query["sid"],
+                realityShortID: query["sid"].flatMap { $0.isEmpty ? nil : $0 },
                 transport: transport,
                 allowInsecure: allowInsecure),
             name: name)
