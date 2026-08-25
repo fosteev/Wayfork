@@ -9,7 +9,11 @@ let package = Package(
     ],
     targets: [
         .target(name: "WayforkCore"),
-        .testTarget(name: "WayforkCoreTests", dependencies: ["WayforkCore"]),
+        .testTarget(
+            name: "WayforkCoreTests",
+            dependencies: ["WayforkCore"],
+            resources: [.copy("Fixtures")]
+        ),
     ],
     swiftLanguageModes: [.v6]
 )

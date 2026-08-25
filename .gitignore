@@ -32,3 +32,6 @@ Wayfork/Resources/bin/
 # Tooling
 .serena/
 *.log
+
+# Parser fixtures (placeholder keys only)
+!Wayfork/WayforkCore/Tests/**/*.ovpn
