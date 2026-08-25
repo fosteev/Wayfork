@@ -31,8 +31,13 @@ public enum SingBoxConfigGenerator {
     }
 
     public static let tunInterface = "utun100"
+    public static let tunAddress = "172.19.0.1/30"
     public static let fakeIPv4Range = "198.18.0.0/15"
-    public static let fakeIPv6Range = "fc00::/18"
+    /// LAN, CGNAT, link-local and multicast: kept out of the TUN entirely.
+    static let lanRanges = [
+        "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10",
+        "169.254.0.0/16", "224.0.0.0/4",
+    ]
     /// Resolver for `.auto` OpenVPN tunnels before the server pushed anything.
     public static let fallbackTunnelDNS = "1.1.1.1"
     /// DoT resolver used as `dns.final` when the default tunnel is VLESS (detoured through it).
@@ -108,7 +113,6 @@ public enum SingBoxConfigGenerator {
             "type": "fakeip",
             "tag": "fakeip",
             "inet4_range": fakeIPv4Range,
-            "inet6_range": fakeIPv6Range,
         ])
 
         var dnsRules: [[String: Any]] = [
@@ -203,19 +207,33 @@ public enum SingBoxConfigGenerator {
         }
     }
 
+    /// `route_exclude_address` for the TUN inbound: `lanRanges` with the TUN's own subnet
+    /// carved out. sing-tun subtracts the excluded ranges from the auto-route split ranges,
+    /// and on Darwin a point-to-point utun only gets a host route for its own address. If an
+    /// exclusion covered the TUN subnet, the replies of the system stack's TCP redirect
+    /// (addressed to the TUN's next address, 172.19.0.2) would leave through the physical
+    /// interface and every TCP connection would hang while UDP kept working (2026-08-25).
+    public static func routeExcludeAddresses() -> [String] {
+        guard let tun = IPv4Prefix(tunAddress) else { return lanRanges }
+        return lanRanges.flatMap { text -> [String] in
+            guard let range = IPv4Prefix(text), range.contains(tun) else { return [text] }
+            return range.subtracting(tun).map(\.description)
+        }
+    }
+
+    /// IPv4-only on purpose: an `inet6` address here makes `auto_route` install an IPv6
+    /// default route, which makes the host look dual-stack to every application even on an
+    /// IPv4-only network (docs/design/03-routing.md, "Notes on specific choices").
     static func tunInbound() -> [String: Any] {
         [
             "type": "tun",
             "tag": "tun-in",
             "interface_name": tunInterface,
-            "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
+            "address": [tunAddress],
             "mtu": 1500,
             "auto_route": true,
             "strict_route": false,
-            "route_exclude_address": [
-                "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10",
-                "169.254.0.0/16", "224.0.0.0/4", "fe80::/10", "ff00::/8",
-            ],
+            "route_exclude_address": routeExcludeAddresses(),
             "stack": "system",
         ]
     }

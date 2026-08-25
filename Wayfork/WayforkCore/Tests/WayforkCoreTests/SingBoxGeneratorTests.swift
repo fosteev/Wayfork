@@ -369,3 +369,29 @@ private func configVariants() -> [(String, SingBoxConfigGenerator.Output)] {
         #expect(process.terminationStatus == 0, "sing-box check failed for \(name): \(log)")
     }
 }
+
+@Test func routeExcludeCarvesOutTheTunSubnet() throws {
+    let tun = try #require(IPv4Prefix(SingBoxConfigGenerator.tunAddress))
+    let excludes = SingBoxConfigGenerator.routeExcludeAddresses().map { IPv4Prefix($0)! }
+    #expect(!excludes.contains { $0.contains(tun) })
+    #expect(excludes.count == 5 + 18)
+    for text in [
+        "172.16.0.1/32", "172.18.255.255/32", "172.19.0.4/32", "172.19.1.0/32", "172.31.255.255/32",
+    ] {
+        let host = try #require(IPv4Prefix(text))
+        #expect(excludes.contains { $0.contains(host) }, "\(text) must stay excluded")
+    }
+}
+
+@Test func ipv4PrefixSubtraction() throws {
+    let outer = try #require(IPv4Prefix("10.0.0.0/8"))
+    let inner = try #require(IPv4Prefix("10.1.2.3/24"))
+    let parts = outer.subtracting(inner)
+    #expect(parts.count == 16)
+    #expect(!parts.contains { $0.contains(inner) })
+    #expect(parts.first?.description == "10.0.0.0/16")
+    #expect(parts.last?.description == "10.128.0.0/9")
+    #expect(outer.subtracting(outer).isEmpty)
+    #expect(outer.subtracting(try #require(IPv4Prefix("11.0.0.0/8"))) == [outer])
+    #expect(IPv4Prefix("300.0.0.0/8") == nil && IPv4Prefix("10.0.0.0/33") == nil)
+}

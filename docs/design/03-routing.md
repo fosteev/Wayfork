@@ -36,8 +36,7 @@ REALITY, vision). Placeholders in angle brackets.
     "servers": [
       { "type": "local", "tag": "dns-direct" },
       { "type": "udp",   "tag": "dns-t-<work>", "server": "10.8.0.1", "detour": "t-<work>" },
-      { "type": "fakeip","tag": "fakeip",
-        "inet4_range": "198.18.0.0/15", "inet6_range": "fc00::/18" }
+      { "type": "fakeip","tag": "fakeip", "inet4_range": "198.18.0.0/15" }
     ],
     "rules": [
       { "rule_set": ["rules-t-<work>", "rules-t-<home>"],
@@ -51,13 +50,13 @@ REALITY, vision). Placeholders in angle brackets.
   "inbounds": [{
     "type": "tun", "tag": "tun-in",
     "interface_name": "utun100",
-    "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
+    "address": ["172.19.0.1/30"],
     "mtu": 1500,
     "auto_route": true,
     "strict_route": false,
     "route_exclude_address": [
-      "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10",
-      "169.254.0.0/16", "224.0.0.0/4", "fe80::/10", "ff00::/8"
+      "10.0.0.0/8", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16", "224.0.0.0/4",
+      "172.16.0.0/15", "172.18.0.0/16", "172.19.0.4/30", "…", "172.24.0.0/13"
     ],
     "stack": "system"
   }],
@@ -106,10 +105,24 @@ turns on sing-box's per-connection byte counting; it has no effect on routing.
 
 Notes on specific choices:
 
-- `route_exclude_address` keeps LAN, link-local and multicast out of TUN entirely. ULA
-  (`fc00::/7`) is deliberately *not* excluded because the fake-ip v6 range lives there.
-  For the same reason the `ip_is_private` rule comes **after** the rule-set rules: a
-  fake-ip v6 address is "private" and would otherwise short-circuit to direct.
+- `route_exclude_address` keeps LAN, CGNAT, link-local and multicast out of TUN entirely,
+  **except the TUN's own subnet** `172.19.0.0/30`: `172.16.0.0/12` is emitted as the 18
+  prefixes that cover it minus that /30 (`IPv4Prefix.subtracting`). sing-tun subtracts the
+  exclusions from the auto-route split ranges, and on Darwin a point-to-point utun only gets
+  a host route for its own address, so an exclusion covering the TUN subnet leaves
+  `172.19.0.2` — where the system stack's TCP redirect sends its replies — with no route
+  into the TUN. Symptom (2026-08-25): sing-box logs the process lookup for every SYN but
+  never an `inbound connection`; UDP (DNS, QUIC) works, every TCP connection hangs.
+  The `ip_is_private` rule comes **after** the rule-set rules so that a rule-set match
+  always wins over the private-range short-circuit to direct.
+- The TUN is **IPv4-only** (no `inet6` address, no fake-ip `inet6_range`). An IPv6 address on
+  the TUN makes `auto_route` install an IPv6 default route, and from that moment every
+  application believes the host is dual-stack: anything that resolves AAAA records outside
+  sing-box's DNS (browser DoH, other proxy clients, cached answers) dials literal IPv6
+  destinations into the TUN, and on an IPv4-only network each of those ends in `direct`
+  failing with "no route to host" (seen 2026-08-25 — a whole evening of "nothing works").
+  Without a v6 address the host's IPv6 state is whatever the physical interface provides;
+  on a dual-stack network IPv6 traffic bypasses Wayfork (see Later, native IPv6).
 - `strict_route: false`: strict mode on macOS breaks some local services and is unnecessary
   since we route by domain, not by "block everything else".
 - `stack: "system"` is the conservative choice; `gvisor`/`mixed` can be revisited for
@@ -128,14 +141,13 @@ Notes on specific choices:
   so the worst case is a tunnel domain rule matching the VPN server's hostname — the
   importer warns when a rule pattern covers a tunnel's own server host.
 - `dns.strategy: ipv4_only`: every AAAA query that sing-box answers (hijacked system
-  queries included) gets an empty NOERROR reply, so applications only ever connect over
-  IPv4 while Wayfork is on. Without this, `auto_route` installs an IPv6 default route into
-  the TUN and on an IPv4-only network every AAAA from the upstream resolver ends in a
-  `direct` dial failing with "no route to host" (seen 2026-08-25: Safari/Telegram retried
-  over v4 after the RST, but each connection paid for the failed attempt). Verified against
-  sing-box 1.13.19 with a hijacked TCP query. Literal-IPv6 destinations still go through
-  TUN → `direct`. Native IPv6 for direct traffic on dual-stack networks is a Later item; the
-  fake-ip `inet6_range` stays configured for that.
+  queries included) gets an empty NOERROR reply, so applications that use the system
+  resolver only ever connect over IPv4 while Wayfork is on. Verified against sing-box
+  1.13.19 with a hijacked TCP query. This alone was not enough (2026-08-25: Safari/Telegram
+  retried over v4 after the RST, but each connection paid for the failed attempt, and
+  DoH/other clients never fell back) — hence the IPv4-only TUN above. Native IPv6 for
+  direct traffic on dual-stack networks is a Later item; it needs the v6 address and
+  `inet6_range` back plus a way to tell whether the physical interface has IPv6.
 
 ## Default tunnel and exceptions (F8)
 
