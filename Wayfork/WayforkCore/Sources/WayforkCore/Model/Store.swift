@@ -2,7 +2,8 @@ import Foundation
 
 /// Everything the app persists in `store.json`. No secrets (docs/design/01-data-model.md).
 public struct Store: Codable, Sendable, Hashable {
-    public static let currentSchemaVersion = 1
+    /// 2 since F10: `"match": "app"` rules; the data of schema 1 is unchanged.
+    public static let currentSchemaVersion = 2
 
     public var schemaVersion: Int
     public var tunnels: [Tunnel]
@@ -103,8 +104,12 @@ public enum StoreCodec {
         case invalidDocument
     }
 
-    /// Migrations in order; each bumps `schemaVersion` by one. Empty until schema 2 exists.
-    static let migrations: [StoreMigration] = []
+    /// Migrations in order; each bumps `schemaVersion` by one.
+    static let migrations: [StoreMigration] = [
+        // 1 → 2 (F10): nothing to rewrite — the bump only makes builds that do not know
+        // `"match": "app"` refuse the file instead of failing on the first app rule.
+        StoreMigration(fromVersion: 1) { _ in }
+    ]
 
     public static func encode(_ store: Store) throws -> Data {
         try JSONCoding.prettyEncoder.encode(store)

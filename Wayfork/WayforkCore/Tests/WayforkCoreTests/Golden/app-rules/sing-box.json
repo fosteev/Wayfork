@@ -1,0 +1,185 @@
+{
+  "dns" : {
+    "final" : "dns-direct",
+    "independent_cache" : true,
+    "rules" : [
+      {
+        "rule_set" : "rules-direct",
+        "server" : "dns-direct"
+      },
+      {
+        "query_type" : [
+          "A",
+          "AAAA"
+        ],
+        "rule_set" : [
+          "rules-t-00000000-0000-4000-8000-000000000001",
+          "rules-t-00000000-0000-4000-8000-000000000002"
+        ],
+        "server" : "fakeip"
+      }
+    ],
+    "servers" : [
+      {
+        "tag" : "dns-direct",
+        "type" : "local"
+      },
+      {
+        "detour" : "t-00000000-0000-4000-8000-000000000001",
+        "server" : "10.8.0.1",
+        "tag" : "dns-t-00000000-0000-4000-8000-000000000001",
+        "type" : "udp"
+      },
+      {
+        "inet4_range" : "198.18.0.0/15",
+        "tag" : "fakeip",
+        "type" : "fakeip"
+      }
+    ],
+    "strategy" : "ipv4_only"
+  },
+  "experimental" : {
+    "cache_file" : {
+      "enabled" : true,
+      "path" : "cache.db",
+      "store_fakeip" : true
+    }
+  },
+  "inbounds" : [
+    {
+      "address" : [
+        "172.19.0.1/30"
+      ],
+      "auto_route" : true,
+      "interface_name" : "utun100",
+      "mtu" : 1500,
+      "route_exclude_address" : [
+        "10.0.0.0/8",
+        "172.16.0.0/15",
+        "172.18.0.0/16",
+        "172.19.0.4/30",
+        "172.19.0.8/29",
+        "172.19.0.16/28",
+        "172.19.0.32/27",
+        "172.19.0.64/26",
+        "172.19.0.128/25",
+        "172.19.1.0/24",
+        "172.19.2.0/23",
+        "172.19.4.0/22",
+        "172.19.8.0/21",
+        "172.19.16.0/20",
+        "172.19.32.0/19",
+        "172.19.64.0/18",
+        "172.19.128.0/17",
+        "172.20.0.0/14",
+        "172.24.0.0/13",
+        "192.168.0.0/16",
+        "100.64.0.0/10",
+        "169.254.0.0/16",
+        "224.0.0.0/4"
+      ],
+      "stack" : "system",
+      "strict_route" : false,
+      "tag" : "tun-in",
+      "type" : "tun"
+    }
+  ],
+  "log" : {
+    "level" : "info",
+    "timestamp" : true
+  },
+  "outbounds" : [
+    {
+      "tag" : "direct",
+      "type" : "direct"
+    },
+    {
+      "bind_interface" : "utun101",
+      "domain_resolver" : {
+        "server" : "dns-t-00000000-0000-4000-8000-000000000001",
+        "strategy" : "ipv4_only"
+      },
+      "tag" : "t-00000000-0000-4000-8000-000000000001",
+      "type" : "direct"
+    },
+    {
+      "flow" : "xtls-rprx-vision",
+      "server" : "home.example.net",
+      "server_port" : 443,
+      "tag" : "t-00000000-0000-4000-8000-000000000002",
+      "tls" : {
+        "enabled" : true,
+        "insecure" : false,
+        "reality" : {
+          "enabled" : true,
+          "public_key" : "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+          "short_id" : "0123abcd"
+        },
+        "server_name" : "www.apple.com",
+        "utls" : {
+          "enabled" : true,
+          "fingerprint" : "chrome"
+        }
+      },
+      "type" : "vless",
+      "uuid" : "00000000-0000-4000-8000-0000000000aa"
+    }
+  ],
+  "route" : {
+    "auto_detect_interface" : true,
+    "default_domain_resolver" : "dns-direct",
+    "final" : "direct",
+    "find_process" : true,
+    "rule_set" : [
+      {
+        "format" : "source",
+        "path" : "rules-direct.json",
+        "tag" : "rules-direct",
+        "type" : "local"
+      },
+      {
+        "format" : "source",
+        "path" : "rules-t-00000000-0000-4000-8000-000000000001.json",
+        "tag" : "rules-t-00000000-0000-4000-8000-000000000001",
+        "type" : "local"
+      },
+      {
+        "format" : "source",
+        "path" : "rules-t-00000000-0000-4000-8000-000000000002.json",
+        "tag" : "rules-t-00000000-0000-4000-8000-000000000002",
+        "type" : "local"
+      }
+    ],
+    "rules" : [
+      {
+        "action" : "sniff"
+      },
+      {
+        "action" : "hijack-dns",
+        "protocol" : "dns"
+      },
+      {
+        "outbound" : "direct",
+        "process_path" : [
+          "/Applications/Wayfork.app/Contents/Resources/bin/openvpn"
+        ]
+      },
+      {
+        "outbound" : "direct",
+        "rule_set" : "rules-direct"
+      },
+      {
+        "outbound" : "t-00000000-0000-4000-8000-000000000001",
+        "rule_set" : "rules-t-00000000-0000-4000-8000-000000000001"
+      },
+      {
+        "outbound" : "t-00000000-0000-4000-8000-000000000002",
+        "rule_set" : "rules-t-00000000-0000-4000-8000-000000000002"
+      },
+      {
+        "ip_is_private" : true,
+        "outbound" : "direct"
+      }
+    ]
+  }
+}

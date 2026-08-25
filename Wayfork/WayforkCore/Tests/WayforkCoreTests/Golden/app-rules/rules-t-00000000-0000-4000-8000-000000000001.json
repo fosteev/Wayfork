@@ -1,0 +1,19 @@
+{
+  "rules" : [
+    {
+      "domain" : [
+        "example.com",
+        "api.other.com"
+      ],
+      "domain_suffix" : [
+        ".example.com"
+      ]
+    },
+    {
+      "process_path_regex" : [
+        "^/Applications/Telegram\\.app/"
+      ]
+    }
+  ],
+  "version" : 3
+}

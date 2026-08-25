@@ -82,6 +82,17 @@ Written as user scenarios. Technical details belong to Phase 2.
 - Rates are shown only for connected/ready tunnels while routing is On; nothing in Settings,
   nothing in the menu bar. History, graphs and a menu bar readout are Later (L4, L7).
 
+**F10. Rules: application → tunnel** *(added 2026-08-25)*
+- A rule can name an application instead of a domain: "route Telegram via Home", "keep
+  Bank.app direct". The app is picked in a file dialog; the rule covers every process
+  inside the bundle (helpers included), whatever domain or IP it talks to.
+- Application rules live in the same groups as domain rules and follow the same order:
+  Direct group first, then tunnels in store order. Inside a group, domain and application
+  rules are peers — either one matches.
+- Only traffic that enters Wayfork is affected: an app that talks through another local
+  proxy is seen as that proxy's process, not as the app.
+- Quick add from the menu bar has no application entry. Rules by IP / CIDR are F11.
+
 ### Later
 
 **L1. Rule sources beyond a single domain**
@@ -293,3 +304,24 @@ maintainer approval; implemented after the M3/M3b end-to-end checks.
 - [ ] README: install, first run, adding tunnels and rules, troubleshooting, limitations
       (browser DoH, IPv4-only while on — no AAAA answers, no kill switch yet).
 - [ ] `CHANGELOG.md`, version tagging `v0.1.0`.
+### M3d — Application rules (F10)
+
+Design in [01-data-model.md](design/01-data-model.md) ("Application rules"),
+[03-routing.md](design/03-routing.md) ("Application rules") and [02-ux.md](design/02-ux.md)
+(Rules). Implemented 2026-08-25; manual check pending.
+
+- [x] Model: `RuleMatch.app` (pattern = absolute `.app` bundle path), `RulePattern.normalize`
+      for bundle paths, `store.json` schema 2 with a no-op migration (older builds refuse
+      the file instead of dropping the rules), export/import unchanged; tests.
+- [x] `RuleValidator`: duplicate / shadowed apply as for domains, `coversTunnelServer` skips
+      app rules; tests.
+- [x] Generator: `process_path_regex` as a second headless rule in the tunnel and Direct
+      rule-set files (`^<escaped bundle path>/`); golden variant with app rules on a tunnel
+      and on Direct; `sing-box check`; hot reload unchanged.
+- [x] UI: group `+` becomes a menu (Domain / Application…), open panel limited to
+      application bundles, app rows with icon and display name, "not found" chip when the
+      bundle is gone, search matches app names and paths.
+- [ ] Manual check: an app rule sends an otherwise-unmatched domain through its tunnel, an
+      app exception keeps a domain-routed site direct, helper processes are covered, DNS
+      still resolves, a removed app leaves the rule flagged but harmless.
+

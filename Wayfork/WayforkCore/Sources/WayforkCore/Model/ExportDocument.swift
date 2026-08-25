@@ -60,7 +60,8 @@ public struct ExportedTunnel: Codable, Sendable, Hashable, Identifiable {
 /// `wayfork-export.json` (F7, docs/design/01-data-model.md).
 public struct ExportDocument: Codable, Sendable, Hashable {
     public static let formatName = "wayfork-export"
-    public static let currentVersion = 1
+    /// 2 since F10 (app rules); version 1 files import unchanged.
+    public static let currentVersion = 2
 
     public var format: String
     public var version: Int

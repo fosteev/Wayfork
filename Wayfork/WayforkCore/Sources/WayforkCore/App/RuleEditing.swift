@@ -43,6 +43,7 @@ public enum RuleEditing {
         case .tooLong: "Domain is too long"
         case .wildcardNotAllowed: "`*` only allowed in wildcard rules"
         case .wildcardRequired: "Wildcard rules need a `*`"
+        case .notAnAppBundle: "Choose an application bundle (.app)"
         }
     }
 }

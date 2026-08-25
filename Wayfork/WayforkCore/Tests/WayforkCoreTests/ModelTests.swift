@@ -63,7 +63,7 @@ enum Fixtures {
 
 @Test func storeRefusesNewerSchema() throws {
     let data = Data("{\"schemaVersion\": 99, \"tunnels\": [], \"rules\": []}".utf8)
-    #expect(throws: StoreCodec.Error.newerSchema(found: 99, supported: 1)) {
+    #expect(throws: StoreCodec.Error.newerSchema(found: 99, supported: Store.currentSchemaVersion)) {
         try StoreCodec.decode(data)
     }
 }

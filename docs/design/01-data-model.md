@@ -93,6 +93,7 @@ resolves it remotely. Only OpenVPN tunnels need a resolver reachable through the
 | `suffix`   | `example.com`        | `example.com`, `a.example.com`, `a.b.example.com` | `notexample.com` |
 | `exact`    | `api.example.com`    | `api.example.com` | `v2.api.example.com` |
 | `wildcard` | `*.cdn.example.com`  | `a.cdn.example.com`, `a.b.cdn.example.com` | `cdn.example.com` |
+| `app`      | `/Applications/Telegram.app` | every process inside that bundle, any destination (F10) | other apps |
 
 `*` stands for one or more characters including dots and must be the only special
 character. `suffix` is the default; typing `*` switches the row to `wildcard`.
@@ -128,6 +129,31 @@ same pattern + match under a *different* tunnel is legal and simply shadowed whe
 tunnel comes later (`RuleValidator`). A rule pointing at a
 disabled or missing tunnel is shown greyed and does not match anything (traffic goes
 direct; kill switch is L7).
+
+### Application rules (F10)
+
+`RuleMatch.app` marks a rule whose `pattern` is the absolute path of an application bundle
+(`/Applications/Telegram.app`) instead of a hostname. It matches every process whose
+executable lives inside the bundle — the main binary and all helpers
+(`…/Contents/Frameworks/… Helper.app/…`), which is where most apps do their networking.
+
+Normalization: trimmed, a `file://` URL turned into a path, trailing `/` removed, must be
+absolute and end in `.app`; no lowercasing (paths are case-preserving), no punycode. The
+bundle *path* is stored, not the bundle identifier: it is what sing-box matches, it needs
+no lookup inside the daemon, and a moved app shows up in the UI as "not found" instead of
+silently changing meaning. Existence is not checked in Core (tests, portability); the UI
+shows a chip when the path does not exist, and the rule matches again once the app is back.
+
+Ordering, duplicates and shadowing are the same as for domains: group order decides, an
+identical `pattern` + `match` in one group is a duplicate, in a later group it is shadowed.
+Domain and application rules of one group are peers — either one matches. When an app rule
+and a domain rule of *different* groups disagree, the earlier group wins (tunnel order), as
+for any two overlapping domain rules.
+
+`store.json` becomes schema **2** with a no-op migration from 1: the data does not change,
+but a build that does not know `"match": "app"` must refuse the file rather than fail on
+the first app rule — `newerSchema` does exactly that. Export files carry app rules unchanged;
+`ExportDocument.currentVersion` is bumped for the same reason.
 
 ## Persistence
 

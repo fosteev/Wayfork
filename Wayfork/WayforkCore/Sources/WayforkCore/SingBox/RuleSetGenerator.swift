@@ -28,7 +28,9 @@ public enum RuleSetGenerator {
         return files
     }
 
-    /// Rule-set JSON for one tunnel's rules, grouped into a single rule object.
+    /// Rule-set JSON for one tunnel's rules: one rule object for the domain items and, when
+    /// there are app rules (F10), a second one with `process_path_regex` — sing-box ANDs
+    /// items of different kinds inside one rule and ORs the rules of a set.
     public static func render(rules: [Rule]) -> String {
         render(rules: rules, domains: [], suffixes: [])
     }
@@ -42,6 +44,7 @@ public enum RuleSetGenerator {
         var domain = domains
         var domainSuffix = suffixes
         var domainRegex: [String] = []
+        var processPathRegex: [String] = []
         for rule in rules {
             switch rule.match {
             case .exact:
@@ -51,15 +54,22 @@ public enum RuleSetGenerator {
                 domainSuffix.append("." + rule.pattern)
             case .wildcard:
                 domainRegex.append(RulePattern.wildcardRegex(rule.pattern))
+            case .app:
+                processPathRegex.append(RulePattern.appPathRegex(rule.pattern))
             }
         }
-        var rule: [String: Any] = [:]
-        if !domain.isEmpty { rule["domain"] = domain }
-        if !domainSuffix.isEmpty { rule["domain_suffix"] = domainSuffix }
-        if !domainRegex.isEmpty { rule["domain_regex"] = domainRegex }
+        var domainRule: [String: Any] = [:]
+        if !domain.isEmpty { domainRule["domain"] = domain }
+        if !domainSuffix.isEmpty { domainRule["domain_suffix"] = domainSuffix }
+        if !domainRegex.isEmpty { domainRule["domain_regex"] = domainRegex }
+        var ruleObjects: [[String: Any]] = []
+        if !domainRule.isEmpty { ruleObjects.append(domainRule) }
+        if !processPathRegex.isEmpty {
+            ruleObjects.append(["process_path_regex": processPathRegex])
+        }
         let document: [String: Any] = [
             "version": version,
-            "rules": rule.isEmpty ? [] : [rule],
+            "rules": ruleObjects,
         ]
         return JSONText.render(document)
     }

@@ -1,4 +1,6 @@
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import WayforkCore
 
 /// Settings › Rules: the Direct group (exceptions, F8) followed by one group per tunnel,
@@ -15,7 +17,7 @@ struct RulesSettingsView: View {
             HStack {
                 PageTitle(text: "Rules")
                 Spacer()
-                TextField("Search domains", text: $search)
+                TextField("Search rules", text: $search)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 200)
             }
@@ -110,8 +112,11 @@ private struct RuleGroupView: View {
     private var visibleRules: [Rule] {
         let needle = search.trimmingCharacters(in: .whitespaces).lowercased()
         guard !needle.isEmpty else { return rules }
-        return rules.filter {
-            $0.pattern.contains(needle) || ($0.note ?? "").lowercased().contains(needle)
+        return rules.filter { rule in
+            rule.pattern.lowercased().contains(needle)
+                || (rule.note ?? "").lowercased().contains(needle)
+                || (rule.isApp
+                    && AppBundleInfo.info(for: rule.pattern).name.lowercased().contains(needle))
         }
     }
 
@@ -184,14 +189,20 @@ private struct RuleGroupView: View {
                         .foregroundStyle(.tertiary)
                 }
                 Spacer()
-                Button {
-                    error = nil
-                    editing = RuleEditState(
-                        ruleID: nil, target: group.target, text: "", match: .suffix)
+                // F10: Domain adds an empty row in edit mode; Application… opens a file dialog.
+                Menu {
+                    Button("Domain") {
+                        error = nil
+                        editing = RuleEditState(
+                            ruleID: nil, target: group.target, text: "", match: .suffix)
+                    }
+                    Button("Application…") { chooseApplication() }
                 } label: {
                     Image(systemName: "plus")
                 }
+                .menuIndicator(.hidden)
                 .controlSize(.small)
+                .fixedSize()
                 .help(
                     group == .direct
                         ? "Add an exception (stays direct)" : "Add a rule to \(group.name)")
@@ -218,6 +229,25 @@ private struct RuleGroupView: View {
             get: { editing?.ruleID == rule.id ? editing : nil },
             set: { editing = $0 })
     }
+
+    /// Open panel limited to application bundles (docs/design/02-ux.md, F10).
+    private func chooseApplication() {
+        editing = nil
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.treatsFilePackagesAsDirectories = false
+        panel.allowedContentTypes = [.applicationBundle]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.message =
+            group == .direct
+            ? "Choose an application that stays direct"
+            : "Choose an application to route via \(group.name)"
+        panel.prompt = "Add Rule"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        error = model.addRule(pattern: url.path, match: .app, target: group.target)
+    }
 }
 
 private struct RuleRowView: View {
@@ -240,7 +270,14 @@ private struct RuleRowView: View {
             )
             .toggleStyle(.checkbox)
             .labelsHidden()
-            if let binding = Binding($editing) {
+            if rule.isApp {
+                AppRuleLabel(path: rule.pattern)
+                    .frame(width: 230, alignment: .leading)
+                Text("App")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 100, alignment: .leading)
+            } else if let binding = Binding($editing) {
                 TextField("domain", text: binding.text)
                     .font(.system(size: 12, design: .monospaced))
                     .textFieldStyle(.roundedBorder)
@@ -256,7 +293,7 @@ private struct RuleRowView: View {
                         if text.contains("*") { binding.wrappedValue.match = .wildcard }
                     }
                 Picker("Match", selection: binding.match) {
-                    ForEach(RuleMatch.allCases, id: \.self) { Text(matchTitle($0)).tag($0) }
+                    ForEach(RuleMatch.domainCases, id: \.self) { Text(matchTitle($0)).tag($0) }
                 }
                 .labelsHidden()
                 .controlSize(.small)
@@ -275,7 +312,7 @@ private struct RuleRowView: View {
                             error = model.updateRule(id: rule.id, pattern: rule.pattern, match: $0)
                         })
                 ) {
-                    ForEach(RuleMatch.allCases, id: \.self) { Text(matchTitle($0)).tag($0) }
+                    ForEach(RuleMatch.domainCases, id: \.self) { Text(matchTitle($0)).tag($0) }
                 }
                 .labelsHidden()
                 .controlSize(.small)
@@ -300,10 +337,17 @@ private struct RuleRowView: View {
         .frame(minHeight: 28)
         .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { startEditing() }
+        .onTapGesture(count: 2) { if !rule.isApp { startEditing() } }
         .onTapGesture { select() }
         .contextMenu {
-            Button("Edit") { startEditing() }
+            if rule.isApp {
+                Button("Reveal in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: rule.pattern)])
+                }
+                .disabled(!AppBundleInfo.info(for: rule.pattern).exists)
+            } else {
+                Button("Edit") { startEditing() }
+            }
             Menu("Move to") {
                 if group != .direct {
                     Button("Direct (exception)") {
@@ -325,6 +369,10 @@ private struct RuleRowView: View {
     private var chips: some View {
         if !rule.isEnabled {
             Chip(text: "paused")
+        }
+        if rule.isApp, !AppBundleInfo.info(for: rule.pattern).exists {
+            Chip(text: "not found", tint: .orange)
+                .help("\(rule.pattern) is missing; the rule matches again once it is back")
         }
         ForEach(Array(issues.enumerated()), id: \.offset) { _, issue in
             switch issue {
@@ -405,7 +453,7 @@ private struct NewRuleRow: View {
                     if value.contains("*") { editing?.match = .wildcard }
                 }
             Picker("Match", selection: match) {
-                ForEach(RuleMatch.allCases, id: \.self) { Text(matchTitle($0)).tag($0) }
+                ForEach(RuleMatch.domainCases, id: \.self) { Text(matchTitle($0)).tag($0) }
             }
             .labelsHidden()
             .controlSize(.small)
@@ -438,5 +486,6 @@ private func matchTitle(_ match: RuleMatch) -> String {
     case .suffix: "Suffix"
     case .exact: "Exact"
     case .wildcard: "Wildcard"
+    case .app: "App"
     }
 }

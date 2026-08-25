@@ -333,6 +333,12 @@ private func configVariants() -> [(String, SingBoxConfigGenerator.Output)] {
     variants.append(("vless-ws", generate(ws)))
     variants.append(("default-openvpn", generate(defaultTunnelStore(defaultID: Fixtures.workID))))
     variants.append(("default-vless", generate(defaultTunnelStore(defaultID: Fixtures.homeID))))
+    var apps = twoTunnelStore()
+    apps.rules.append(
+        Rule(pattern: "/Applications/Telegram.app", match: .app, tunnelID: Fixtures.workID))
+    apps.rules.append(
+        Rule(pattern: "/Applications/Bank (Beta).app", match: .app, target: .direct))
+    variants.append(("app-rules", generate(apps)))
     return variants
 }
 

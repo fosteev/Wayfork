@@ -10,6 +10,8 @@ public enum RulePatternError: Error, Equatable, Sendable {
     case wildcardNotAllowed
     /// A `wildcard` rule without `*`.
     case wildcardRequired
+    /// An `app` rule whose pattern is not an absolute path ending in `.app` (F10).
+    case notAnAppBundle
 }
 
 /// Normalization, validation and matching of rule patterns (docs/design/01-data-model.md).
@@ -23,8 +25,11 @@ public enum RulePattern {
     }
 
     /// Turns user input into the stored form: URL parts stripped, lowercased, NFC, IDNA
-    /// labels converted to punycode, trailing dot removed. Throws `RulePatternError`.
+    /// labels converted to punycode, trailing dot removed. For `app`, a bundle path: a
+    /// `file://` URL becomes a path, trailing slashes go, case is kept (F10). Throws
+    /// `RulePatternError`.
     public static func normalize(_ raw: String, match: RuleMatch) throws -> String {
+        if match == .app { return try normalizeAppPath(raw) }
         var s = stripURLParts(raw.trimmingCharacters(in: .whitespacesAndNewlines))
         s = s.lowercased().precomposedStringWithCanonicalMapping
         while s.hasSuffix(".") {
@@ -41,6 +46,8 @@ public enum RulePattern {
             if hasWildcard { throw RulePatternError.wildcardNotAllowed }
         case .wildcard:
             if !hasWildcard { throw RulePatternError.wildcardRequired }
+        case .app:
+            preconditionFailure("handled above")
         }
 
         var labels: [String] = []
@@ -60,7 +67,8 @@ public enum RulePattern {
         return result
     }
 
-    /// Does `host` (already normalized) fall under the pattern?
+    /// Does `host` (already normalized) fall under the pattern? Never for an `app` rule —
+    /// those match processes, not names.
     public static func matches(host: String, pattern: String, match: RuleMatch) -> Bool {
         switch match {
         case .exact:
@@ -70,7 +78,21 @@ public enum RulePattern {
         case .wildcard:
             guard let regex = try? Regex(wildcardRegex(pattern)) else { return false }
             return host.wholeMatch(of: regex) != nil
+        case .app:
+            return false
         }
+    }
+
+    /// Regular expression emitted for an app rule (F10): `^` + escaped bundle path + `/`,
+    /// so every executable inside the bundle matches and `Foo.app 2` does not.
+    public static func appPathRegex(_ path: String) -> String {
+        "^" + escapeRegex(path) + "/"
+    }
+
+    /// The last path component without `.app` — a display name when the bundle is gone.
+    public static func appName(_ path: String) -> String {
+        let name = (path as NSString).lastPathComponent
+        return name.hasSuffix(".app") ? String(name.dropLast(4)) : name
     }
 
     /// Regular expression emitted for a wildcard pattern, e.g. `^.+\.cdn\.example\.com$`.
@@ -88,6 +110,36 @@ public enum RulePattern {
     }
 
     // MARK: - Helpers
+
+    private static func normalizeAppPath(_ raw: String) throws -> String {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if s.lowercased().hasPrefix("file://") {
+            guard let url = URL(string: s), url.isFileURL else {
+                throw RulePatternError.notAnAppBundle
+            }
+            s = url.path
+        }
+        while s.count > 1, s.hasSuffix("/") {
+            s.removeLast()
+        }
+        guard !s.isEmpty else { throw RulePatternError.empty }
+        guard s.hasPrefix("/"), s.count > 4, s.lowercased().hasSuffix(".app"),
+            !s.contains("/../"), !s.contains("/./")
+        else { throw RulePatternError.notAnAppBundle }
+        return s
+    }
+
+    /// Escapes every character that RE2 (and ICU) treat specially.
+    static func escapeRegex(_ text: String) -> String {
+        var out = ""
+        for ch in text {
+            if "\\.+*?()|[]{}^$".contains(ch) {
+                out.append("\\")
+            }
+            out.append(ch)
+        }
+        return out
+    }
 
     /// `https://user@host:443/path?q#f` → `host`. Also handles bare `host:443/path`.
     static func stripURLParts(_ input: String) -> String {

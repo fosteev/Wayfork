@@ -225,8 +225,10 @@ Mapping from `RuleMatch`:
 | `suffix`   | `domain: [p]` + `domain_suffix: [".p"]` (explicit, independent of sing-box's suffix semantics) |
 | `exact`    | `domain: [p]` |
 | `wildcard` | `domain_regex: ["^" + escape(p).replace("\\*", ".+") + "$"]` |
+| `app`      | `process_path_regex: ["^" + escape(p) + "/"]` in a **separate** rule object (F10) |
 
-Entries are grouped by kind into a single rule object per tunnel (sing-box ORs them).
+Domain entries are grouped by kind into a single rule object per tunnel (sing-box ORs the
+domain items of one rule).
 Disabled rules and rules whose tunnel is disabled are omitted. A tunnel with zero active
 rules still gets an (empty) rule-set file so the main config doesn't change.
 
@@ -237,6 +239,27 @@ under Home, `example.com` suffix under Work) resolve by tunnel order — Work wi
 comes first. L2 "where does this domain go?" makes this inspectable.
 
 ## Hot reload vs restart
+### Application rules (F10)
+
+An app rule becomes a second headless rule in the same rule-set file. It must not share an
+object with the domain items: within one rule sing-box ANDs items of different kinds and
+ORs only the rules of the set.
+
+```json
+{ "process_path_regex": ["^/Applications/Telegram\\.app/"] }
+```
+
+`^` + RE2-escaped bundle path + `/`: every executable inside the bundle, helpers included,
+and not `Telegram.app 2`. `find_process` is already on for the openvpn rule, so the
+lookup costs nothing extra. DNS rules that reference the same rule-set are unaffected: the
+process behind a hijacked DNS query is `mDNSResponder`, which never matches a bundle, so an
+app's DNS follows the domain rules and the fake-ip catch-all as before; the connection is
+then matched by process and its fake-ip destination is resolved by the outbound exactly
+like a domain-routed connection. An app exception in `rules-direct.json` works the same way
+(`default_domain_resolver` resolves for `direct`). Process lookup can fail for very
+short-lived processes; such a connection falls through to the domain rules and the default —
+sing-box logs the failed lookup at debug level, nothing else changes.
+
 
 | Change | Action |
 |--------|--------|

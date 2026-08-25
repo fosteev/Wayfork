@@ -1,6 +1,7 @@
 import Foundation
 
-/// How a rule pattern is matched against a hostname (docs/design/01-data-model.md).
+/// How a rule pattern is matched (docs/design/01-data-model.md): against a hostname for
+/// the domain kinds, against the connecting process for `app`.
 public enum RuleMatch: String, Codable, Sendable, CaseIterable {
     /// `example.com` covers `example.com` and every subdomain.
     case suffix
@@ -8,6 +9,14 @@ public enum RuleMatch: String, Codable, Sendable, CaseIterable {
     case exact
     /// `*.cdn.example.com`: `*` stands for one or more characters, dots included.
     case wildcard
+    /// F10: the pattern is an absolute `.app` bundle path; every process inside the bundle
+    /// (helpers included) matches, whatever it talks to.
+    case app
+
+    /// The kinds a hostname pattern can take — what the match popup offers.
+    public static let domainCases: [RuleMatch] = [.suffix, .exact, .wildcard]
+
+    public var isApp: Bool { self == .app }
 }
 
 /// Where a rule sends its traffic (F8): a tunnel, or `direct` for an exception.
@@ -26,7 +35,8 @@ public enum RuleTarget: Sendable, Hashable {
 /// `pattern → target`. Rules are ordered within their group; see `Store.effectiveRules`.
 public struct Rule: Codable, Sendable, Hashable, Identifiable {
     public var id: UUID
-    /// Normalized by `RulePattern.normalize`: lowercase, punycode, no trailing dot.
+    /// Normalized by `RulePattern.normalize`: lowercase, punycode, no trailing dot for
+    /// domains; an absolute bundle path for `match == .app`.
     public var pattern: String
     public var match: RuleMatch
     public var target: RuleTarget
@@ -37,6 +47,8 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
     public var tunnelID: UUID? { target.tunnelID }
     /// A Direct rule: carves the pattern out of the default tunnel or a broader rule.
     public var isException: Bool { target.isDirect }
+    /// An application rule (F10).
+    public var isApp: Bool { match.isApp }
 
     public init(
         id: UUID = UUID(),
@@ -67,7 +79,7 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
             isEnabled: isEnabled, note: note)
     }
 
-    // MARK: - JSON (schema 1)
+    // MARK: - JSON (schema 1; `"match": "app"` needs schema 2)
 
     // A tunnel rule carries `tunnelID`; an exception carries `"target": "direct"` and no
     // `tunnelID`. A rule with neither is invalid (docs/design/01-data-model.md, F8).
