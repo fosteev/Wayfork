@@ -1,0 +1,85 @@
+{
+  "dns" : {
+    "final" : "dns-direct",
+    "independent_cache" : true,
+    "servers" : [
+      {
+        "tag" : "dns-direct",
+        "type" : "local"
+      },
+      {
+        "inet4_range" : "198.18.0.0/15",
+        "inet6_range" : "fc00::/18",
+        "tag" : "fakeip",
+        "type" : "fakeip"
+      }
+    ]
+  },
+  "experimental" : {
+    "cache_file" : {
+      "enabled" : true,
+      "path" : "cache.db",
+      "store_fakeip" : true
+    }
+  },
+  "inbounds" : [
+    {
+      "address" : [
+        "172.19.0.1/30",
+        "fdfe:dcba:9876::1/126"
+      ],
+      "auto_route" : true,
+      "interface_name" : "utun100",
+      "mtu" : 1500,
+      "route_exclude_address" : [
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "100.64.0.0/10",
+        "169.254.0.0/16",
+        "224.0.0.0/4",
+        "fe80::/10",
+        "ff00::/8"
+      ],
+      "stack" : "system",
+      "strict_route" : false,
+      "tag" : "tun-in",
+      "type" : "tun"
+    }
+  ],
+  "log" : {
+    "level" : "info",
+    "timestamp" : true
+  },
+  "outbounds" : [
+    {
+      "tag" : "direct",
+      "type" : "direct"
+    }
+  ],
+  "route" : {
+    "auto_detect_interface" : true,
+    "default_domain_resolver" : "dns-direct",
+    "final" : "direct",
+    "find_process" : true,
+    "rules" : [
+      {
+        "action" : "sniff"
+      },
+      {
+        "action" : "hijack-dns",
+        "protocol" : "dns"
+      },
+      {
+        "outbound" : "direct",
+        "process_path" : [
+          "/Applications/Wayfork.app/Contents/Resources/bin/openvpn"
+        ]
+      },
+      {
+        "ip_is_private" : true,
+        "outbound" : "direct"
+      }
+    ]
+  }
+}

@@ -1,0 +1,161 @@
+{
+  "dns" : {
+    "final" : "dns-direct",
+    "independent_cache" : true,
+    "rules" : [
+      {
+        "query_type" : [
+          "A",
+          "AAAA"
+        ],
+        "rule_set" : [
+          "rules-t-00000000-0000-4000-8000-000000000001",
+          "rules-t-00000000-0000-4000-8000-000000000002"
+        ],
+        "server" : "fakeip"
+      }
+    ],
+    "servers" : [
+      {
+        "tag" : "dns-direct",
+        "type" : "local"
+      },
+      {
+        "detour" : "t-00000000-0000-4000-8000-000000000001",
+        "server" : "10.8.0.1",
+        "tag" : "dns-t-00000000-0000-4000-8000-000000000001",
+        "type" : "udp"
+      },
+      {
+        "inet4_range" : "198.18.0.0/15",
+        "inet6_range" : "fc00::/18",
+        "tag" : "fakeip",
+        "type" : "fakeip"
+      }
+    ]
+  },
+  "experimental" : {
+    "cache_file" : {
+      "enabled" : true,
+      "path" : "cache.db",
+      "store_fakeip" : true
+    }
+  },
+  "inbounds" : [
+    {
+      "address" : [
+        "172.19.0.1/30",
+        "fdfe:dcba:9876::1/126"
+      ],
+      "auto_route" : true,
+      "interface_name" : "utun100",
+      "mtu" : 1500,
+      "route_exclude_address" : [
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "100.64.0.0/10",
+        "169.254.0.0/16",
+        "224.0.0.0/4",
+        "fe80::/10",
+        "ff00::/8"
+      ],
+      "stack" : "system",
+      "strict_route" : false,
+      "tag" : "tun-in",
+      "type" : "tun"
+    }
+  ],
+  "log" : {
+    "level" : "info",
+    "timestamp" : true
+  },
+  "outbounds" : [
+    {
+      "tag" : "direct",
+      "type" : "direct"
+    },
+    {
+      "bind_interface" : "utun101",
+      "domain_resolver" : {
+        "server" : "dns-t-00000000-0000-4000-8000-000000000001",
+        "strategy" : "ipv4_only"
+      },
+      "tag" : "t-00000000-0000-4000-8000-000000000001",
+      "type" : "direct"
+    },
+    {
+      "server" : "s.example",
+      "server_port" : 443,
+      "tag" : "t-00000000-0000-4000-8000-000000000002",
+      "tls" : {
+        "alpn" : [
+          "h2"
+        ],
+        "enabled" : true,
+        "insecure" : false,
+        "server_name" : "s.example",
+        "utls" : {
+          "enabled" : true,
+          "fingerprint" : "safari"
+        }
+      },
+      "transport" : {
+        "headers" : {
+          "Host" : "h.example"
+        },
+        "path" : "/x",
+        "type" : "ws"
+      },
+      "type" : "vless",
+      "uuid" : "00000000-0000-4000-8000-0000000000aa"
+    }
+  ],
+  "route" : {
+    "auto_detect_interface" : true,
+    "default_domain_resolver" : "dns-direct",
+    "final" : "direct",
+    "find_process" : true,
+    "rule_set" : [
+      {
+        "format" : "source",
+        "path" : "rules-t-00000000-0000-4000-8000-000000000001.json",
+        "tag" : "rules-t-00000000-0000-4000-8000-000000000001",
+        "type" : "local"
+      },
+      {
+        "format" : "source",
+        "path" : "rules-t-00000000-0000-4000-8000-000000000002.json",
+        "tag" : "rules-t-00000000-0000-4000-8000-000000000002",
+        "type" : "local"
+      }
+    ],
+    "rules" : [
+      {
+        "action" : "sniff"
+      },
+      {
+        "action" : "hijack-dns",
+        "protocol" : "dns"
+      },
+      {
+        "outbound" : "direct",
+        "process_path" : [
+          "/Applications/Wayfork.app/Contents/Resources/bin/openvpn"
+        ]
+      },
+      {
+        "outbound" : "t-00000000-0000-4000-8000-000000000001",
+        "rule_set" : "rules-t-00000000-0000-4000-8000-000000000001"
+      },
+      {
+        "outbound" : "t-00000000-0000-4000-8000-000000000002",
+        "rule_set" : "rules-t-00000000-0000-4000-8000-000000000002"
+      },
+      {
+        "ip_is_private" : true,
+        "outbound" : "direct"
+      }
+    ]
+  }
+}
