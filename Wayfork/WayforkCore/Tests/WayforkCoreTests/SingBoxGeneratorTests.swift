@@ -42,10 +42,13 @@ private func generate(_ store: Store, uuids: [UUID: String] = [Fixtures.homeID: 
     #expect(servers[1]["server"] as? String == "10.8.0.1")
     #expect(servers[1]["detour"] as? String == work.outboundTag)
     let dnsRules = try #require(dns["rules"] as? [[String: Any]])
-    #expect(dnsRules.count == 1)
-    #expect(dnsRules[0]["rule_set"] as? [String] == [work.ruleSetTag, home.ruleSetTag])
-    #expect(dnsRules[0]["server"] as? String == "fakeip")
+    #expect(dnsRules.count == 2)
+    #expect(dnsRules[0]["rule_set"] as? String == "rules-direct")
+    #expect(dnsRules[0]["server"] as? String == "dns-direct")
+    #expect(dnsRules[1]["rule_set"] as? [String] == [work.ruleSetTag, home.ruleSetTag])
+    #expect(dnsRules[1]["server"] as? String == "fakeip")
     #expect(dns["final"] as? String == "dns-direct")
+    #expect(dns["strategy"] as? String == "ipv4_only")
 
     let inbounds = try #require(config["inbounds"] as? [[String: Any]])
     #expect(inbounds[0]["interface_name"] as? String == "utun100")
@@ -76,15 +79,30 @@ private func generate(_ store: Store, uuids: [UUID: String] = [Fixtures.homeID: 
         rules[2]["process_path"] as? [String] == [
             "/Applications/Wayfork.app/Contents/Resources/bin/openvpn"
         ])
-    #expect(rules[3]["rule_set"] as? String == work.ruleSetTag)
-    #expect(rules[4]["rule_set"] as? String == home.ruleSetTag)
-    #expect(rules[5]["ip_is_private"] as? Bool == true)
+    #expect(rules[3]["rule_set"] as? String == "rules-direct")
+    #expect(rules[3]["outbound"] as? String == "direct")
+    #expect(rules[4]["rule_set"] as? String == work.ruleSetTag)
+    #expect(rules[5]["rule_set"] as? String == home.ruleSetTag)
+    #expect(rules[6]["ip_is_private"] as? Bool == true)
     #expect(route["final"] as? String == "direct")
     #expect(route["default_domain_resolver"] as? String == "dns-direct")
     let ruleSets = try #require(route["rule_set"] as? [[String: Any]])
-    #expect(ruleSets.map { $0["path"] as? String } == [work.ruleSetFileName, home.ruleSetFileName])
+    #expect(
+        ruleSets.map { $0["path"] as? String } == [
+            "rules-direct.json", work.ruleSetFileName, home.ruleSetFileName,
+        ])
+    #expect(output.defaultTunnel == nil)
 
-    #expect(output.ruleSets.keys.sorted() == [home.ruleSetFileName, work.ruleSetFileName].sorted())
+    #expect(
+        output.ruleSets.keys.sorted()
+            == ["rules-direct.json", home.ruleSetFileName, work.ruleSetFileName].sorted())
+    let direct = try json(output.ruleSets["rules-direct.json"]!)
+    let directRule = try #require((direct["rules"] as? [[String: Any]])?.first)
+    #expect(directRule["domain"] as? [String] == ["localhost"])
+    #expect(
+        directRule["domain_suffix"] as? [String] == [
+            ".local", ".lan", ".internal", ".home.arpa", ".localhost",
+        ])
     let workRules = try json(output.ruleSets[work.ruleSetFileName]!)
     let workRule = try #require((workRules["rules"] as? [[String: Any]])?.first)
     #expect(workRule["domain"] as? [String] == ["example.com", "api.other.com"])
@@ -114,16 +132,102 @@ private func generate(_ store: Store, uuids: [UUID: String] = [Fixtures.homeID: 
     #expect(servers[1]["server"] as? String == "10.1.1.1")
     #expect((config["log"] as? [String: Any])?["level"] as? String == "debug")
     #expect(output.routedTunnels.map(\.id) == [Fixtures.workID])
-    #expect(output.ruleSets.count == 1)
+    #expect(output.ruleSets.count == 2)
 
-    // Nothing routed at all: no dns rules, no rule_set section, still a valid config.
+    // Nothing routed at all: only the Direct rule-set remains, still a valid config.
     var empty = store
     empty.tunnels = []
     let bare = generate(empty, uuids: [:])
     let bareConfig = try json(bare.config)
-    #expect((bareConfig["dns"] as? [String: Any])?["rules"] == nil)
-    #expect((bareConfig["route"] as? [String: Any])?["rule_set"] == nil)
-    #expect(bare.ruleSets.isEmpty)
+    #expect(((bareConfig["dns"] as? [String: Any])?["rules"] as? [Any])?.count == 1)
+    #expect(((bareConfig["route"] as? [String: Any])?["rule_set"] as? [Any])?.count == 1)
+    #expect(bare.ruleSets.keys.sorted() == ["rules-direct.json"])
+}
+
+// MARK: - F8: default tunnel and exceptions
+
+private func defaultTunnelStore(defaultID: UUID) -> Store {
+    var store = twoTunnelStore()
+    store.defaultTunnelID = defaultID
+    store.rules.append(Rule(pattern: "bank.example.org", target: .direct))
+    store.rules.append(Rule(pattern: "*.intranet.example", match: .wildcard, target: .direct))
+    // An exception that shadows the Work rule for example.com: the exception wins.
+    store.rules.append(Rule(pattern: "example.com", target: .direct))
+    return store
+}
+
+@Test func openVPNDefaultTunnelRoutesEverythingElse() throws {
+    let output = generate(defaultTunnelStore(defaultID: Fixtures.workID))
+    let config = try json(output.config)
+    let work = Fixtures.work
+    #expect(output.defaultTunnel?.id == work.id)
+
+    let route = try #require(config["route"] as? [String: Any])
+    #expect(route["final"] as? String == work.outboundTag)
+    let dns = try #require(config["dns"] as? [String: Any])
+    #expect(dns["final"] as? String == "dns-\(work.outboundTag)")
+    let dnsRules = try #require(dns["rules"] as? [[String: Any]])
+    #expect(dnsRules.count == 3)
+    #expect(dnsRules[2]["query_type"] as? [String] == ["A", "AAAA"])
+    #expect(dnsRules[2]["server"] as? String == "fakeip")
+    #expect(dnsRules[2]["rule_set"] == nil)
+    // No extra resolver for an OpenVPN default: its udp server already exists.
+    let servers = try #require(dns["servers"] as? [[String: Any]])
+    #expect(
+        servers.map { $0["tag"] as? String } == ["dns-direct", "dns-\(work.outboundTag)", "fakeip"])
+
+    let direct = try json(output.ruleSets["rules-direct.json"]!)
+    let directRule = try #require((direct["rules"] as? [[String: Any]])?.first)
+    #expect(directRule["domain"] as? [String] == ["localhost", "bank.example.org", "example.com"])
+    #expect(directRule["domain_regex"] as? [String] == ["^.+\\.intranet\\.example$"])
+    // The shadowed Work rule is dropped from its rule-set.
+    let workRules = try json(output.ruleSets[work.ruleSetFileName]!)
+    let workRule = try #require((workRules["rules"] as? [[String: Any]])?.first)
+    #expect(workRule["domain"] as? [String] == ["api.other.com"])
+}
+
+@Test func vlessDefaultTunnelGetsADoTResolver() throws {
+    let output = generate(defaultTunnelStore(defaultID: Fixtures.homeID))
+    let config = try json(output.config)
+    let home = Fixtures.home
+    let route = try #require(config["route"] as? [String: Any])
+    #expect(route["final"] as? String == home.outboundTag)
+    let dns = try #require(config["dns"] as? [String: Any])
+    #expect(dns["final"] as? String == "dns-\(home.outboundTag)")
+    let servers = try #require(dns["servers"] as? [[String: Any]])
+    let dot = try #require(servers.first { $0["tag"] as? String == "dns-\(home.outboundTag)" })
+    #expect(dot["type"] as? String == "tls")
+    #expect(dot["server"] as? String == "1.1.1.1")
+    #expect(dot["detour"] as? String == home.outboundTag)
+}
+
+@Test func unusableDefaultTunnelFallsBackToDirect() throws {
+    // Disabled default → behaves as if none were set.
+    var disabled = defaultTunnelStore(defaultID: Fixtures.workID)
+    disabled.tunnels[0].isEnabled = false
+    let output = generate(disabled)
+    #expect(output.defaultTunnel == nil)
+    let config = try json(output.config)
+    #expect((config["route"] as? [String: Any])?["final"] as? String == "direct")
+    #expect((config["dns"] as? [String: Any])?["final"] as? String == "dns-direct")
+    #expect(((config["dns"] as? [String: Any])?["rules"] as? [Any])?.count == 2)
+
+    // VLESS default without its UUID → left out of the config, so no default either.
+    let noSecret = generate(defaultTunnelStore(defaultID: Fixtures.homeID), uuids: [:])
+    #expect(noSecret.defaultTunnel == nil)
+    #expect((try json(noSecret.config)["route"] as? [String: Any])?["final"] as? String == "direct")
+
+    // Unknown id → no default.
+    var unknown = twoTunnelStore()
+    unknown.defaultTunnelID = UUID()
+    #expect(generate(unknown).defaultTunnel == nil)
+
+    // Exceptions without a default still land in rules-direct.json.
+    var exceptionsOnly = twoTunnelStore()
+    exceptionsOnly.rules.append(Rule(pattern: "bank.example.org", target: .direct))
+    let direct = try json(generate(exceptionsOnly).ruleSets["rules-direct.json"]!)
+    let directRule = try #require((direct["rules"] as? [[String: Any]])?.first)
+    #expect(directRule["domain"] as? [String] == ["localhost", "bank.example.org"])
 }
 
 @Test func emptyRuleSetIsStillEmitted() throws {
@@ -167,7 +271,7 @@ private func generate(_ store: Store, uuids: [UUID: String] = [Fixtures.homeID: 
     #expect(result.plan.openVPN[0].interface == "utun101")
     #expect(result.plan.openVPN[0].id == Fixtures.workID.uuidString.lowercased())
     #expect(result.plan.openVPN[0].credentials?.username == "u")
-    #expect(result.plan.singBox.ruleSets.count == 1)
+    #expect(result.plan.singBox.ruleSets.count == 2)  // Work + rules-direct.json
     #expect(result.plan.singBox.configHash == Hashing.sha256Hex(result.plan.singBox.config))
 
     // Same input → identical plan hash; a rule change → different plan, same config hash.
@@ -227,6 +331,8 @@ private func configVariants() -> [(String, SingBoxConfigGenerator.Output)] {
             server: "s.example", port: 443, security: .tls, fingerprint: "safari", alpn: ["h2"],
             transport: .ws(path: "/x", host: "h.example")))
     variants.append(("vless-ws", generate(ws)))
+    variants.append(("default-openvpn", generate(defaultTunnelStore(defaultID: Fixtures.workID))))
+    variants.append(("default-vless", generate(defaultTunnelStore(defaultID: Fixtures.homeID))))
     return variants
 }
 

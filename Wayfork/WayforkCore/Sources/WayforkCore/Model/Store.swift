@@ -8,17 +8,22 @@ public struct Store: Codable, Sendable, Hashable {
     public var tunnels: [Tunnel]
     public var rules: [Rule]
     public var settings: Settings
+    /// F8: the tunnel that takes everything no rule matched; nil keeps unmatched traffic
+    /// direct. See `effectiveDefaultTunnel`.
+    public var defaultTunnelID: UUID?
 
     public init(
         schemaVersion: Int = Store.currentSchemaVersion,
         tunnels: [Tunnel] = [],
         rules: [Rule] = [],
-        settings: Settings = Settings()
+        settings: Settings = Settings(),
+        defaultTunnelID: UUID? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.tunnels = tunnels
         self.rules = rules
         self.settings = settings
+        self.defaultTunnelID = defaultTunnelID
     }
 
     public static let empty = Store()
@@ -27,21 +32,43 @@ public struct Store: Codable, Sendable, Hashable {
         tunnels.first { $0.id == id }
     }
 
-    /// Rules of one tunnel in their list order.
-    public func rules(for tunnelID: UUID) -> [Rule] {
-        rules.filter { $0.tunnelID == tunnelID }
+    /// Rules of one group (a tunnel or Direct) in their list order.
+    public func rules(for target: RuleTarget) -> [Rule] {
+        rules.filter { $0.target == target }
     }
 
-    /// Rules in matching order: tunnels in store order, each tunnel's rules in list order.
-    /// Rules pointing at a tunnel that no longer exists come last, in list order.
+    /// Rules of one tunnel in their list order.
+    public func rules(for tunnelID: UUID) -> [Rule] {
+        rules(for: .tunnel(tunnelID))
+    }
+
+    /// Direct rules (F8 exceptions) in list order.
+    public var exceptions: [Rule] { rules(for: .direct) }
+
+    /// Rules in matching order: the Direct group first (exceptions always win), then tunnels
+    /// in store order, each group's rules in list order. Rules pointing at a tunnel that no
+    /// longer exists come last, in list order.
     public var effectiveRules: [Rule] {
-        var ordered: [Rule] = []
+        var ordered = exceptions
         for tunnel in tunnels {
             ordered.append(contentsOf: rules(for: tunnel.id))
         }
         let known = Set(tunnels.map(\.id))
-        ordered.append(contentsOf: rules.filter { !known.contains($0.tunnelID) })
+        ordered.append(
+            contentsOf: rules.filter { rule in
+                guard let tunnelID = rule.tunnelID else { return false }
+                return !known.contains(tunnelID)
+            })
         return ordered
+    }
+
+    /// The default tunnel when it exists and is enabled; nil means unmatched traffic goes
+    /// direct. A default without its secret is dropped later by `RuntimePlanBuilder`.
+    public var effectiveDefaultTunnel: Tunnel? {
+        guard let id = defaultTunnelID, let tunnel = tunnel(id: id), tunnel.isEnabled else {
+            return nil
+        }
+        return tunnel
     }
 
     /// Lowest free slot for a new tunnel, or nil when all `Tunnel.maxSlots` are taken.

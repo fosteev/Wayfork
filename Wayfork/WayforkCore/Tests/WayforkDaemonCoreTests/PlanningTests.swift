@@ -112,6 +112,7 @@ private func validationError(_ plan: RuntimePlan) -> DaemonError? {
 
 @Test func planValidation() {
     #expect(validationError(plan([runtime(idA)], ruleSets: ["rules-t-\(idA).json": "{}"])) == nil)
+    #expect(validationError(plan([], ruleSets: ["rules-direct.json": "{}"])) == nil)
     #expect(
         reason(validationError(plan([runtime(idA), runtime(idB, interface: "utun101")])))
             .contains("used twice"))

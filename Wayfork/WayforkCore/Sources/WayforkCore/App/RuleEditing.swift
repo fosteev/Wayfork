@@ -9,9 +9,10 @@ public enum RuleEditing {
         case duplicate
     }
 
-    /// Normalizes `input` for `match` and rejects duplicates within `tunnelID`'s group.
+    /// Normalizes `input` for `match` and rejects duplicates within `target`'s group.
     public static func normalize(
-        _ input: String, match: RuleMatch, tunnelID: UUID, store: Store, excluding ruleID: UUID?
+        _ input: String, match: RuleMatch, target: RuleTarget, store: Store,
+        excluding ruleID: UUID?
     ) -> Result<String, Failure> {
         let pattern: String
         do {
@@ -22,7 +23,7 @@ public enum RuleEditing {
             return .failure(.pattern(.invalidHostname(input)))
         }
         let duplicate = store.rules.contains {
-            $0.id != ruleID && $0.tunnelID == tunnelID && $0.pattern == pattern
+            $0.id != ruleID && $0.target == target && $0.pattern == pattern
                 && $0.match == match
         }
         return duplicate ? .failure(.duplicate) : .success(pattern)
@@ -51,13 +52,14 @@ public enum QuickAdd {
     public enum Outcome: Sendable, Hashable {
         /// New rule to append.
         case add(Rule)
-        /// An existing rule with the same pattern, re-pointed at the chosen tunnel.
+        /// An existing rule with the same pattern, re-pointed at the chosen target.
         case update(Rule)
         case invalid(String)
     }
 
-    /// Match type is `suffix`; a `*` in the input switches to `wildcard`.
-    public static func evaluate(input: String, tunnelID: UUID, store: Store) -> Outcome {
+    /// Match type is `suffix`; a `*` in the input switches to `wildcard`. `target: .direct`
+    /// adds an exception (F8).
+    public static func evaluate(input: String, target: RuleTarget, store: Store) -> Outcome {
         let match = RulePattern.inferMatch(input)
         let pattern: String
         do {
@@ -68,12 +70,12 @@ public enum QuickAdd {
             return .invalid(RuleEditing.message(for: .invalidHostname(input)))
         }
         if var existing = store.rules.first(where: { $0.pattern == pattern }) {
-            existing.tunnelID = tunnelID
+            existing.target = target
             existing.match = match
             existing.isEnabled = true
             return .update(existing)
         }
-        return .add(Rule(pattern: pattern, match: match, tunnelID: tunnelID))
+        return .add(Rule(pattern: pattern, match: match, target: target))
     }
 
     /// True when the input names a rule that already exists (the button reads "Update").

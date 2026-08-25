@@ -117,9 +117,12 @@ public enum StatusText {
 
     // MARK: - Popover header
 
-    public static func summary(state: GlobalState, store: Store, status: RuntimeStatus?)
-        -> String
-    {
+    /// `missingSecrets`: tunnels the plan left out (a default without its secret is no
+    /// default).
+    public static func summary(
+        state: GlobalState, store: Store, status: RuntimeStatus?, missingSecrets: Set<UUID> = []
+    ) -> String {
+        let defaultTunnel = effectiveDefaultTunnel(store, missingSecrets: missingSecrets)
         switch state {
         case .off:
             return "Off — all traffic goes direct"
@@ -132,9 +135,17 @@ public enum StatusText {
         case .on:
             let tunnels = store.tunnels.filter(\.isEnabled).count
             guard tunnels > 0 else { return "On — no tunnels" }
+            if let defaultTunnel {
+                return
+                    "On — everything via \(defaultTunnel.name) · \(count(activeRuleCount(store), "rule")), \(count(activeExceptionCount(store), "exception"))"
+            }
             return
                 "On — routing \(count(activeRuleCount(store), "domain")) through \(count(tunnels, "tunnel"))"
         case .degraded(let failing):
+            if let defaultTunnel, failing.contains(defaultTunnel.id) {
+                return
+                    "Degraded — \(defaultTunnel.name) (default) is down · unmatched traffic is blocked"
+            }
             let names = failing.compactMap { store.tunnel(id: $0)?.name }
             let verb = names.count == 1 ? "is" : "are"
             let subject = names.isEmpty ? "a tunnel" : names.joined(separator: ", ")
@@ -145,19 +156,36 @@ public enum StatusText {
         }
     }
 
-    /// Rules that currently route something: enabled, not shadowed, tunnel enabled.
+    /// Tunnel rules that currently route something: enabled, not shadowed, tunnel enabled.
     public static func activeRuleCount(_ store: Store) -> Int {
         RuleValidator.activeRules(store).values.reduce(0) { $0 + $1.count }
     }
+
+    /// Direct rules in effect (F8).
+    public static func activeExceptionCount(_ store: Store) -> Int {
+        RuleValidator.activeExceptions(store).count
+    }
+
+    /// The default tunnel that is actually routing "everything else" (F8).
+    public static func effectiveDefaultTunnel(_ store: Store, missingSecrets: Set<UUID> = [])
+        -> Tunnel?
+    {
+        guard let tunnel = store.effectiveDefaultTunnel, !missingSecrets.contains(tunnel.id)
+        else { return nil }
+        return tunnel
+    }
+
+    /// Card / row suffix for the default tunnel.
+    static let defaultSuffix = " · everything else"
 
     // MARK: - Tunnel cards and rows
 
     /// Popover card for one tunnel.
     public static func card(
         tunnel: Tunnel, state: TunnelState?, global: GlobalState, ruleCount: Int,
-        missingSecret: Bool = false
+        missingSecret: Bool = false, isDefault: Bool = false
     ) -> TunnelPresentation {
-        let rules = count(ruleCount, "rule")
+        let rules = count(ruleCount, "rule") + (isDefault ? defaultSuffix : "")
         if !tunnel.isEnabled {
             return TunnelPresentation(
                 glyph: .idle, detail: "disabled · \(rules)", isDimmed: true, action: .enable)
@@ -207,9 +235,10 @@ public enum StatusText {
     /// One-line summary for a Settings › Tunnels row, e.g.
     /// `connected · vpn.example.com:1194 udp · 10.8.0.6 on utun101`.
     public static func rowSummary(
-        tunnel: Tunnel, state: TunnelState?, global: GlobalState, missingSecret: Bool = false
+        tunnel: Tunnel, state: TunnelState?, global: GlobalState, missingSecret: Bool = false,
+        isDefault: Bool = false
     ) -> (text: String, glyph: StatusGlyph, isError: Bool) {
-        let endpoint = endpointDescription(tunnel.kind)
+        let endpoint = endpointDescription(tunnel.kind) + (isDefault ? defaultSuffix : "")
         if !tunnel.isEnabled { return ("disabled · \(endpoint)", .idle, false) }
         if missingSecret {
             let what = tunnel.kind.isOpenVPN ? "config missing" : "UUID missing"

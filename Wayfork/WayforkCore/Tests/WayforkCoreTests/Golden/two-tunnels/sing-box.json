@@ -4,6 +4,10 @@
     "independent_cache" : true,
     "rules" : [
       {
+        "rule_set" : "rules-direct",
+        "server" : "dns-direct"
+      },
+      {
         "query_type" : [
           "A",
           "AAAA"
@@ -116,6 +120,12 @@
     "rule_set" : [
       {
         "format" : "source",
+        "path" : "rules-direct.json",
+        "tag" : "rules-direct",
+        "type" : "local"
+      },
+      {
+        "format" : "source",
         "path" : "rules-t-00000000-0000-4000-8000-000000000001.json",
         "tag" : "rules-t-00000000-0000-4000-8000-000000000001",
         "type" : "local"
@@ -140,6 +150,10 @@
         "process_path" : [
           "/Applications/Wayfork.app/Contents/Resources/bin/openvpn"
         ]
+      },
+      {
+        "outbound" : "direct",
+        "rule_set" : "rules-direct"
       },
       {
         "outbound" : "t-00000000-0000-4000-8000-000000000001",

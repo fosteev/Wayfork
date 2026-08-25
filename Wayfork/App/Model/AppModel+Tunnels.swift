@@ -263,6 +263,7 @@ extension AppModel {
         update { store in
             store.tunnels.removeAll { $0.id == tunnelID }
             store.rules.removeAll { $0.tunnelID == tunnelID }
+            if store.defaultTunnelID == tunnelID { store.defaultTunnelID = nil }
         }
         try? secrets.deleteAll(for: tunnelID)
         if expandedTunnelID == tunnelID { expandedTunnelID = nil }

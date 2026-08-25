@@ -114,8 +114,10 @@ default tunnel (carve-outs) and without one (override a broader tunnel rule). Du
 are rejected per group like everywhere else.
 
 JSON stays schema 1: a tunnel rule keeps `"tunnelID": "<uuid>"`, a direct rule has
-`"target": "direct"` and no `tunnelID`; a rule with neither is invalid. `defaultTunnelID`
-is optional. Export files carry both fields the same way; on import a `defaultTunnelID`
+`"target": "direct"` and no `tunnelID`; a rule with neither (or an unknown `target`) is
+invalid. `defaultTunnelID` is optional. In code `Rule.target: RuleTarget` is the stored
+field and `tunnelID` a computed accessor; `Store.exceptions` / `rules(for: RuleTarget)`
+address the groups, `Store.effectiveDefaultTunnel` applies the enabled check. Export files carry both fields the same way; on import a `defaultTunnelID`
 pointing at a skipped tunnel is dropped with a warning, and on Merge the file's value
 replaces the current one only when it is non-nil.
 

@@ -2,6 +2,12 @@
   "dns" : {
     "final" : "dns-direct",
     "independent_cache" : true,
+    "rules" : [
+      {
+        "rule_set" : "rules-direct",
+        "server" : "dns-direct"
+      }
+    ],
     "servers" : [
       {
         "tag" : "dns-direct",
@@ -63,6 +69,14 @@
     "default_domain_resolver" : "dns-direct",
     "final" : "direct",
     "find_process" : true,
+    "rule_set" : [
+      {
+        "format" : "source",
+        "path" : "rules-direct.json",
+        "tag" : "rules-direct",
+        "type" : "local"
+      }
+    ],
     "rules" : [
       {
         "action" : "sniff"
@@ -76,6 +90,10 @@
         "process_path" : [
           "/Applications/Wayfork.app/Contents/Resources/bin/openvpn"
         ]
+      },
+      {
+        "outbound" : "direct",
+        "rule_set" : "rules-direct"
       },
       {
         "ip_is_private" : true,

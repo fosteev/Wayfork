@@ -69,13 +69,16 @@ public struct ExportDocument: Codable, Sendable, Hashable {
     public var tunnels: [ExportedTunnel]
     public var rules: [Rule]
     public var settings: Settings
+    /// F8; absent in files written before it existed.
+    public var defaultTunnelID: UUID?
 
     public init(
         exportedAt: Date = Date(),
         includesSecrets: Bool,
         tunnels: [ExportedTunnel],
         rules: [Rule],
-        settings: Settings
+        settings: Settings,
+        defaultTunnelID: UUID? = nil
     ) {
         format = ExportDocument.formatName
         version = ExportDocument.currentVersion
@@ -84,6 +87,7 @@ public struct ExportDocument: Codable, Sendable, Hashable {
         self.tunnels = tunnels
         self.rules = rules
         self.settings = settings
+        self.defaultTunnelID = defaultTunnelID
     }
 
     public enum Error: Swift.Error, Equatable {

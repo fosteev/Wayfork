@@ -16,6 +16,8 @@ public enum RunLayout {
     public static func managementSocket(_ id: String) -> String { "t-\(id).sock" }
     public static func openVPNPID(_ id: String) -> String { "t-\(id).pid" }
     public static func ruleSet(_ id: String) -> String { "rules-t-\(id).json" }
+    /// Exceptions and built-in local names (F8); always part of the plan.
+    public static let directRuleSet = "rules-direct.json"
 
     /// Everything except `cache.db` is wiped on stop and on daemon startup.
     public static func isTransient(_ fileName: String) -> Bool {

@@ -162,7 +162,7 @@ struct TunnelCardView: View {
 struct QuickAddView: View {
     @Environment(AppModel.self) private var model
     @State private var input = ""
-    @State private var tunnelID: UUID?
+    @State private var target: RuleTarget?
     @State private var error: String?
 
     private var enabledTunnels: [Tunnel] { model.store.tunnels.filter(\.isEnabled) }
@@ -175,10 +175,12 @@ struct QuickAddView: View {
                     .controlSize(.small)
                     .invalidOutline(error != nil)
                     .onSubmit(submit)
-                Picker("Tunnel", selection: $tunnelID) {
+                Picker("Tunnel", selection: $target) {
                     ForEach(enabledTunnels) { tunnel in
-                        Text(tunnel.name).tag(Optional(tunnel.id))
+                        Text(tunnel.name).tag(Optional(RuleTarget.tunnel(tunnel.id)))
                     }
+                    Divider()
+                    Text("Direct").tag(Optional(RuleTarget.direct))
                 }
                 .labelsHidden()
                 .controlSize(.small)
@@ -187,7 +189,7 @@ struct QuickAddView: View {
                     submit()
                 }
                 .controlSize(.small)
-                .disabled(input.trimmingCharacters(in: .whitespaces).isEmpty || tunnelID == nil)
+                .disabled(input.trimmingCharacters(in: .whitespaces).isEmpty || target == nil)
             }
             if let error {
                 Text(error).font(.system(size: 11)).foregroundStyle(.red).padding(.leading, 2)
@@ -196,8 +198,10 @@ struct QuickAddView: View {
         .onAppear(perform: prefill)
         .onChange(of: input) { error = nil }
         .onChange(of: enabledTunnels.map(\.id)) { _, ids in
-            if let tunnelID, !ids.contains(tunnelID) { self.tunnelID = ids.first }
-            if tunnelID == nil { tunnelID = ids.first }
+            if let tunnelID = target?.tunnelID, !ids.contains(tunnelID) {
+                target = ids.first.map(RuleTarget.tunnel)
+            }
+            if target == nil { target = ids.first.map(RuleTarget.tunnel) }
         }
     }
 
@@ -209,16 +213,19 @@ struct QuickAddView: View {
             input = candidate
         }
         let ids = enabledTunnels.map(\.id)
-        if let last = model.quickAddTunnelID, ids.contains(last) {
-            tunnelID = last
-        } else {
-            tunnelID = ids.first
+        switch model.quickAddTarget {
+        case .direct:
+            target = .direct
+        case .tunnel(let last) where ids.contains(last):
+            target = .tunnel(last)
+        default:
+            target = ids.first.map(RuleTarget.tunnel)
         }
     }
 
     private func submit() {
-        guard let tunnelID else { return }
-        if let message = model.quickAdd(input: input, tunnelID: tunnelID) {
+        guard let target else { return }
+        if let message = model.quickAdd(input: input, target: target) {
             error = message
         } else {
             input = ""

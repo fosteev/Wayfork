@@ -68,8 +68,17 @@
       "tunnelID": "00000000-0000-4000-8000-000000000002",
       "isEnabled": true,
       "note": null
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000103",
+      "pattern": "bank.example.org",
+      "match": "suffix",
+      "target": "direct",
+      "isEnabled": true,
+      "note": "Exception: stays direct even with a default tunnel"
     }
   ],
+  "defaultTunnelID": "00000000-0000-4000-8000-000000000002",
   "settings": {
     "launchAtLogin": false,
     "connectOnLaunch": false,

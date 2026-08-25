@@ -134,7 +134,9 @@ enum Fixtures {
     #expect(document.tunnels.count == 2)
     #expect(document.tunnels[0].kind.isOpenVPN)
     #expect(document.tunnels[1].kind.vless?.security == .reality)
-    #expect(document.rules.count == 2)
+    #expect(document.rules.count == 3)
+    #expect(document.rules[2].isException)
+    #expect(document.defaultTunnelID == document.tunnels[1].id)
 }
 
 @Test func xpcPayloadsRoundTrip() throws {
@@ -176,4 +178,77 @@ enum Fixtures {
     #expect(LogLevel.debug.openVPNVerbosity == 4)
     #expect(LogLevel.error.openVPNVerbosity == 1)
     #expect(LogLevel.warning.singBoxLevel == "warn")
+}
+
+// MARK: - F8: rule targets and the default tunnel
+
+@Test func ruleJSONStaysBackwardCompatible() throws {
+    // A pre-F8 rule: tunnelID only.
+    let legacy = Data(
+        """
+        {"id":"00000000-0000-4000-8000-000000000101","pattern":"example.com","match":"suffix",
+         "tunnelID":"00000000-0000-4000-8000-000000000001","isEnabled":true,"note":null}
+        """.utf8)
+    let rule = try JSONCoding.decoder.decode(Rule.self, from: legacy)
+    #expect(rule.target == .tunnel(Fixtures.workID))
+    #expect(rule.tunnelID == Fixtures.workID)
+    #expect(!rule.isException)
+
+    // An exception: target: direct, no tunnelID.
+    let exception = Rule(pattern: "bank.example.org", target: .direct, note: "keep local")
+    let data = try JSONCoding.prettyEncoder.encode(exception)
+    let json = String(decoding: data, as: UTF8.self)
+    #expect(json.contains("\"target\" : \"direct\""))
+    #expect(!json.contains("tunnelID"))
+    let decoded = try JSONCoding.decoder.decode(Rule.self, from: data)
+    #expect(decoded == exception)
+    #expect(decoded.tunnelID == nil)
+
+    // A tunnel rule never writes `target`.
+    let tunnelJSON = String(
+        decoding: try JSONCoding.prettyEncoder.encode(
+            Rule(pattern: "a.com", tunnelID: Fixtures.workID)), as: UTF8.self)
+    #expect(!tunnelJSON.contains("\"target\""))
+
+    // Neither → invalid; unknown target → invalid.
+    let neither = Data(
+        "{\"id\":\"00000000-0000-4000-8000-000000000101\",\"pattern\":\"a.com\",\"match\":\"suffix\",\"isEnabled\":true}"
+            .utf8)
+    #expect(throws: DecodingError.self) { try JSONCoding.decoder.decode(Rule.self, from: neither) }
+    let unknown = Data(
+        "{\"id\":\"00000000-0000-4000-8000-000000000101\",\"pattern\":\"a.com\",\"match\":\"suffix\",\"target\":\"reject\",\"isEnabled\":true}"
+            .utf8)
+    #expect(throws: DecodingError.self) { try JSONCoding.decoder.decode(Rule.self, from: unknown) }
+}
+
+@Test func storeDefaultTunnelRoundTripsAndDefaultsToNil() throws {
+    var store = Fixtures.store(rules: [Rule(pattern: "bank.example.org", target: .direct)])
+    #expect(try StoreCodec.decode(StoreCodec.encode(store)).defaultTunnelID == nil)
+    // A store written before F8 has no key at all.
+    let legacy = Data(
+        "{\"schemaVersion\": 1, \"tunnels\": [], \"rules\": [], \"settings\": {}}".utf8)
+    #expect(try StoreCodec.decode(legacy).defaultTunnelID == nil)
+
+    store.defaultTunnelID = Fixtures.workID
+    let decoded = try StoreCodec.decode(StoreCodec.encode(store))
+    #expect(decoded == store)
+    #expect(decoded.effectiveDefaultTunnel?.id == Fixtures.workID)
+    #expect(decoded.exceptions.map(\.pattern) == ["bank.example.org"])
+
+    var disabled = store
+    disabled.tunnels[0].isEnabled = false
+    #expect(disabled.effectiveDefaultTunnel == nil)
+    var missing = store
+    missing.defaultTunnelID = UUID()
+    #expect(missing.effectiveDefaultTunnel == nil)
+}
+
+@Test func effectiveRulesPutExceptionsFirst() {
+    let exception = Rule(pattern: "x.com", target: .direct)
+    let r1 = Rule(pattern: "a.com", tunnelID: Fixtures.homeID)
+    let r2 = Rule(pattern: "b.com", tunnelID: Fixtures.workID)
+    let orphan = Rule(pattern: "c.com", tunnelID: UUID())
+    let store = Fixtures.store(rules: [orphan, r1, r2, exception])
+    #expect(store.effectiveRules.map(\.pattern) == ["x.com", "b.com", "a.com", "c.com"])
+    #expect(store.rules(for: .direct).map(\.id) == [exception.id])
 }

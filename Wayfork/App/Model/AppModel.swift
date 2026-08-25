@@ -46,7 +46,7 @@ final class AppModel {
     /// Source to preselect when the Logs window opens ("Show Log").
     var logsPreselectedSource: String?
     /// Last tunnel used by quick add.
-    var quickAddTunnelID: UUID?
+    var quickAddTarget: RuleTarget?
     /// Set by the scenes; `openWindow` is only reachable from views.
     var windowOpener: ((String) -> Void)?
 
@@ -108,7 +108,9 @@ final class AppModel {
     }
 
     var summary: String {
-        helperMessage ?? StatusText.summary(state: globalState, store: store, status: status)
+        helperMessage
+            ?? StatusText.summary(
+                state: globalState, store: store, status: status, missingSecrets: missingSecrets)
     }
 
     var menuBarIconName: String {
@@ -133,16 +135,76 @@ final class AppModel {
         store.rules(for: tunnelID).count
     }
 
+    func ruleCount(for target: RuleTarget) -> Int {
+        store.rules(for: target).count
+    }
+
     func card(for tunnel: Tunnel) -> TunnelPresentation {
         StatusText.card(
             tunnel: tunnel, state: tunnelState(tunnel.id), global: globalState,
-            ruleCount: ruleCount(for: tunnel.id), missingSecret: missingSecrets.contains(tunnel.id))
+            ruleCount: ruleCount(for: tunnel.id), missingSecret: missingSecrets.contains(tunnel.id),
+            isDefault: effectiveDefaultTunnel?.id == tunnel.id)
     }
 
     func rowSummary(for tunnel: Tunnel) -> (text: String, glyph: StatusGlyph, isError: Bool) {
         StatusText.rowSummary(
             tunnel: tunnel, state: tunnelState(tunnel.id), global: globalState,
-            missingSecret: missingSecrets.contains(tunnel.id))
+            missingSecret: missingSecrets.contains(tunnel.id),
+            isDefault: effectiveDefaultTunnel?.id == tunnel.id)
+    }
+
+    // MARK: - Default tunnel (F8)
+
+    /// The tunnel actually taking "everything else": set, enabled and with its secret.
+    var effectiveDefaultTunnel: Tunnel? {
+        StatusText.effectiveDefaultTunnel(store, missingSecrets: missingSecrets)
+    }
+
+    var defaultTunnelIssue: DefaultTunnelIssue? {
+        RuleValidator.defaultTunnelIssue(store, missingSecrets: missingSecrets)
+    }
+
+    func isDefaultTunnel(_ id: UUID) -> Bool {
+        store.defaultTunnelID == id
+    }
+
+    /// Only one tunnel can be the default; nil clears it. A change restarts the routing
+    /// engine (`route.final` changes), which the apply pipeline handles.
+    func setDefaultTunnel(_ id: UUID?) {
+        guard store.defaultTunnelID != id else { return }
+        update { $0.defaultTunnelID = id }
+        if let id {
+            logs.app(.info, "default tunnel: \(tunnelName(id))")
+        } else {
+            logs.app(.info, "default tunnel cleared")
+        }
+    }
+
+    /// Hint under the "Route everything else" toggle (docs/design/02-ux.md, "Tunnels").
+    func defaultTunnelHint(for tunnel: Tunnel) -> (text: String, isWarning: Bool) {
+        guard isDefaultTunnel(tunnel.id) else {
+            return ("Domains without a rule use this tunnel instead of going direct.", false)
+        }
+        switch defaultTunnelIssue {
+        case .disabled:
+            return ("Disabled — everything else goes direct.", true)
+        case .missingSecret:
+            let what = tunnel.kind.isOpenVPN ? "Config" : "UUID"
+            return ("\(what) missing — everything else goes direct.", true)
+        case .missing, .none:
+            return (
+                "Domains without a rule use this tunnel; add exceptions in Rules › Direct. While it is down, unmatched traffic is blocked.",
+                false
+            )
+        }
+    }
+
+    /// Header hint of the Direct group in Settings › Rules.
+    var directGroupHint: String {
+        if let tunnel = effectiveDefaultTunnel {
+            return "Everything else goes through \(tunnel.name); these domains stay direct"
+        }
+        return "Overrides tunnel rules; everything unmatched already goes direct"
     }
 
     /// Discovered DNS for an OpenVPN tunnel (live status first, then the stored value).

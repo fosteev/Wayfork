@@ -2,9 +2,10 @@ import Foundation
 
 /// Problems the UI shows as chips next to a rule (docs/design/02-ux.md).
 public enum RuleIssue: Equatable, Sendable, Hashable {
-    /// Same pattern and match as an earlier rule of the same tunnel.
+    /// Same pattern and match as an earlier rule of the same group.
     case duplicate(of: UUID)
-    /// Same pattern and match as an active rule under an earlier tunnel; never matches.
+    /// Same pattern and match as an active rule in an earlier group (Direct comes first);
+    /// never matches.
     case shadowed(by: UUID)
     /// The rule's tunnel is disabled: the rule is inert.
     case tunnelDisabled
@@ -15,19 +16,31 @@ public enum RuleIssue: Equatable, Sendable, Hashable {
     case coversTunnelServer(tunnelName: String)
 }
 
+/// Why `Store.defaultTunnelID` is not taking "everything else" right now (F8).
+public enum DefaultTunnelIssue: Equatable, Sendable, Hashable {
+    /// The id points at no tunnel.
+    case missing
+    case disabled
+    /// The tunnel has no config body / UUID in Keychain, so the plan leaves it out.
+    case missingSecret
+}
+
 public enum RuleValidator {
     /// Issues per rule id. Rules without problems are absent from the result.
     public static func validate(_ store: Store) -> [UUID: [RuleIssue]] {
         var issues: [UUID: [RuleIssue]] = [:]
         let tunnelsByID = Dictionary(uniqueKeysWithValues: store.tunnels.map { ($0.id, $0) })
-        let tunnelOrder = Dictionary(
-            uniqueKeysWithValues: store.tunnels.enumerated().map { ($1.id, $0) })
+        // Group order for shadowing: Direct first, then tunnels in store order.
+        var groupOrder: [RuleTarget: Int] = [.direct: 0]
+        for (index, tunnel) in store.tunnels.enumerated() {
+            groupOrder[.tunnel(tunnel.id)] = index + 1
+        }
 
-        // Duplicates within one tunnel: the first occurrence in list order wins.
+        // Duplicates within one group: the first occurrence in list order wins.
         var seen: [RuleKey: UUID] = [:]
         var duplicates: Set<UUID> = []
         for rule in store.rules {
-            let key = RuleKey(rule, tunnelID: rule.tunnelID)
+            let key = RuleKey(rule, target: rule.target)
             if let first = seen[key] {
                 issues[rule.id, default: []].append(.duplicate(of: first))
                 duplicates.insert(rule.id)
@@ -36,20 +49,19 @@ public enum RuleValidator {
             }
         }
 
-        // Shadowing: an active rule with the same pattern and match under an earlier tunnel.
-        var firstActive: [RuleKey: (ruleID: UUID, tunnelIndex: Int)] = [:]
+        // Shadowing: an active rule with the same pattern and match in an earlier group.
+        var firstActive: [RuleKey: (ruleID: UUID, group: Int)] = [:]
         for rule in store.effectiveRules {
-            guard rule.isEnabled, !duplicates.contains(rule.id),
-                let tunnel = tunnelsByID[rule.tunnelID], tunnel.isEnabled,
-                let index = tunnelOrder[rule.tunnelID]
+            guard rule.isEnabled, !duplicates.contains(rule.id), isGroupActive(rule.target),
+                let group = groupOrder[rule.target]
             else { continue }
-            let key = RuleKey(rule, tunnelID: nil)
+            let key = RuleKey(rule, target: nil)
             if let earlier = firstActive[key] {
-                if earlier.tunnelIndex < index {
+                if earlier.group < group {
                     issues[rule.id, default: []].append(.shadowed(by: earlier.ruleID))
                 }
             } else {
-                firstActive[key] = (rule.id, index)
+                firstActive[key] = (rule.id, group)
             }
         }
 
@@ -63,7 +75,8 @@ public enum RuleValidator {
         }
 
         for rule in store.rules {
-            if let tunnel = tunnelsByID[rule.tunnelID] {
+            guard let tunnelID = rule.tunnelID else { continue }  // exceptions: nothing more
+            if let tunnel = tunnelsByID[tunnelID] {
                 if !tunnel.isEnabled {
                     issues[rule.id, default: []].append(.tunnelDisabled)
                 }
@@ -76,36 +89,65 @@ public enum RuleValidator {
             }
         }
         return issues
+
+        func isGroupActive(_ target: RuleTarget) -> Bool {
+            switch target {
+            case .direct: true
+            case .tunnel(let id): tunnelsByID[id]?.isEnabled == true
+            }
+        }
     }
 
-    /// Rules the routing engine should emit: enabled, tunnel enabled, not shadowed or
-    /// duplicated. Grouped by tunnel id, in effective order.
+    /// Tunnel rules the routing engine should emit: enabled, tunnel enabled, not shadowed
+    /// or duplicated. Grouped by tunnel id, in effective order.
     public static func activeRules(_ store: Store) -> [UUID: [Rule]] {
-        let issues = validate(store)
         var result: [UUID: [Rule]] = [:]
-        for rule in store.effectiveRules where rule.isEnabled {
+        for rule in activeRulesInOrder(store) {
+            if let tunnelID = rule.tunnelID {
+                result[tunnelID, default: []].append(rule)
+            }
+        }
+        return result
+    }
+
+    /// Direct rules the routing engine should emit (`rules-direct.json`), in list order.
+    public static func activeExceptions(_ store: Store) -> [Rule] {
+        activeRulesInOrder(store).filter(\.isException)
+    }
+
+    /// Why the default tunnel is not in effect, or nil when it is (or none is set).
+    public static func defaultTunnelIssue(_ store: Store, missingSecrets: Set<UUID> = [])
+        -> DefaultTunnelIssue?
+    {
+        guard let id = store.defaultTunnelID else { return nil }
+        guard let tunnel = store.tunnel(id: id) else { return .missing }
+        guard tunnel.isEnabled else { return .disabled }
+        return missingSecrets.contains(id) ? .missingSecret : nil
+    }
+
+    private static func activeRulesInOrder(_ store: Store) -> [Rule] {
+        let issues = validate(store)
+        return store.effectiveRules.filter { rule in
+            guard rule.isEnabled else { return false }
             let blocking = issues[rule.id]?.contains { issue in
                 switch issue {
                 case .duplicate, .shadowed, .tunnelDisabled, .tunnelMissing: true
                 case .coversTunnelServer: false
                 }
             }
-            if blocking != true {
-                result[rule.tunnelID, default: []].append(rule)
-            }
+            return blocking != true
         }
-        return result
     }
 
     private struct RuleKey: Hashable {
         let pattern: String
         let match: RuleMatch
-        let tunnelID: UUID?
+        let target: RuleTarget?
 
-        init(_ rule: Rule, tunnelID: UUID?) {
+        init(_ rule: Rule, target: RuleTarget?) {
             pattern = rule.pattern
             match = rule.match
-            self.tunnelID = tunnelID
+            self.target = target
         }
     }
 }

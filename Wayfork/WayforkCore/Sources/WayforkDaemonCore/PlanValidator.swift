@@ -13,9 +13,14 @@ public enum PlanValidator {
         }
         try checkSize(plan.singBox.config, name: RunLayout.singBoxConfig, allowEmpty: false)
         for (name, contents) in plan.singBox.ruleSets {
-            guard let id = ruleSetID(fromFileName: name), isTunnelID(id) else {
+            guard
+                name == RunLayout.directRuleSet
+                    || ruleSetID(fromFileName: name).map(isTunnelID) == true
+            else {
                 throw .planInvalid(
-                    reason: "rule-set file name \"\(name)\" is not rules-t-<id>.json")
+                    reason:
+                        "rule-set file name \"\(name)\" is not rules-t-<id>.json or \(RunLayout.directRuleSet)"
+                )
             }
             try checkSize(contents, name: name, allowEmpty: false)
         }

@@ -1,6 +1,6 @@
 {
   "dns" : {
-    "final" : "dns-direct",
+    "final" : "dns-t-00000000-0000-4000-8000-000000000001",
     "independent_cache" : true,
     "rules" : [
       {
@@ -15,6 +15,13 @@
         "rule_set" : [
           "rules-t-00000000-0000-4000-8000-000000000001",
           "rules-t-00000000-0000-4000-8000-000000000002"
+        ],
+        "server" : "fakeip"
+      },
+      {
+        "query_type" : [
+          "A",
+          "AAAA"
         ],
         "server" : "fakeip"
       }
@@ -90,27 +97,23 @@
       "type" : "direct"
     },
     {
-      "server" : "s.example",
+      "flow" : "xtls-rprx-vision",
+      "server" : "home.example.net",
       "server_port" : 443,
       "tag" : "t-00000000-0000-4000-8000-000000000002",
       "tls" : {
-        "alpn" : [
-          "h2"
-        ],
         "enabled" : true,
         "insecure" : false,
-        "server_name" : "s.example",
+        "reality" : {
+          "enabled" : true,
+          "public_key" : "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+          "short_id" : "0123abcd"
+        },
+        "server_name" : "www.apple.com",
         "utls" : {
           "enabled" : true,
-          "fingerprint" : "safari"
+          "fingerprint" : "chrome"
         }
-      },
-      "transport" : {
-        "headers" : {
-          "Host" : "h.example"
-        },
-        "path" : "/x",
-        "type" : "ws"
       },
       "type" : "vless",
       "uuid" : "00000000-0000-4000-8000-0000000000aa"
@@ -119,7 +122,7 @@
   "route" : {
     "auto_detect_interface" : true,
     "default_domain_resolver" : "dns-direct",
-    "final" : "direct",
+    "final" : "t-00000000-0000-4000-8000-000000000001",
     "find_process" : true,
     "rule_set" : [
       {

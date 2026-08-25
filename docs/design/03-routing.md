@@ -179,6 +179,12 @@ With `Store.defaultTunnelID` set to `Work` the config above changes as follows:
   so while the default tunnel is not connected.
 - `rules-direct` also carries user exceptions when there is no default tunnel: then it only
   overrides broader tunnel rules; `route.final` stays `direct`.
+- Implementation notes (2026-08-25): `rules-direct.json` is emitted even with no tunnels at
+  all, so the daemon's `PlanValidator` accepts that one extra name next to
+  `rules-t-<id>.json`. `dns.strategy: ipv4_only` applies to the catch-all fake-ip rule too,
+  so a default tunnel only ever sees fake v4 addresses. A default tunnel that is disabled
+  or lacks its secret is dropped by the generator (`route.final` = `direct`), matching the
+  UI warning. Golden variants `default-openvpn` and `default-vless` pass `sing-box check`.
 
 ## Rule-set files
 

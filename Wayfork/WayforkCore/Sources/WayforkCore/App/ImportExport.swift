@@ -92,8 +92,8 @@ public enum StoreImporter {
         }
         let tunnelIDs = Set(result.tunnels.map(\.id))
         for rule in document.rules {
-            guard tunnelIDs.contains(rule.tunnelID) else {
-                let shortID = rule.tunnelID.uuidString.lowercased().prefix(4)
+            if let tunnelID = rule.tunnelID, !tunnelIDs.contains(tunnelID) {
+                let shortID = tunnelID.uuidString.lowercased().prefix(4)
                 warnings.append("Rule \(rule.pattern) skipped: tunnel \(shortID)… not found")
                 rulesSkipped += 1
                 continue
@@ -106,6 +106,18 @@ public enum StoreImporter {
             } else {
                 result.rules.append(rule)
                 rulesAdded += 1
+            }
+        }
+
+        // F8: the file's default replaces the current one only when it names a tunnel that
+        // made it in; on Replace the fresh store has none to begin with.
+        if let wanted = document.defaultTunnelID {
+            if tunnelIDs.contains(wanted) {
+                result.defaultTunnelID = wanted
+            } else {
+                let shortID = wanted.uuidString.lowercased().prefix(4)
+                warnings.append(
+                    "Default tunnel \(shortID)… not found: everything else stays direct")
             }
         }
 
@@ -179,6 +191,7 @@ public enum StoreExporter {
             includesSecrets: includeSecrets,
             tunnels: tunnels,
             rules: store.rules,
-            settings: store.settings)
+            settings: store.settings,
+            defaultTunnelID: store.defaultTunnelID)
     }
 }

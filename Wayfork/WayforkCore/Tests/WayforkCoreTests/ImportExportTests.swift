@@ -201,3 +201,50 @@ private func document(
     #expect(sanitized.includesSecrets == false)
     #expect(sanitized.tunnels.map(\.secrets.isEmpty) == [true, true])
 }
+
+// MARK: - F8
+
+@Test func importCarriesExceptionsAndTheDefaultTunnel() throws {
+    let unknownID = UUID(uuidString: "10000000-0000-4000-8000-000000000099")!
+    var export = document(
+        tunnels: [ExportedTunnel(tunnel: openVPNTunnel()), ExportedTunnel(tunnel: vlessTunnel())],
+        rules: [
+            Rule(pattern: "work.example.com", tunnelID: importedOpenVPNID),
+            Rule(pattern: "bank.example.org", target: .direct),
+        ])
+    export.defaultTunnelID = importedVLESSID
+    let decoded = try ExportDocument.decode(export.encode())
+    #expect(decoded.defaultTunnelID == importedVLESSID)
+
+    let replaced = StoreImporter.apply(decoded, to: .empty, mode: .replace)
+    #expect(replaced.store.defaultTunnelID == importedVLESSID)
+    #expect(replaced.store.rules.map(\.target) == [.tunnel(importedOpenVPNID), .direct])
+    #expect(replaced.rulesSkipped == 0)
+
+    // Merge keeps the current default when the file has none…
+    var current = replaced.store
+    current.defaultTunnelID = importedOpenVPNID
+    let noDefault = document(tunnels: [ExportedTunnel(tunnel: vlessTunnel())])
+    #expect(
+        StoreImporter.apply(noDefault, to: current, mode: .merge).store.defaultTunnelID
+            == importedOpenVPNID)
+    // …replaces it when the file names a tunnel that is present…
+    let merged = StoreImporter.apply(decoded, to: current, mode: .merge)
+    #expect(merged.store.defaultTunnelID == importedVLESSID)
+    // …and drops a default pointing at a skipped tunnel with a warning.
+    var dangling = decoded
+    dangling.defaultTunnelID = unknownID
+    let outcome = StoreImporter.apply(dangling, to: current, mode: .merge)
+    #expect(outcome.store.defaultTunnelID == importedOpenVPNID)
+    #expect(outcome.warnings.contains { $0.hasPrefix("Default tunnel 1000…") })
+    #expect(StoreImporter.apply(dangling, to: .empty, mode: .replace).store.defaultTunnelID == nil)
+
+    // The exporter writes the store's default.
+    var store = replaced.store
+    store.defaultTunnelID = importedOpenVPNID
+    let exported = try StoreExporter.document(
+        store: store, secretStore: InMemorySecretStore([:]), includeSecrets: false,
+        exportedAt: importDate)
+    #expect(exported.defaultTunnelID == importedOpenVPNID)
+    #expect(exported.rules.contains { $0.isException })
+}

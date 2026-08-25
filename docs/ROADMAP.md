@@ -239,15 +239,15 @@ Added after M3; implemented once the M3 end-to-end check passes. Design in
 [01-data-model.md](design/01-data-model.md), [03-routing.md](design/03-routing.md) and
 [02-ux.md](design/02-ux.md) (sections marked F8).
 
-- [ ] Model: `Store.defaultTunnelID`, `RuleTarget` (`tunnel` / `direct`) with backward
+- [x] Model: `Store.defaultTunnelID`, `RuleTarget` (`tunnel` / `direct`) with backward
       compatible JSON, export/import carry both; tests.
-- [ ] `RuleValidator`: duplicates inside the Direct group, tunnel rules shadowed by an
+- [x] `RuleValidator`: duplicates inside the Direct group, tunnel rules shadowed by an
       exception, default tunnel disabled / missing secret → warning; tests.
-- [ ] Generator: `rules-direct.json` (user exceptions + built-in local names) as the first
+- [x] Generator: `rules-direct.json` (user exceptions + built-in local names) as the first
       route/DNS rule, `route.final` = default tunnel, `dns.final` through the default
       tunnel (OpenVPN: pushed/custom resolver; VLESS: DoT detoured through the outbound),
       A/AAAA catch-all to fake-ip; golden files + `sing-box check`; hot reload of exceptions.
-- [ ] UI: "Route everything else through this tunnel" toggle in Settings › Tunnels, Direct
+- [x] UI: "Route everything else through this tunnel" toggle in Settings › Tunnels, Direct
       group at the top of Settings › Rules, popover summary/card text, "Direct" in quick add.
 - [ ] Manual check: unmatched domain exits through the default tunnel, an exception goes
       direct, LAN names still resolve, default tunnel down → unmatched traffic blocked,

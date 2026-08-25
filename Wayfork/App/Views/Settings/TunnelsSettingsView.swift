@@ -204,6 +204,10 @@ struct OpenVPNDetailView: View {
             }
             GridRow {
                 Text("")
+                DefaultTunnelToggle(tunnel: tunnel)
+            }
+            GridRow {
+                Text("")
                 HStack(spacing: 8) {
                     rulesLink
                     Spacer()
@@ -368,6 +372,10 @@ struct VLESSDetailView: View {
             }
             GridRow {
                 Text("")
+                DefaultTunnelToggle(tunnel: tunnel)
+            }
+            GridRow {
+                Text("")
                 HStack(spacing: 8) {
                     Text(StatusText.count(model.ruleCount(for: tunnel.id), "rule"))
                         .foregroundStyle(.secondary)
@@ -411,4 +419,28 @@ private func isIPAddress(_ text: String) -> Bool {
     var v4 = in_addr()
     var v6 = in6_addr()
     return inet_pton(AF_INET, text, &v4) == 1 || inet_pton(AF_INET6, text, &v6) == 1
+}
+
+/// "Route everything else through this tunnel" (F8): only one tunnel can be the default;
+/// turning it on here moves it from whichever tunnel had it.
+private struct DefaultTunnelToggle: View {
+    @Environment(AppModel.self) private var model
+    let tunnel: Tunnel
+
+    var body: some View {
+        let hint = model.defaultTunnelHint(for: tunnel)
+        VStack(alignment: .leading, spacing: 2) {
+            Toggle(
+                "Route everything else through this tunnel",
+                isOn: Binding(
+                    get: { model.isDefaultTunnel(tunnel.id) },
+                    set: { model.setDefaultTunnel($0 ? tunnel.id : nil) })
+            )
+            .toggleStyle(.checkbox)
+            Text(hint.text)
+                .font(.system(size: 11))
+                .foregroundStyle(hint.isWarning ? Color.orange : Color.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
 }

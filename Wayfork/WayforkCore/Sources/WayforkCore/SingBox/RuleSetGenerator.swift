@@ -1,15 +1,27 @@
 import Foundation
 
-/// Produces `rules-t-<id>.json` contents (docs/design/03-routing.md, "Rule-set files").
+/// Produces `rules-t-<id>.json` and `rules-direct.json` contents
+/// (docs/design/03-routing.md, "Rule-set files").
 public enum RuleSetGenerator {
     public static let version = 3
 
-    /// One rule-set file per tunnel: `Tunnel.ruleSetFileName` → JSON text. Every tunnel in
-    /// `tunnels` gets a file, even with no rules, so the main config stays unchanged when
-    /// rules come and go.
-    public static func generate(tunnels: [Tunnel], activeRules: [UUID: [Rule]]) -> [String: String]
-    {
-        var files: [String: String] = [:]
+    /// Tag and file of the Direct rule-set: user exceptions plus the built-in local names.
+    public static let directTag = "rules-direct"
+    public static let directFileName = "rules-direct.json"
+
+    /// Built-in exceptions: names that must never leave the local network (F8).
+    public static let builtInDirectSuffixes = [
+        ".local", ".lan", ".internal", ".home.arpa", ".localhost",
+    ]
+    public static let builtInDirectDomains = ["localhost"]
+
+    /// One rule-set file per tunnel plus the Direct file: file name → JSON text. Every
+    /// tunnel in `tunnels` gets a file, even with no rules, and the Direct file is always
+    /// present, so the main config stays unchanged when rules come and go.
+    public static func generate(
+        tunnels: [Tunnel], activeRules: [UUID: [Rule]], exceptions: [Rule] = []
+    ) -> [String: String] {
+        var files: [String: String] = [directFileName: renderDirect(exceptions: exceptions)]
         for tunnel in tunnels {
             files[tunnel.ruleSetFileName] = render(rules: activeRules[tunnel.id] ?? [])
         }
@@ -18,8 +30,17 @@ public enum RuleSetGenerator {
 
     /// Rule-set JSON for one tunnel's rules, grouped into a single rule object.
     public static func render(rules: [Rule]) -> String {
-        var domain: [String] = []
-        var domainSuffix: [String] = []
+        render(rules: rules, domains: [], suffixes: [])
+    }
+
+    /// `rules-direct.json`: the built-in local names first, then the user's exceptions.
+    public static func renderDirect(exceptions: [Rule]) -> String {
+        render(rules: exceptions, domains: builtInDirectDomains, suffixes: builtInDirectSuffixes)
+    }
+
+    private static func render(rules: [Rule], domains: [String], suffixes: [String]) -> String {
+        var domain = domains
+        var domainSuffix = suffixes
         var domainRegex: [String] = []
         for rule in rules {
             switch rule.match {

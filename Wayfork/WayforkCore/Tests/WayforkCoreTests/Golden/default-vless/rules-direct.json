@@ -1,0 +1,24 @@
+{
+  "rules" : [
+    {
+      "domain" : [
+        "localhost",
+        "bank.example.org",
+        "example.com"
+      ],
+      "domain_regex" : [
+        "^.+\\.intranet\\.example$"
+      ],
+      "domain_suffix" : [
+        ".local",
+        ".lan",
+        ".internal",
+        ".home.arpa",
+        ".localhost",
+        ".bank.example.org",
+        ".example.com"
+      ]
+    }
+  ],
+  "version" : 3
+}

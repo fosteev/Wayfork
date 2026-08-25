@@ -120,3 +120,47 @@ import Testing
     #expect(RuleValidator.activeRules(store)[Fixtures.homeID]?.count == 1)
     #expect(RuleValidator.activeRules(store)[Fixtures.workID] == nil)
 }
+
+// MARK: - F8: exceptions and the default tunnel
+
+@Test func validatorTreatsTheDirectGroupAsFirst() {
+    let exception = Rule(pattern: "example.com", target: .direct)
+    let duplicateException = Rule(pattern: "example.com", target: .direct)
+    let workRule = Rule(pattern: "example.com", tunnelID: Fixtures.workID)
+    let other = Rule(pattern: "other.com", tunnelID: Fixtures.workID)
+    // An exception covering a tunnel's own server host is fine (it keeps it direct).
+    let coversServer = Rule(pattern: "example.org", target: .direct)
+    let store = Fixtures.store(rules: [
+        workRule, exception, duplicateException, other, coversServer,
+    ])
+    let issues = RuleValidator.validate(store)
+    #expect(issues[exception.id] == nil)
+    #expect(issues[duplicateException.id] == [.duplicate(of: exception.id)])
+    #expect(issues[workRule.id] == [.shadowed(by: exception.id)])
+    #expect(issues[other.id] == nil)
+    #expect(issues[coversServer.id] == nil)
+
+    #expect(RuleValidator.activeExceptions(store).map(\.id) == [exception.id, coversServer.id])
+    #expect(RuleValidator.activeRules(store)[Fixtures.workID]?.map(\.id) == [other.id])
+
+    // A disabled exception neither shadows nor is emitted.
+    var paused = store
+    paused.rules[1].isEnabled = false
+    paused.rules[2].isEnabled = false
+    #expect(RuleValidator.validate(paused)[workRule.id] == nil)
+    #expect(RuleValidator.activeExceptions(paused).map(\.id) == [coversServer.id])
+}
+
+@Test func defaultTunnelIssues() {
+    var store = Fixtures.store()
+    #expect(RuleValidator.defaultTunnelIssue(store) == nil)
+    store.defaultTunnelID = Fixtures.workID
+    #expect(RuleValidator.defaultTunnelIssue(store) == nil)
+    #expect(
+        RuleValidator.defaultTunnelIssue(store, missingSecrets: [Fixtures.workID])
+            == .missingSecret)
+    store.tunnels[0].isEnabled = false
+    #expect(RuleValidator.defaultTunnelIssue(store) == .disabled)
+    store.defaultTunnelID = UUID()
+    #expect(RuleValidator.defaultTunnelIssue(store) == .missing)
+}

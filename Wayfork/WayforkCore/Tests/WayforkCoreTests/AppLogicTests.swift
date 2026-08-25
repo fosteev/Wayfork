@@ -222,7 +222,7 @@ private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased()
     let (store, work, home, _) = sampleStore()
     guard
         case .add(let rule) = QuickAdd.evaluate(
-            input: "https://Shop.Example.ORG/cart", tunnelID: home.id, store: store)
+            input: "https://Shop.Example.ORG/cart", target: .tunnel(home.id), store: store)
     else {
         Issue.record("expected add")
         return
@@ -233,7 +233,7 @@ private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased()
 
     guard
         case .add(let wildcard) = QuickAdd.evaluate(
-            input: "*.img.example.org", tunnelID: work.id, store: store)
+            input: "*.img.example.org", target: .tunnel(work.id), store: store)
     else {
         Issue.record("expected add")
         return
@@ -243,7 +243,7 @@ private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased()
     // An existing pattern is re-pointed instead of duplicated.
     guard
         case .update(let updated) = QuickAdd.evaluate(
-            input: "example.com", tunnelID: home.id, store: store)
+            input: "example.com", target: .tunnel(home.id), store: store)
     else {
         Issue.record("expected update")
         return
@@ -254,10 +254,10 @@ private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased()
     #expect(!QuickAdd.isUpdate(input: "new.example.com", store: store))
 
     #expect(
-        QuickAdd.evaluate(input: "not a domain", tunnelID: work.id, store: store)
+        QuickAdd.evaluate(input: "not a domain", target: .tunnel(work.id), store: store)
             == .invalid("Not a valid domain"))
     #expect(
-        QuickAdd.evaluate(input: "", tunnelID: work.id, store: store)
+        QuickAdd.evaluate(input: "", target: .tunnel(work.id), store: store)
             == .invalid("Enter a domain"))
 }
 
@@ -274,24 +274,91 @@ private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased()
     let (store, work, home, _) = sampleStore()
     #expect(
         RuleEditing.normalize(
-            "Example.com", match: .suffix, tunnelID: work.id, store: store, excluding: nil)
+            "Example.com", match: .suffix, target: .tunnel(work.id), store: store, excluding: nil)
             == .failure(.duplicate))
     // Same pattern under another tunnel is legal (it will be flagged as shadowed).
     #expect(
         RuleEditing.normalize(
-            "example.com", match: .suffix, tunnelID: home.id, store: store, excluding: nil)
+            "example.com", match: .suffix, target: .tunnel(home.id), store: store, excluding: nil)
             == .success("example.com"))
     // Editing the rule itself is not a duplicate of itself.
     #expect(
         RuleEditing.normalize(
-            "example.com", match: .suffix, tunnelID: work.id, store: store,
+            "example.com", match: .suffix, target: .tunnel(work.id), store: store,
             excluding: store.rules[0].id) == .success("example.com"))
     #expect(
         RuleEditing.normalize(
-            "*.example.com", match: .suffix, tunnelID: work.id, store: store, excluding: nil)
+            "*.example.com", match: .suffix, target: .tunnel(work.id), store: store, excluding: nil)
             == .failure(.pattern(.wildcardNotAllowed)))
     #expect(RuleEditing.message(for: .duplicate) == "This rule already exists in this group")
     #expect(
         RuleEditing.message(for: .pattern(.wildcardNotAllowed))
             == "`*` only allowed in wildcard rules")
+}
+
+// MARK: - F8
+
+@Test func summaryAndCardsWithADefaultTunnel() {
+    var (store, work, home, lab) = sampleStore()
+    store.defaultTunnelID = home.id
+    store.rules.append(Rule(pattern: "bank.example.org", target: .direct))
+    store.rules.append(Rule(pattern: "paused.example.org", target: .direct, isEnabled: false))
+    #expect(
+        StatusText.summary(state: .on, store: store, status: nil)
+            == "On — everything via Home · 5 rules, 1 exception")
+    // A default without its secret is no default.
+    #expect(
+        StatusText.summary(state: .on, store: store, status: nil, missingSecrets: [home.id])
+            == "On — routing 5 domains through 3 tunnels")
+    store.defaultTunnelID = work.id
+    #expect(
+        StatusText.summary(state: .degraded(failingTunnelIDs: [work.id]), store: store, status: nil)
+            == "Degraded — Work (default) is down · unmatched traffic is blocked")
+    #expect(
+        StatusText.summary(state: .degraded(failingTunnelIDs: [lab.id]), store: store, status: nil)
+            == "Degraded — Lab is failing · 5 domains, 2 tunnels up")
+    #expect(StatusText.activeExceptionCount(store) == 1)
+
+    let card = StatusText.card(
+        tunnel: work, state: .connected(since: Date(), ip: "10.8.0.6", interface: "utun101"),
+        global: .on, ruleCount: 3, isDefault: true)
+    #expect(card.detail == "connected · 10.8.0.6 on utun101 · 3 rules · everything else")
+    let ready = StatusText.card(
+        tunnel: home, state: nil, global: .on, ruleCount: 2, isDefault: true)
+    #expect(ready.detail == "ready · host.example.com · 2 rules · everything else")
+    let row = StatusText.rowSummary(tunnel: home, state: nil, global: .on, isDefault: true)
+    #expect(row.text == "ready · host.example.com:443 · REALITY · vision · everything else")
+}
+
+@Test func quickAddAndEditingSupportDirect() {
+    let (store, work, _, _) = sampleStore()
+    guard
+        case .add(let rule) = QuickAdd.evaluate(
+            input: "bank.example.org", target: .direct, store: store)
+    else {
+        Issue.record("expected add")
+        return
+    }
+    #expect(rule.target == .direct)
+    // Re-pointing an existing tunnel rule at Direct turns it into an exception.
+    guard
+        case .update(let updated) = QuickAdd.evaluate(
+            input: "example.com", target: .direct, store: store)
+    else {
+        Issue.record("expected update")
+        return
+    }
+    #expect(updated.id == store.rules[0].id)
+    #expect(updated.isException)
+
+    var withException = store
+    withException.rules.append(Rule(pattern: "bank.example.org", target: .direct))
+    #expect(
+        RuleEditing.normalize(
+            "bank.example.org", match: .suffix, target: .direct, store: withException,
+            excluding: nil) == .failure(.duplicate))
+    #expect(
+        RuleEditing.normalize(
+            "bank.example.org", match: .suffix, target: .tunnel(work.id), store: withException,
+            excluding: nil) == .success("bank.example.org"))
 }
