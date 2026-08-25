@@ -99,6 +99,12 @@ Events handled:
 | `>LOG:<t>,<flags>,<msg>` | forward to log stream; parse `PUSH_REPLY` for `dhcp-option DNS` → `discoveredDNS` |
 | `>FATAL:<msg>` | `failed(<msg>)`; permanent if it's an options/config error |
 | socket closed without EXITING | treat as crash → supervisor restart policy |
+| stdout/stderr before the socket is up | forwarded to the log; a `F`-flagged `Options error` / certificate load error → `failed(configError, permanent)` |
+
+`reconnect(tunnelID:)` terminates the current attempt, resets backoff and respawns with
+attempt 1 — also for permanently failed tunnels and with `autoReconnect` off (it is the
+user's explicit request). Stopping a tunnel sends `signal SIGTERM` through the management
+socket and `SIGTERM` to the process, waits 5 s, then `SIGKILL`.
 
 Quoting for `username`/`password` follows the management spec (backslash-escape `"` and
 `\`). Passwords never appear in logs: the management client redacts its own writes.

@@ -78,6 +78,8 @@ struct RuntimePlan: Codable {
     var version: Int                      // plan format version
     var singBox: SingBoxPlan              // config JSON + rule-set files
     var openVPN: [OpenVPNRuntime]         // VLESS tunnels have no process; they live in the sing-box config only
+    var autoReconnect: Bool               // Settings.autoReconnect; not hashed, applies to the next failure
+    var logLevel: LogLevel                // Settings.logLevel → openvpn --verb; part of the OpenVPN diff key
 }
 struct SingBoxPlan: Codable {
     var config: String                    // sing-box.json
@@ -96,8 +98,8 @@ struct OpenVPNRuntime: Codable {
 
 Reconcile algorithm (daemon):
 
-1. OpenVPN: diff by `id` + `configHash`. Stop removed, start added, restart changed.
-   Unchanged processes are left alone.
+1. OpenVPN: diff by `id` + `configHash` + `--verb` (derived from `logLevel`). Stop removed,
+   start added, restart changed. Unchanged processes are left alone.
 2. sing-box:
    - `configHash` unchanged, rule-set contents changed → rewrite rule-set files only.
      sing-box reloads `type: local` rule-sets on file change — no restart, no dropped

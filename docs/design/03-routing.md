@@ -170,5 +170,9 @@ that clients already resolved to real IPs are still honored through sniffing (SN
 ## Startup verification
 
 After `apply`, the daemon waits for sing-box to log its "started" line (or 3 s of survival)
-and then verifies `utun100` exists and the default route points at it (`route -n get
-default`). Failure → `singbox.startFailed` with the last 20 log lines attached.
+and then verifies `utun100` exists (`if_nametoindex`) and that a public address leaves
+through it (`route -n get -inet 1.1.1.1` → `interface: utun100`). `route -n get default`
+is not used: `auto_route` with `route_exclude_address` installs split ranges, so the
+unscoped default route still names the physical interface. Failure → the process is
+killed, `engine = failed("singbox.startFailed")` and `apply` returns
+`singbox.startFailed` with the last 20 log lines attached.

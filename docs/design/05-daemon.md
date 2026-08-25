@@ -4,6 +4,14 @@ Technical side of F3 (helper installation, start/stop, reconnect) and the transp
 F4/F5 (status and logs). The daemon is a small Swift executable: XPC listener, a
 `Supervisor` actor, process/route helpers. No UI, no Keychain, no networking of its own.
 
+Everything that needs no privileges lives in the `WayforkDaemonCore` library (second
+target of the `WayforkCore` package, unit-tested without root): `ManagedProcess`
+(`posix_spawn` + pipes + exit source), `UnixSocketLineClient`, `RotatingLogFile`,
+`AtomicFile`, the management-protocol parser and `OpenVPNSessionReducer` (the whole
+tunnel state machine as a pure reducer: events in, `TunnelState` + effects out),
+`ReconcilePlanner`, `PlanValidator`, `BackoffPolicy`/`CrashCounter`, `RouteCommand`,
+argv builders. `Wayfork/Daemon/` only wires those to XPC, `Security` and the filesystem.
+
 ## Registration (SMAppService)
 
 `Wayfork.app/Contents/Library/LaunchDaemons/com.wayfork.daemon.plist`:
@@ -62,9 +70,18 @@ struct RuntimeStatus: Codable {
 struct LogLine: Codable { var ts: Date; var source: String; var level: LogLevel; var message: String }
 ```
 
-Semantics: `apply` returns after reconcile has been *initiated* and `sing-box check` passed;
-progress arrives via `statusChanged`. A second `apply` while one is in flight is queued
-(latest wins). `stop` returns after every child has exited or been killed.
+Semantics: `apply` validates the plan, runs `sing-box check` and — when sing-box has to
+(re)start — waits for its startup verification (≤ ~4 s) before returning; OpenVPN
+processes are only spawned, their progress arrives via `statusChanged`. `apply`, `stop` and
+`reconnect` execute one at a time in call order; an `apply` that is still waiting when a
+newer one arrives is skipped (latest wins) and answers `ok`. `stop` returns after every
+child has exited or been killed. Status queries never wait for an operation in flight.
+
+`TunnelState.failed(reason:)` and `EngineState.failed(reason:)` carry the codes from the
+error catalogue in [02-ux.md](02-ux.md) (`ovpn.authFailed`, `ovpn.needsCredentials`,
+`ovpn.keyPassphrase`, `ovpn.needsKeyPassphrase`, `ovpn.configError`,
+`ovpn.unsupportedPrompt`, `ovpn.exited` (auto-reconnect off), `ovpn.startFailed`,
+`singbox.startFailed`); details go to the log stream.
 
 ## Client verification
 
@@ -113,8 +130,9 @@ shutdown never blocks status queries.
 
 ### Binary validation
 
-Before every spawn: resolve `<bundle>` from the daemon's own executable path
-(`…/Contents/MacOS/WayforkDaemon` → three levels up), then
+Before every spawn (and once more at the start of every `apply`, so an untrusted binary
+fails the whole plan before anything is written): resolve `<bundle>` from the daemon's own
+executable path (`…/Contents/MacOS/WayforkDaemon` → three levels up), then
 `SecStaticCodeCreateWithPath` + `SecStaticCodeCheckValidity` against
 `anchor apple generic and identifier "com.wayfork.bin.<name>" and certificate leaf[subject.OU] = "<TEAMID>"`
 (same Team ID as the client requirement; the identifiers `com.wayfork.bin.sing-box` /
@@ -126,9 +144,12 @@ copied into the bundle and signed). Failure → `DaemonError.binaryUntrusted`, n
 1. Read `run/*.pid`; for each pid, compare `proc_pidpath` with our binaries; matching
    processes get SIGTERM → 3 s → SIGKILL.
 2. Delete stale sockets, `t-*.ovpn`, `sing-box.json`, `rules-*.json`. Keep `cache.db`.
-3. Remove scoped default routes on `utun101…utun132` if any survive (`route -n delete
-   -ifscope utunN default`, ignore errors).
+3. Remove scoped default routes on `utun101…utun132` that still exist as interfaces
+   (`route -n delete -inet default -ifscope utunN`, ignore errors).
 4. `status = stopped`.
+
+The daemon also handles `SIGTERM` (launchd unload, app update): it runs `stop` and exits,
+so no child outlives it.
 
 ### Route helper
 
@@ -136,18 +157,27 @@ copied into the bundle and signed). Failure → `DaemonError.binaryUntrusted`, n
 validated against `^utun(1[0-9]{2})$` before use. Later can move to a `PF_ROUTE` socket to
 drop the exec.
 
+## Developer mode (no app, no launchd)
+
+`WayforkDaemon --dev-apply <plan.json>` runs the same `Supervisor` from a terminal as root:
+bootstrap, apply the plan, re-apply whenever the file changes (poll 1 s), print status and
+log pushes to stderr, `Ctrl-C` → `stop`. `wayforkctl plan` (executable target in the
+`WayforkCore` package) builds such a plan from `.ovpn` files / `vless://` URIs and
+`--rule pattern=tunnel` arguments. The plan file contains secrets: keep it root-only and
+delete it afterwards. This is how M2 is verified before the app exists.
+
 ## Files written by the daemon
 
 | File | Mode | Note |
 |------|------|------|
-| `run/sing-box.json` | 0600 | contains VLESS UUIDs and REALITY keys → root-only |
+| `run/sing-box.json` | 0600 | contains VLESS UUIDs and REALITY keys → root-only; written as `sing-box.json.check`, promoted by `rename` after `sing-box check` passes |
 | `run/rules-t-<id>.json` | 0600 | rewritten in place via temp file + `rename` so sing-box's watcher sees one change |
 | `run/t-<id>.ovpn` | 0600 | contains private keys |
 | `run/t-<id>.sock` | 0600 | management socket |
 | `run/*.pid` | 0600 | |
 | `run/cache.db` | 0600 | sing-box cache |
 | `/Library/Logs/Wayfork/daemon.log` | 0600 | daemon's own log (also `os_log`, subsystem `com.wayfork.daemon`) |
-| `/Library/Logs/Wayfork/<source>.log` | 0600 | raw child output, 5 × 1 MB rotation |
+| `/Library/Logs/Wayfork/<source>.log` | 0600 | raw child output (`sing-box.log`, `openvpn-<id>.log`), 5 × 1 MB rotation, one `<ISO-8601> <LEVEL> <message>` per line |
 
 Everything under `run/` except `cache.db` is deleted on `stop`.
 
@@ -157,6 +187,10 @@ Child stdout/stderr → line reader → `LogLine` (source `sing-box` / `openvpn:
 parsed from the line: sing-box prefixes `INFO`/`WARN`/`ERROR`/`DEBUG`, openvpn management
 `>LOG` flags `I`/`W`/`F`/`N`/`D`) → ring buffer of the last 2 000 lines per source (for
 reattach) → batched push to the subscribed client. Daemon's own events use source `daemon`.
+openvpn prints every line on stdout *and* to management clients with `log on`; stdout is
+forwarded only until the management socket is up (that is where `Options error` from a bad
+config shows up — openvpn exits before the socket exists). `subscribe` replays the current
+status and every ring buffer to the new client.
 
 Redaction at the source: the management client never logs what it writes to the socket;
 sing-box's `log.level` is capped at `info` in the generated config unless the user picks

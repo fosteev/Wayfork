@@ -163,21 +163,26 @@ config generator, XPC payloads — no UI, no privileges, fully unit-testable).
 
 ### M2 — Daemon
 
-- [ ] Listener with code-signing requirement; `getInfo`, `getStatus`, `subscribe`.
-- [ ] Bundle path resolution and binary signature validation before spawn.
-- [ ] `ManagedProcess`: `posix_spawn`, stdout/stderr line readers, exit source, pid files,
+Unprivileged logic lives in the `WayforkDaemonCore` package target (tests run without
+root); `Wayfork/Daemon/` is the XPC/Security/filesystem shell. `WayforkDaemon --dev-apply`
+plus `wayforkctl plan` exercise the daemon without the app (see
+[05-daemon.md](design/05-daemon.md), "Developer mode").
+
+- [x] Listener with code-signing requirement; `getInfo`, `getStatus`, `subscribe`.
+- [x] Bundle path resolution and binary signature validation before spawn.
+- [x] `ManagedProcess`: `posix_spawn`, stdout/stderr line readers, exit source, pid files,
       backoff restart policy.
-- [ ] Run directory management (`run/` 0700, temp-file + rename writes, wipe on stop, keep
+- [x] Run directory management (`run/` 0700, temp-file + rename writes, wipe on stop, keep
       `cache.db`), startup cleanup of leftovers and stale routes.
-- [ ] sing-box lifecycle: write config + rule-sets, `sing-box check`, start/stop/restart,
-      startup verification (`utun100` up, default route), crash counting.
-- [ ] Route helper: scoped default route add/delete with interface-name validation.
-- [ ] OpenVPN session: argv from [04-tunnels.md](design/04-tunnels.md), management socket
+- [x] sing-box lifecycle: write config + rule-sets, `sing-box check`, start/stop/restart,
+      startup verification (`utun100` up, public address routes through it), crash counting.
+- [x] Route helper: scoped default route add/delete with interface-name validation.
+- [x] OpenVPN session: argv from [04-tunnels.md](design/04-tunnels.md), management socket
       client (hold release, `state`/`log`, password queries, verification failures,
       CONNECTED/RECONNECTING/EXITING), `PUSH_REPLY` DNS discovery, permanent-failure rules.
-- [ ] `Supervisor.apply` reconcile (diff OpenVPN by id+hash, sing-box restart vs rule-set
+- [x] `Supervisor.apply` reconcile (diff OpenVPN by id+hash, sing-box restart vs rule-set
       rewrite), `stop`, `reconnect`, status coalescing, log batching and ring buffers.
-- [ ] `collectDiagnostics`.
+- [x] `collectDiagnostics`.
 - [ ] Verify on a real machine and record results in the design docs:
       local rule-set hot reload on file change; `utun` unit numbers ≥ 100 accepted by
       `openvpn --dev` and sing-box `interface_name`; `bind_interface` to a not-yet-existing
