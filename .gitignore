@@ -35,3 +35,6 @@ Wayfork/Resources/bin/
 
 # Parser fixtures (placeholder keys only)
 !Wayfork/WayforkCore/Tests/**/*.ovpn
+
+# Developer seed configs (real tunnels; never committed)
+local/
