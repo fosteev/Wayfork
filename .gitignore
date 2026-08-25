@@ -1,0 +1,34 @@
+# macOS
+.DS_Store
+
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcworkspace/xcuserdata/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# SPM
+.build/
+.swiftpm/
+Package.resolved.bak
+
+# Bundled binaries (fetched by scripts/, not committed)
+Wayfork/Resources/bin/
+
+# Secrets / real configs
+*.ovpn
+*.key
+*.crt
+*.pem
+*.p12
+!examples/**/*.ovpn
+
+# Tooling
+.serena/
+*.log
