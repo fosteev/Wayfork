@@ -129,17 +129,17 @@ config generator, XPC payloads — no UI, no privileges, fully unit-testable).
 
 ### M0 — Scaffolding
 
-- [ ] Xcode project with three targets (`Wayfork`, `WayforkDaemon`, `WayforkCore` as a local
+- [x] Xcode project with three targets (`Wayfork`, `WayforkDaemon`, `WayforkCore` as a local
       SPM package) and a test target for `WayforkCore`; macOS 14 deployment, Swift 6 language
       mode with strict concurrency.
-- [ ] App `Info.plist`: `LSUIElement`, bundle id `com.wayfork.app`; daemon plist under
+- [x] App `Info.plist`: `LSUIElement`, bundle id `com.wayfork.app`; daemon plist under
       `Contents/Library/LaunchDaemons/` per [05-daemon.md](design/05-daemon.md).
-- [ ] `scripts/versions.env` + `scripts/fetch-bins.sh`: download pinned sing-box release,
+- [x] `scripts/versions.env` + `scripts/fetch-bins.sh`: download pinned sing-box release,
       build static openvpn (OpenSSL, lz4, lzo) into `Wayfork/Resources/bin/`; checksums.
-- [ ] `scripts/dev-sign.sh`: sign app + daemon + bundled binaries with the developer's
+- [x] `scripts/dev-sign.sh`: sign app + daemon + bundled binaries with the developer's
       identity, inject Team ID into the daemon's code-signing requirement.
-- [ ] GitHub Actions: build, `swift-format lint`, `WayforkCore` tests on every PR.
-- [ ] `examples/`: `tunnel.example.ovpn`, `vless.example.txt`, `export.example.json`.
+- [x] GitHub Actions: build, `swift-format lint`, `WayforkCore` tests on every PR.
+- [x] `examples/`: `tunnel.example.ovpn`, `vless.example.txt`, `export.example.json`.
 
 ### M1 — Core (WayforkCore)
 

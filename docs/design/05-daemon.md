@@ -75,10 +75,14 @@ connection.setCodeSigningRequirement(
     "anchor apple generic and identifier \"com.wayfork.app\" and certificate leaf[subject.OU] = \"<TEAMID>\"")
 ```
 
-The Team ID is baked in at build time from the signing identity (`scripts/` injects it into
-`Info.plist` of the daemon). Connections failing the requirement are rejected before any
-method runs. Only one client at a time is expected; a second connection replaces the
-subscriber.
+The Team ID is baked in at build time from the signing identity: `Wayfork/Daemon/Info.plist`
+carries `WayforkTeamID = $(DEVELOPMENT_TEAM)`, which Xcode expands and embeds into the
+daemon binary (`__TEXT,__info_plist` section, `CREATE_INFOPLIST_SECTION_IN_BINARY`).
+`scripts/dev-sign.sh` derives `DEVELOPMENT_TEAM` from the chosen identity and verifies the
+embedded value after the build. Ad-hoc builds (plain `xcodebuild`, CI) leave it empty, so
+such a daemon rejects every client — by design, since `SMAppService` cannot register them
+anyway. Connections failing the requirement are rejected before any method runs. Only one
+client at a time is expected; a second connection replaces the subscriber.
 
 ## Supervisor
 
@@ -111,8 +115,11 @@ shutdown never blocks status queries.
 
 Before every spawn: resolve `<bundle>` from the daemon's own executable path
 (`…/Contents/MacOS/WayforkDaemon` → three levels up), then
-`SecStaticCodeCreateWithPath` + `SecStaticCodeCheckValidity` against the same requirement
-used for the client (same Team ID). Failure → `DaemonError.binaryUntrusted`, nothing runs.
+`SecStaticCodeCreateWithPath` + `SecStaticCodeCheckValidity` against
+`anchor apple generic and identifier "com.wayfork.bin.<name>" and certificate leaf[subject.OU] = "<TEAMID>"`
+(same Team ID as the client requirement; the identifiers `com.wayfork.bin.sing-box` /
+`com.wayfork.bin.openvpn` are assigned by `scripts/embed-bins.sh` when the binaries are
+copied into the bundle and signed). Failure → `DaemonError.binaryUntrusted`, nothing runs.
 
 ### Startup cleanup
 

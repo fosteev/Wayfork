@@ -1,0 +1,82 @@
+{
+  "format": "wayfork-export",
+  "version": 1,
+  "exportedAt": "2026-08-25T12:00:00Z",
+  "includesSecrets": false,
+  "tunnels": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "Work",
+      "isEnabled": true,
+      "createdAt": "2026-08-25T12:00:00Z",
+      "kind": {
+        "openVPN": {
+          "remotes": [
+            { "host": "<SERVER>", "port": 1194, "proto": "udp" }
+          ],
+          "needsCredentials": true,
+          "needsKeyPassphrase": false,
+          "dns": { "auto": {} },
+          "discoveredDNS": [],
+          "configHash": "<SHA256_OF_SANITIZED_OVPN>"
+        }
+      },
+      "secrets": {
+        "ovpn": null,
+        "credentials": null,
+        "keyPassphrase": null
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "name": "Home",
+      "isEnabled": true,
+      "createdAt": "2026-08-25T12:00:00Z",
+      "kind": {
+        "vless": {
+          "server": "<SERVER>",
+          "port": 443,
+          "flow": "xtls-rprx-vision",
+          "security": "reality",
+          "sni": "<SNI>",
+          "fingerprint": "chrome",
+          "alpn": [],
+          "realityPublicKey": "<REALITY_PUBLIC_KEY>",
+          "realityShortID": "<REALITY_SHORT_ID>",
+          "transport": { "tcp": {} },
+          "allowInsecure": false
+        }
+      },
+      "secrets": {
+        "uuid": null
+      }
+    }
+  ],
+  "rules": [
+    {
+      "id": "00000000-0000-4000-8000-000000000101",
+      "pattern": "example.com",
+      "match": "suffix",
+      "tunnelID": "00000000-0000-4000-8000-000000000001",
+      "isEnabled": true,
+      "note": "Work intranet"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000102",
+      "pattern": "*.cdn.example.net",
+      "match": "wildcard",
+      "tunnelID": "00000000-0000-4000-8000-000000000002",
+      "isEnabled": true,
+      "note": null
+    }
+  ],
+  "settings": {
+    "launchAtLogin": false,
+    "connectOnLaunch": false,
+    "autoReconnect": true,
+    "notifyOnTunnelFailure": true,
+    "directDNS": { "system": {} },
+    "logLevel": "info",
+    "logRetentionDays": 7
+  }
+}

@@ -1,0 +1,12 @@
+# Wayfork example VLESS URIs. Placeholders only — replace every <...> value.
+# Paste one URI into "Add VLESS tunnel"; the fragment (#...) becomes the tunnel name.
+# Supported: type=tcp|ws|grpc, security=none|tls|reality, flow=xtls-rprx-vision.
+
+# REALITY over TCP with XTLS Vision
+vless://<UUID>@<SERVER>:443?encryption=none&security=reality&sni=<SNI>&fp=chrome&pbk=<REALITY_PUBLIC_KEY>&sid=<REALITY_SHORT_ID>&type=tcp&flow=xtls-rprx-vision#Example%20REALITY
+
+# TLS over WebSocket
+vless://<UUID>@<SERVER>:443?encryption=none&security=tls&sni=<SNI>&fp=chrome&alpn=http%2F1.1&type=ws&path=%2F<WS_PATH>&host=<SNI>#Example%20WebSocket
+
+# TLS over gRPC
+vless://<UUID>@<SERVER>:443?encryption=none&security=tls&sni=<SNI>&fp=chrome&type=grpc&serviceName=<GRPC_SERVICE>#Example%20gRPC

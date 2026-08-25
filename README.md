@@ -16,6 +16,23 @@ routing; OpenVPN configs run as separate `openvpn` processes; a SwiftUI app ties
 
 - macOS 14+
 
+## Development
+
+Xcode 26 is required (Swift 6 language mode, strict concurrency).
+
+```sh
+scripts/fetch-bins.sh            # download pinned sing-box, build static openvpn (universal)
+scripts/dev-sign.sh              # build signed with your Apple Development identity
+swift test --package-path Wayfork/WayforkCore
+scripts/format.sh --lint         # swift-format check (scripts/format.sh to fix)
+```
+
+`Wayfork/Wayfork.xcodeproj` holds the `Wayfork` app and `WayforkDaemon` targets;
+`Wayfork/WayforkCore` is a local Swift package shared by both. Plain `xcodebuild` and
+Xcode's Run produce ad-hoc signed builds that work for UI work but cannot register the
+privileged helper — use `scripts/dev-sign.sh` for that. Pinned versions live in
+`scripts/versions.env`; bundled binaries go to `Wayfork/Resources/bin/` (git-ignored).
+
 ## License
 
 TBD
