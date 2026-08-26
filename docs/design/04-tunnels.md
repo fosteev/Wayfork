@@ -41,8 +41,9 @@ Spawned via `posix_spawn`, no shell:
 ```
 <bundle>/Contents/Resources/bin/openvpn
   --config      <run>/t-<id>.ovpn
-  --dev         utun<101+slot>
+  --dev         tun
   --dev-type    tun
+  --dev-node    utun<101+slot>
   --route-nopull
   --script-security 1
   --management  <run>/t-<id>.sock unix
@@ -65,11 +66,15 @@ Spawned via `posix_spawn`, no shell:
   intent explicit — DNS is sing-box's job.
 - `--route-nopull` ignores pushed routes and DHCP options (DNS), leaving the default route
   alone; the interface still gets its `ifconfig` from the server.
-- `--dev utunN` with a fixed high unit number avoids collisions with system VPNs and other
-  clients, and makes the interface name known before the process starts, so the sing-box
-  config can be generated up front. *(Verify macOS accepts unit numbers ≥ 100; fallback is
-  discovering the interface after CONNECTED by matching the assigned IP with `getifaddrs`,
-  then rewriting `bind_interface` and restarting sing-box.)*
+- `--dev-node utunN` with a fixed high unit number avoids collisions with system VPNs and
+  other clients, and makes the interface name known before the process starts, so the
+  sing-box config can be generated up front. Unit numbers ≥ 100 work (verified 2026-08-25).
+  Implementation note (2026-08-25, first e2e): on Darwin OpenVPN reads the unit from
+  `--dev-node utunN` only — `--dev utunN` means "any utun" and the process silently took
+  `utun4` while sing-box bound `t-<id>` to `utun105` ("route ip+net: no such network
+  interface" on every dial, "route: bad interface name" from the scoped route). The daemon
+  now also checks OpenVPN's `Opened utun device utunN` line against the planned name and
+  fails the tunnel (`ovpn.configError`) on a mismatch instead of reporting it connected.
 - Runs as root for MVP. Dropping to `nobody` conflicts with re-`ifconfig` on reconnect;
   revisit in Later.
 - The management socket lives in the root-only `run/` directory. Credentials go through

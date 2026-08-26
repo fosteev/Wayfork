@@ -115,6 +115,7 @@ public struct OpenVPNSessionReducer: Sendable, Equatable {
             {
                 effects.append(contentsOf: fail(reason, detail: message))
             }
+            effects.append(contentsOf: checkOpenedInterface(message))
             return effects
 
         case .processExited(let exit):
@@ -160,6 +161,7 @@ public struct OpenVPNSessionReducer: Sendable, Equatable {
             if let servers = ManagementProtocol.pushedDNS(fromLogMessage: message) {
                 effects.append(.discoveredDNS(servers))
             }
+            effects.append(contentsOf: checkOpenedInterface(message))
             return effects
 
         case .passwordNeeded(let kind):
@@ -247,6 +249,17 @@ public struct OpenVPNSessionReducer: Sendable, Equatable {
                     .debug, "state \(s.name) \(s.description)".trimmingCharacters(in: .whitespaces))
             ]
         }
+    }
+
+    /// `Opened utun device utunN`: the unit must be the planned one, or sing-box binds the
+    /// tunnel outbound to an interface that does not exist.
+    private mutating func checkOpenedInterface(_ message: String) -> [Effect] {
+        guard permanentFailure == nil,
+            let opened = OpenVPNOutput.openedInterface(in: message), opened != context.interface
+        else { return [] }
+        return fail(
+            .configError,
+            detail: "openvpn opened \(opened) instead of \(context.interface)")
     }
 
     private mutating func fail(_ reason: OpenVPNFailure, detail: String? = nil) -> [Effect] {

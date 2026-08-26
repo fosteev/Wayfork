@@ -176,6 +176,14 @@ public enum ManagementCommand {
 /// openvpn's own stdout with `--machine-readable-output`: `<epoch> <flags> <message>`.
 /// Only relevant before the management socket is up (options errors at startup).
 public enum OpenVPNOutput {
+    /// `Opened utun device utunN` → `utunN` (Darwin utun driver); nil for other lines.
+    public static func openedInterface(in message: String) -> String? {
+        let marker = "Opened utun device "
+        guard let range = message.range(of: marker) else { return nil }
+        let name = message[range.upperBound...].prefix { !$0.isWhitespace }
+        return name.hasPrefix("utun") ? String(name) : nil
+    }
+
     public static func parse(_ line: String) -> (flags: String, message: String) {
         let parts = line.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: false)
         guard parts.count == 3, !parts[0].isEmpty, parts[0].allSatisfy(\.isNumber),

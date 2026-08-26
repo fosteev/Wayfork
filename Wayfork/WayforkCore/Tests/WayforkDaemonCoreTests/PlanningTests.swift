@@ -275,3 +275,21 @@ private func validationError(_ plan: RuntimePlan) -> DaemonError? {
     #expect(RunLayout.childLog(source: "openvpn:\(idA)") == "openvpn-\(idA).log")
     #expect(PlanValidator.ruleSetID(fromFileName: "rules-t-\(idA).json") == idA)
 }
+
+@Test func openVPNArgumentsPinTheUtunUnitThroughDevNode() {
+    let args = OpenVPNArguments.arguments(
+        for: runtime(idA, interface: "utun105"), runDirectory: "/run", logLevel: .info)
+    #expect(args.contains(["--dev", "tun", "--dev-type", "tun", "--dev-node", "utun105"]))
+    #expect(!args.contains(["--dev", "utun105"]))
+    #expect(args.contains(["--route-nopull"]))
+}
+
+extension Array where Element == String {
+    /// True when `slice` appears contiguously.
+    fileprivate func contains(_ slice: [String]) -> Bool {
+        guard !slice.isEmpty, count >= slice.count else { return false }
+        return indices.dropLast(slice.count - 1).contains {
+            self[$0..<$0 + slice.count].elementsEqual(slice)
+        }
+    }
+}

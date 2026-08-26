@@ -68,11 +68,18 @@ public enum SingBoxConfigGenerator {
             ["action": "sniff"],
             ["protocol": "dns", "action": "hijack-dns"],
             ["process_path": [input.openVPNBinaryPath], "outbound": "direct"],
-            [
-                "rule_set": [RuleSetGenerator.directTag, RuleSetGenerator.directIPTag],
-                "outbound": "direct",
-            ],
         ]
+        // The OpenVPN servers themselves always go direct, by address and by name: the
+        // process match above is best effort (seen to miss the very first UDP flow after
+        // start), and a control channel routed into another tunnel is a tunnel-in-tunnel.
+        let servers = openVPNServers(routed)
+        if let rule = serverRouteRule(servers) {
+            routeRules.append(rule)
+        }
+        routeRules.append([
+            "rule_set": [RuleSetGenerator.directTag, RuleSetGenerator.directIPTag],
+            "outbound": "direct",
+        ])
         var ruleSetRefs: [[String: Any]] = [
             localRuleSet(tag: RuleSetGenerator.directTag, path: RuleSetGenerator.directFileName),
             localRuleSet(
@@ -125,6 +132,11 @@ public enum SingBoxConfigGenerator {
         var dnsRules: [[String: Any]] = [
             ["rule_set": RuleSetGenerator.directTag, "server": "dns-direct"]
         ]
+        if !servers.hosts.isEmpty {
+            // OpenVPN resolves its `remote` through the system resolver: answer with real
+            // addresses, never a fake IP (the dial goes direct anyway).
+            dnsRules.append(["domain": servers.hosts, "server": "dns-direct"])
+        }
         if !routed.isEmpty {
             dnsRules.append([
                 "rule_set": routed.map(\.ruleSetTag),
@@ -191,6 +203,35 @@ public enum SingBoxConfigGenerator {
     }
 
     // MARK: - Pieces
+
+    /// `remote` hosts of the routed OpenVPN tunnels, split into IPv4 literals (as /32) and
+    /// names; unique, in store order.
+    static func openVPNServers(_ routed: [Tunnel]) -> (addresses: [String], hosts: [String]) {
+        var addresses: [String] = []
+        var hosts: [String] = []
+        for tunnel in routed {
+            guard case .openVPN(let meta) = tunnel.kind else { continue }
+            for remote in meta.remotes {
+                if let prefix = IPv4Prefix(remote.host) {
+                    let cidr = prefix.description
+                    if !addresses.contains(cidr) { addresses.append(cidr) }
+                } else {
+                    let host = remote.host.lowercased()
+                    if !host.isEmpty, !hosts.contains(host) { hosts.append(host) }
+                }
+            }
+        }
+        return (addresses, hosts)
+    }
+
+    static func serverRouteRule(_ servers: (addresses: [String], hosts: [String]))
+        -> [String: Any]?
+    {
+        var rule: [String: Any] = ["outbound": "direct"]
+        if !servers.hosts.isEmpty { rule["domain"] = servers.hosts }
+        if !servers.addresses.isEmpty { rule["ip_cidr"] = servers.addresses }
+        return rule.count > 1 ? rule : nil
+    }
 
     static func directDNSServer(_ directDNS: DirectDNS) -> [String: Any] {
         switch directDNS {

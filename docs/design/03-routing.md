@@ -105,6 +105,14 @@ turns on sing-box's per-connection byte counting; it has no effect on routing.
 
 Notes on specific choices:
 
+- The `process_path` rule for the bundled `openvpn` is followed by a rule that sends the
+  OpenVPN servers' own addresses and names direct (`ip_cidr` for IPv4 `remote`s, `domain`
+  for the rest, one rule for all routed OpenVPN tunnels), and their names get real answers
+  from `dns-direct` instead of a fake IP. Added 2026-08-25 after the first e2e run: the
+  process match missed the very first UDP flow after start, and the whole OpenVPN control
+  channel then ran through the VLESS default tunnel (tunnel-in-tunnel). Emitted only when
+  an OpenVPN tunnel is routed; goldens regenerated.
+
 - `route_exclude_address` keeps LAN, CGNAT, link-local and multicast out of TUN entirely,
   **except the TUN's own subnet** `172.19.0.0/30`: `172.16.0.0/12` is emitted as the 18
   prefixes that cover it minus that /30 (`IPv4Prefix.subtracting`). sing-tun subtracts the

@@ -9,8 +9,12 @@ public enum OpenVPNArguments {
         let run = runDirectory as NSString
         return [
             "--config", run.appendingPathComponent(RunLayout.openVPNConfig(runtime.id)),
-            "--dev", runtime.interface,
+            // On Darwin the utun unit comes from `--dev-node utunN`; `--dev utunN` is taken as
+            // "any utun" and OpenVPN picks the first free unit, which is not the one the
+            // sing-box config binds to (docs/design/04-tunnels.md, "Runtime (daemon)").
+            "--dev", "tun",
             "--dev-type", "tun",
+            "--dev-node", runtime.interface,
             "--route-nopull",
             "--script-security", "1",
             "--management", run.appendingPathComponent(RunLayout.managementSocket(runtime.id)),

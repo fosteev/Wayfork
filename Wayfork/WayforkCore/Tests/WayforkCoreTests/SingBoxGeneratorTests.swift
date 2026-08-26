@@ -42,11 +42,14 @@ private func generate(_ store: Store, uuids: [UUID: String] = [Fixtures.homeID: 
     #expect(servers[1]["server"] as? String == "10.8.0.1")
     #expect(servers[1]["detour"] as? String == work.outboundTag)
     let dnsRules = try #require(dns["rules"] as? [[String: Any]])
-    #expect(dnsRules.count == 2)
+    #expect(dnsRules.count == 3)
     #expect(dnsRules[0]["rule_set"] as? String == "rules-direct")
     #expect(dnsRules[0]["server"] as? String == "dns-direct")
-    #expect(dnsRules[1]["rule_set"] as? [String] == [work.ruleSetTag, home.ruleSetTag])
-    #expect(dnsRules[1]["server"] as? String == "fakeip")
+    // OpenVPN servers by name resolve for real (never a fake IP).
+    #expect(dnsRules[1]["domain"] as? [String] == ["vpn.example.org"])
+    #expect(dnsRules[1]["server"] as? String == "dns-direct")
+    #expect(dnsRules[2]["rule_set"] as? [String] == [work.ruleSetTag, home.ruleSetTag])
+    #expect(dnsRules[2]["server"] as? String == "fakeip")
     #expect(dns["final"] as? String == "dns-direct")
     #expect(dns["strategy"] as? String == "ipv4_only")
 
@@ -79,11 +82,14 @@ private func generate(_ store: Store, uuids: [UUID: String] = [Fixtures.homeID: 
         rules[2]["process_path"] as? [String] == [
             "/Applications/Wayfork.app/Contents/Resources/bin/openvpn"
         ])
-    #expect(rules[3]["rule_set"] as? [String] == ["rules-direct", "rules-direct-ip"])
+    // OpenVPN servers go direct even when the process match misses.
+    #expect(rules[3]["domain"] as? [String] == ["vpn.example.org"])
     #expect(rules[3]["outbound"] as? String == "direct")
-    #expect(rules[4]["rule_set"] as? [String] == [work.ruleSetTag, work.ipRuleSetTag])
-    #expect(rules[5]["rule_set"] as? [String] == [home.ruleSetTag, home.ipRuleSetTag])
-    #expect(rules[6]["ip_is_private"] as? Bool == true)
+    #expect(rules[4]["rule_set"] as? [String] == ["rules-direct", "rules-direct-ip"])
+    #expect(rules[4]["outbound"] as? String == "direct")
+    #expect(rules[5]["rule_set"] as? [String] == [work.ruleSetTag, work.ipRuleSetTag])
+    #expect(rules[6]["rule_set"] as? [String] == [home.ruleSetTag, home.ipRuleSetTag])
+    #expect(rules[7]["ip_is_private"] as? Bool == true)
     #expect(route["final"] as? String == "direct")
     #expect(route["default_domain_resolver"] as? String == "dns-direct")
     let ruleSets = try #require(route["rule_set"] as? [[String: Any]])
@@ -171,10 +177,10 @@ private func defaultTunnelStore(defaultID: UUID) -> Store {
     let dns = try #require(config["dns"] as? [String: Any])
     #expect(dns["final"] as? String == "dns-\(work.outboundTag)")
     let dnsRules = try #require(dns["rules"] as? [[String: Any]])
-    #expect(dnsRules.count == 3)
-    #expect(dnsRules[2]["query_type"] as? [String] == ["A", "AAAA"])
-    #expect(dnsRules[2]["server"] as? String == "fakeip")
-    #expect(dnsRules[2]["rule_set"] == nil)
+    #expect(dnsRules.count == 4)
+    #expect(dnsRules[3]["query_type"] as? [String] == ["A", "AAAA"])
+    #expect(dnsRules[3]["server"] as? String == "fakeip")
+    #expect(dnsRules[3]["rule_set"] == nil)
     // No extra resolver for an OpenVPN default: its udp server already exists.
     let servers = try #require(dns["servers"] as? [[String: Any]])
     #expect(
@@ -405,13 +411,13 @@ private func configVariants() -> [(String, SingBoxConfigGenerator.Output)] {
     #expect(excludes.contains { $0.contains(IPv4Prefix("192.168.50.0/24")!) })
     let route = try #require(config["route"] as? [String: Any])
     let rules = try #require(route["rules"] as? [[String: Any]])
-    #expect(rules[3]["rule_set"] as? [String] == ["rules-direct", "rules-direct-ip"])
+    #expect(rules[4]["rule_set"] as? [String] == ["rules-direct", "rules-direct-ip"])
     #expect(
-        rules[4]["rule_set"] as? [String] == [Fixtures.work.ruleSetTag, Fixtures.work.ipRuleSetTag])
+        rules[5]["rule_set"] as? [String] == [Fixtures.work.ruleSetTag, Fixtures.work.ipRuleSetTag])
     // DNS rules keep referencing the domain sets only.
     let dnsRules = try #require((config["dns"] as? [String: Any])?["rules"] as? [[String: Any]])
     #expect(
-        dnsRules[1]["rule_set"] as? [String] == [
+        dnsRules[2]["rule_set"] as? [String] == [
             Fixtures.work.ruleSetTag, Fixtures.home.ruleSetTag,
         ])
     #expect(
@@ -447,4 +453,42 @@ private func configVariants() -> [(String, SingBoxConfigGenerator.Output)] {
     #expect(outer.subtracting(outer).isEmpty)
     #expect(outer.subtracting(try #require(IPv4Prefix("11.0.0.0/8"))) == [outer])
     #expect(IPv4Prefix("300.0.0.0/8") == nil && IPv4Prefix("10.0.0.0/33") == nil)
+}
+
+@Test func openVPNServersAlwaysGoDirectByNameAndAddress() throws {
+    var store = Fixtures.store()
+    store.tunnels.append(
+        Tunnel(
+            name: "ByIP", slot: 3,
+            kind: .openVPN(
+                OpenVPNMeta(
+                    remotes: [
+                        Remote(host: "203.0.113.9", port: 1194, proto: "udp"),
+                        Remote(host: "VPN.Example.ORG", port: 443, proto: "tcp"),
+                    ],
+                    needsCredentials: false, needsKeyPassphrase: false, dns: .auto,
+                    discoveredDNS: [], configHash: "x"))))
+    let output = generate(store)
+    let config = try json(output.config)
+    let route = try #require(config["route"] as? [String: Any])
+    let rules = try #require(route["rules"] as? [[String: Any]])
+    let processIndex = try #require(rules.firstIndex { $0["process_path"] != nil })
+    let server = rules[processIndex + 1]
+    #expect(server["outbound"] as? String == "direct")
+    #expect(server["ip_cidr"] as? [String] == ["203.0.113.9/32"])
+    #expect(server["domain"] as? [String] == ["vpn.example.org"])
+    #expect(rules[processIndex + 2]["rule_set"] != nil)  // the Direct rule-sets follow
+    let dns = try #require(config["dns"] as? [String: Any])
+    let dnsRules = try #require(dns["rules"] as? [[String: Any]])
+    #expect(dnsRules[1]["domain"] as? [String] == ["vpn.example.org"])
+    #expect(dnsRules[1]["server"] as? String == "dns-direct")
+
+    // No OpenVPN tunnels → no server rule and no extra DNS rule.
+    var vlessOnly = store
+    vlessOnly.tunnels.removeAll { $0.kind.isOpenVPN }
+    let plain = try json(generate(vlessOnly).config)
+    let plainRules = try #require((plain["route"] as? [String: Any])?["rules"] as? [[String: Any]])
+    #expect(!plainRules.contains { $0["ip_cidr"] != nil && $0["rule_set"] == nil })
+    let plainDNS = try #require((plain["dns"] as? [String: Any])?["rules"] as? [[String: Any]])
+    #expect(!plainDNS.contains { $0["domain"] != nil })
 }

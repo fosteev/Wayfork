@@ -194,3 +194,32 @@ private func state(_ name: String, _ description: String = "", ip: String? = nil
     let exited = o.handle(.processExited(.exited(status: 1)))
     #expect(exited.contains(.exited(.permanent(.configError))))
 }
+
+@Test func openedInterfaceMustMatchThePlannedOne() {
+    var ok = reducer()
+    _ = ok.handle(.processStarted(attempt: 1))
+    #expect(
+        ok.handle(.processLine("1724592000 I Opened utun device utun101"))
+            == [.log(.info, "Opened utun device utun101")])
+    #expect(ok.state != .failed(reason: "ovpn.configError", permanent: true))
+
+    var wrong = reducer()
+    _ = wrong.handle(.processStarted(attempt: 1))
+    let effects = wrong.handle(.processLine("1724592000 I Opened utun device utun4"))
+    #expect(effects.contains(.log(.info, "Opened utun device utun4")))
+    #expect(wrong.state == .failed(reason: "ovpn.configError", permanent: true))
+    #expect(
+        effects.contains(
+            .log(
+                .error, "tunnel failed: ovpn.configError — openvpn opened utun4 instead of utun101")
+        ))
+
+    // The same line through the management interface once it is up.
+    var viaManagement = reducer()
+    _ = viaManagement.handle(.processStarted(attempt: 1))
+    _ = viaManagement.handle(.managementConnected)
+    _ = viaManagement.handle(.management(.log(flags: "I", message: "Opened utun device utun7")))
+    #expect(viaManagement.state == .failed(reason: "ovpn.configError", permanent: true))
+    #expect(OpenVPNOutput.openedInterface(in: "Opened utun device utun105") == "utun105")
+    #expect(OpenVPNOutput.openedInterface(in: "utun device [utun4] opened") == nil)
+}

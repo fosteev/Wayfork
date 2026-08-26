@@ -8,6 +8,12 @@
         "server" : "dns-direct"
       },
       {
+        "domain" : [
+          "vpn.example.org"
+        ],
+        "server" : "dns-direct"
+      },
+      {
         "query_type" : [
           "A",
           "AAAA"
@@ -188,6 +194,12 @@
         "process_path" : [
           "/Applications/Wayfork.app/Contents/Resources/bin/openvpn"
         ]
+      },
+      {
+        "domain" : [
+          "vpn.example.org"
+        ],
+        "outbound" : "direct"
       },
       {
         "outbound" : "direct",
