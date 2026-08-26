@@ -277,14 +277,27 @@ actor ResolverOverride {
     }
 }
 
-/// `getaddrinfo` with a deadline. The lookup blocks for up to 30 s when the resolver is
-/// dead, so it runs on a plain dispatch thread — never on the cooperative pool, whose
-/// width in a launchd daemon is small enough that one blocked thread stalled every actor
-/// for the full 30 s (2026-08-26). The lingering lookup after the deadline is harmless.
+/// `getaddrinfo`, repeated until it answers or the deadline passes. One lookup is not
+/// enough: mDNSResponder takes a moment to pick up the new `Setup:` entry, and until then
+/// the *old* resolver answers — the LAN router returns NODATA for the probe name in
+/// milliseconds, which a single call took for "no answer" and backed the override out
+/// right after every activation (2026-08-26). The lookup blocks for up to 30 s when the
+/// resolver is dead, so it runs on a plain dispatch thread — never on the cooperative
+/// pool, whose width in a launchd daemon is small enough that one blocked thread stalled
+/// every actor for the full 30 s (2026-08-26). A lookup lingering past the deadline is
+/// harmless.
 enum ResolverProbe {
+    static let retryInterval: Duration = .milliseconds(300)
+
     static func resolves(_ host: String, within timeout: Duration) async -> Bool {
         await withTaskGroup(of: Bool.self) { group in
-            group.addTask { await lookup(host) }
+            group.addTask {
+                while !Task.isCancelled {
+                    if await lookup(host) { return true }
+                    guard (try? await Task.sleep(for: retryInterval)) != nil else { break }
+                }
+                return false
+            }
             group.addTask {
                 try? await Task.sleep(for: timeout)
                 return false

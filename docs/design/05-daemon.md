@@ -292,11 +292,14 @@ Two things that do **not** work, both found the hard way on 2026-08-26:
 - **Probe.** Right after an activation the actor resolves `probe.wayfork.internal`
   through `getaddrinfo` (→ mDNSResponder → the TUN); sing-box answers that name itself
   with a `predefined` DNS rule (`172.19.0.2`, TTL 0, so the answer is never cached and
-  no upstream is involved). No answer within 5 s → the override is backed out, the
-  status reads `failed("… got no answer through 172.19.0.2 …")`, and it stays off
-  until sing-box restarts. A mistake in the resolver path costs five seconds, not the
-  user's network. The lookup runs on a dispatch thread, never on the cooperative pool
-  (a blocked pool thread stalled the whole daemon for 30 s).
+  no upstream is involved). The lookup is repeated every 300 ms until it answers: right
+  after the `Setup:` write mDNSResponder still asks the *old* resolver for a moment, and a
+  LAN router returns NODATA for the name in milliseconds (a single lookup backed the
+  override out on every activation, 2026-08-26). No answer within 5 s → the override is
+  backed out, the status reads `failed("… got no answer through 172.19.0.2 …")`, and it
+  stays off until sing-box restarts. A mistake in the resolver path costs five seconds,
+  not the user's network. The lookups run on a dispatch thread, never on the cooperative
+  pool (a blocked pool thread stalled the whole daemon for 30 s).
 - **Rewrites.** The actor watches `State:/Network/Global/DNS`, `Global/IPv4` and the
   services' `Setup:` DNS (`SystemDNS.Watcher`) and re-plans while active: a foreign
   value on the same service (the user edited DNS in System Settings) becomes the new
