@@ -71,9 +71,13 @@ public enum RuntimePlanBuilder {
         bundlePath + "/Contents/Resources/bin/openvpn"
     }
 
-    public static func build(store: Store, secrets: PlanSecrets, bundlePath: String)
-        -> RuntimePlanBuildResult
-    {
+    /// `resolvedServerAddresses`: IPv4 addresses of the OpenVPN `remote` hostnames from
+    /// `HostResolver.resolveIPv4(HostResolver.openVPNHosts(in: store))`; empty when the
+    /// caller could not resolve (the servers are then matched by name only).
+    public static func build(
+        store: Store, secrets: PlanSecrets, bundlePath: String,
+        resolvedServerAddresses: [String: [String]] = [:]
+    ) -> RuntimePlanBuildResult {
         var warnings: [PlanWarning] = []
         var openVPN: [OpenVPNRuntime] = []
         var effectiveStore = store
@@ -111,7 +115,8 @@ public enum RuntimePlanBuilder {
             SingBoxConfigGenerator.Input(
                 store: effectiveStore,
                 vlessUUIDs: secrets.vlessUUIDs,
-                openVPNBinaryPath: openVPNBinaryPath(bundlePath: bundlePath)))
+                openVPNBinaryPath: openVPNBinaryPath(bundlePath: bundlePath),
+                resolvedServerAddresses: resolvedServerAddresses))
         let plan = RuntimePlan(
             singBox: SingBoxPlan(config: generated.config, ruleSets: generated.ruleSets),
             openVPN: openVPN,

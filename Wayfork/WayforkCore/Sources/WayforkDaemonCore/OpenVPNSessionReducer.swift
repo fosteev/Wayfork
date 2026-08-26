@@ -202,7 +202,12 @@ public struct OpenVPNSessionReducer: Sendable, Equatable {
         case .error(let message):
             return [.log(.warning, "management: \(message)")]
 
-        case .hold, .info, .success, .other:
+        case .hold:
+            // `--management-hold` is persistent: after every soft restart (server_poll,
+            // ping-restart, SIGUSR1) openvpn hibernates again until the next `hold release`.
+            return [.send(ManagementCommand.holdRelease), .log(.debug, "hold released")]
+
+        case .info, .success, .other:
             return []
 
         case .bytecount:

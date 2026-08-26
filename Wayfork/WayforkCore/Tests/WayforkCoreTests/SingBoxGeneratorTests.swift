@@ -19,13 +19,15 @@ private func twoTunnelStore() -> Store {
     ])
 }
 
-private func generate(_ store: Store, uuids: [UUID: String] = [Fixtures.homeID: homeUUID])
-    -> SingBoxConfigGenerator.Output
-{
+private func generate(
+    _ store: Store, uuids: [UUID: String] = [Fixtures.homeID: homeUUID],
+    resolved: [String: [String]] = [:]
+) -> SingBoxConfigGenerator.Output {
     SingBoxConfigGenerator.generate(
         SingBoxConfigGenerator.Input(
             store: store, vlessUUIDs: uuids,
-            openVPNBinaryPath: RuntimePlanBuilder.openVPNBinaryPath(bundlePath: bundlePath)))
+            openVPNBinaryPath: RuntimePlanBuilder.openVPNBinaryPath(bundlePath: bundlePath),
+            resolvedServerAddresses: resolved))
 }
 
 @Test func generatedConfigFollowsRoutingDesign() throws {
@@ -482,6 +484,29 @@ private func configVariants() -> [(String, SingBoxConfigGenerator.Output)] {
     let dnsRules = try #require(dns["rules"] as? [[String: Any]])
     #expect(dnsRules[1]["domain"] as? [String] == ["vpn.example.org"])
     #expect(dnsRules[1]["server"] as? String == "dns-direct")
+
+    // Resolved addresses of the names join the literals (sorted, deduplicated, no garbage);
+    // the name stays so that sniffed/fake-ip flows keep matching too. Unknown hosts and
+    // literals in the map are ignored.
+    let resolved = try json(
+        generate(
+            store,
+            resolved: [
+                "vpn.example.org": ["198.51.100.7", "198.51.100.2", "203.0.113.9", "bogus"],
+                "203.0.113.9": ["1.2.3.4"], "other.example": ["5.6.7.8"],
+            ]
+        ).config)
+    let resolvedRules = try #require(
+        (resolved["route"] as? [String: Any])?["rules"] as? [[String: Any]])
+    let resolvedServer = resolvedRules[processIndex + 1]
+    #expect(
+        resolvedServer["ip_cidr"] as? [String] == [
+            "198.51.100.2/32", "198.51.100.7/32", "203.0.113.9/32",
+        ])
+    #expect(resolvedServer["domain"] as? [String] == ["vpn.example.org"])
+    #expect(HostResolver.openVPNHosts(in: store) == ["vpn.example.org"])
+    #expect(HostResolver.resolveIPv4("localhost") == ["127.0.0.1"])
+    #expect(HostResolver.resolveIPv4(["nonexistent.invalid"]).isEmpty)
 
     // No OpenVPN tunnels → no server rule and no extra DNS rule.
     var vlessOnly = store

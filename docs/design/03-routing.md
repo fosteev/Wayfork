@@ -112,6 +112,14 @@ Notes on specific choices:
   process match missed the very first UDP flow after start, and the whole OpenVPN control
   channel then ran through the VLESS default tunnel (tunnel-in-tunnel). Emitted only when
   an OpenVPN tunnel is routed; goldens regenerated.
+- The `domain` half of that rule never matches openvpn's own packets: sing-box learns a
+  flow's domain only from sniffing, fake-ip or `dns.reverse_mapping`, and openvpn's resolver
+  query goes to the LAN router past the TUN (2026-08-26: a hostname `remote` fell through to
+  the VLESS default tunnel while a literal one worked). So the app resolves the hostname
+  `remote`s itself before building the plan (`HostResolver`, `getaddrinfo`, off the main
+  actor) and adds every A record to the `ip_cidr` half; the name stays for flows that do
+  carry it. A host that fails to resolve is logged and matched by name only. New addresses
+  change the plan hash, so a DNS change re-applies on the next apply.
 
 - `route_exclude_address` keeps LAN, CGNAT, link-local and multicast out of TUN entirely,
   **except the TUN's own subnet** `172.19.0.0/30`: `172.16.0.0/12` is emitted as the 18

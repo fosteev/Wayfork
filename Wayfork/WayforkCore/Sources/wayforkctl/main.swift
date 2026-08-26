@@ -102,7 +102,9 @@ func buildPlan(_ arguments: ArraySlice<String>) throws -> RuntimePlan {
                 pattern: try RulePattern.normalize(pattern, match: match), match: match,
                 tunnelID: tunnel.id))
     }
-    let built = RuntimePlanBuilder.build(store: store, secrets: secrets, bundlePath: bundlePath)
+    let resolved = HostResolver.resolveIPv4(HostResolver.openVPNHosts(in: store))
+    let built = RuntimePlanBuilder.build(
+        store: store, secrets: secrets, bundlePath: bundlePath, resolvedServerAddresses: resolved)
     for warning in built.warnings {
         FileHandle.standardError.write(Data("warning: \(warning)\n".utf8))
     }

@@ -11,11 +11,21 @@ public enum SingBoxConfigGenerator {
         /// Absolute path of the bundled `openvpn`, matched by `process_path` so that the
         /// tunnels' own control traffic always goes direct.
         public var openVPNBinaryPath: String
+        /// IPv4 addresses of the OpenVPN `remote` hostnames (lowercased host → addresses),
+        /// resolved by the caller (`HostResolver`). A route rule can only match a hostname
+        /// when sing-box knows the flow's domain, which it never does for openvpn's own UDP
+        /// packets (its resolver query goes to the LAN, past the TUN), so the servers' addresses
+        /// go into the `ip_cidr` half of the direct rule as well.
+        public var resolvedServerAddresses: [String: [String]]
 
-        public init(store: Store, vlessUUIDs: [UUID: String], openVPNBinaryPath: String) {
+        public init(
+            store: Store, vlessUUIDs: [UUID: String], openVPNBinaryPath: String,
+            resolvedServerAddresses: [String: [String]] = [:]
+        ) {
             self.store = store
             self.vlessUUIDs = vlessUUIDs
             self.openVPNBinaryPath = openVPNBinaryPath
+            self.resolvedServerAddresses = resolvedServerAddresses
         }
     }
 
@@ -72,7 +82,7 @@ public enum SingBoxConfigGenerator {
         // The OpenVPN servers themselves always go direct, by address and by name: the
         // process match above is best effort (seen to miss the very first UDP flow after
         // start), and a control channel routed into another tunnel is a tunnel-in-tunnel.
-        let servers = openVPNServers(routed)
+        let servers = openVPNServers(routed, resolved: input.resolvedServerAddresses)
         if let rule = serverRouteRule(servers) {
             routeRules.append(rule)
         }
@@ -205,19 +215,28 @@ public enum SingBoxConfigGenerator {
     // MARK: - Pieces
 
     /// `remote` hosts of the routed OpenVPN tunnels, split into IPv4 literals (as /32) and
-    /// names; unique, in store order.
-    static func openVPNServers(_ routed: [Tunnel]) -> (addresses: [String], hosts: [String]) {
+    /// names; unique, in store order. A name's `resolved` addresses (sorted) join the
+    /// literals right after it.
+    static func openVPNServers(_ routed: [Tunnel], resolved: [String: [String]] = [:])
+        -> (addresses: [String], hosts: [String])
+    {
         var addresses: [String] = []
         var hosts: [String] = []
+        func addAddress(_ literal: String) {
+            guard let prefix = IPv4Prefix(literal) else { return }
+            let cidr = prefix.description
+            if !addresses.contains(cidr) { addresses.append(cidr) }
+        }
         for tunnel in routed {
             guard case .openVPN(let meta) = tunnel.kind else { continue }
             for remote in meta.remotes {
-                if let prefix = IPv4Prefix(remote.host) {
-                    let cidr = prefix.description
-                    if !addresses.contains(cidr) { addresses.append(cidr) }
+                if IPv4Prefix(remote.host) != nil {
+                    addAddress(remote.host)
                 } else {
                     let host = remote.host.lowercased()
-                    if !host.isEmpty, !hosts.contains(host) { hosts.append(host) }
+                    guard !host.isEmpty, !hosts.contains(host) else { continue }
+                    hosts.append(host)
+                    for address in (resolved[host] ?? []).sorted() { addAddress(address) }
                 }
             }
         }

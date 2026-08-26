@@ -667,8 +667,14 @@ final class AppModel {
             Alerts.show(title: "Keychain error", message: "Cannot read tunnel secrets: \(error)")
             return
         }
+        let hosts = HostResolver.openVPNHosts(in: store)
+        let resolved = await Task.detached { HostResolver.resolveIPv4(hosts) }.value
+        for host in hosts where resolved[host] == nil {
+            logs.app(.warning, "cannot resolve \(host): its OpenVPN server is matched by name only")
+        }
         let result = RuntimePlanBuilder.build(
-            store: store, secrets: planSecrets, bundlePath: bundlePath)
+            store: store, secrets: planSecrets, bundlePath: bundlePath,
+            resolvedServerAddresses: resolved)
         for warning in result.warnings {
             if case .missingSecret(let id) = warning {
                 logs.app(.warning, "\(store.tunnel(id: id)?.name ?? "?") skipped: secret missing")

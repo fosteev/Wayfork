@@ -58,6 +58,22 @@ private func state(_ name: String, _ description: String = "", ip: String? = nil
     #expect(!again.contains(.addScopedRoute(interface: "utun101")))
 }
 
+@Test func everyHoldIsReleased() {
+    // openvpn hibernates again after each soft restart (`--management-hold` is persistent);
+    // seen 2026-08-26: after `server_poll` the process sat in hold forever.
+    var r = reducer()
+    _ = r.handle(.processStarted(attempt: 1))
+    _ = r.handle(.managementConnected)
+    let first = r.handle(.management(.hold("Waiting for hold release:0")))
+    #expect(sends(first) == ["hold release"])
+    _ = r.handle(state("WAIT"))
+    _ = r.handle(state("RECONNECTING", "server_poll"))
+    #expect(r.state == .reconnecting(attempt: 1, nextIn: 0, reason: "server_poll"))
+    let again = r.handle(.management(.hold("Waiting for hold release:0")))
+    #expect(sends(again) == ["hold release"])
+    #expect(r.state == .reconnecting(attempt: 1, nextIn: 0, reason: "server_poll"))
+}
+
 @Test func reconnectingDropsRouteAndExitIsTransient() {
     var r = reducer()
     _ = r.handle(.processStarted(attempt: 1))

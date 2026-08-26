@@ -95,6 +95,7 @@ Events handled:
 
 | Line | Action |
 |------|--------|
+| `>HOLD:Waiting for hold release` | `hold release` — `--management-hold` is persistent, openvpn hibernates again after every soft restart (`server_poll`, `ping-restart`); the initial release on connect stays as a belt-and-braces |
 | `>PASSWORD:Need 'Auth' username/password` | `username "Auth" <u>` / `password "Auth" <p>`; if none stored → `failed(needsCredentials, permanent)` |
 | `>PASSWORD:Need 'Private Key' password` | `password "Private Key" <pp>`; none → `failed(needsKeyPassphrase, permanent)` |
 | `>PASSWORD:Verification Failed: 'Auth'` | `failed(authRejected, permanent)`, send `signal SIGTERM` |
