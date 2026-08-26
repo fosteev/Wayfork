@@ -25,16 +25,24 @@ public enum SingBoxConfigGenerator {
         /// from the physical interface and every outbound dial fails with "network is
         /// unreachable" (2026-08-26).
         public var systemDNSServers: [String]
+        /// IPv4 resolvers the network supplied (DHCP; `SystemDNS.Snapshot.networkServers`).
+        /// With `directDNS = .system` the first one becomes `dns-direct` explicitly: sing-box's
+        /// `local` transport asks DHCP for them itself and, when that times out, falls back
+        /// to the system resolver — which is sing-box under the F12 override, a loop that
+        /// left every direct name unresolvable (2026-08-26). Empty → `local` as before.
+        public var networkResolvers: [String]
 
         public init(
             store: Store, vlessUUIDs: [UUID: String], openVPNBinaryPath: String,
-            resolvedServerAddresses: [String: [String]] = [:], systemDNSServers: [String] = []
+            resolvedServerAddresses: [String: [String]] = [:], systemDNSServers: [String] = [],
+            networkResolvers: [String] = []
         ) {
             self.store = store
             self.vlessUUIDs = vlessUUIDs
             self.openVPNBinaryPath = openVPNBinaryPath
             self.resolvedServerAddresses = resolvedServerAddresses
             self.systemDNSServers = systemDNSServers
+            self.networkResolvers = networkResolvers
         }
     }
 
@@ -91,7 +99,9 @@ public enum SingBoxConfigGenerator {
             routed.first { $0.id == wanted.id }
         }
 
-        var dnsServers: [[String: Any]] = [directDNSServer(store.settings.directDNS)]
+        var dnsServers: [[String: Any]] = [
+            directDNSServer(store.settings.directDNS, networkResolvers: input.networkResolvers)
+        ]
         var outbounds: [[String: Any]] = [["type": "direct", "tag": "direct"]]
         // Exceptions (plus the built-in local names) come first so that they beat both the
         // tunnel rule-sets and the default tunnel; the file always exists, so adding an
@@ -230,6 +240,11 @@ public enum SingBoxConfigGenerator {
             // would end in "no route to host" inside sing-box. Tunnels are IPv4-only anyway.
             "strategy": "ipv4_only",
             "independent_cache": true,
+            // Remember which name a real answer was for, so that domain rules also match
+            // flows that carry no SNI/Host (SSH to a Direct-listed host, 2026-08-26): the
+            // exceptions get real IPs from `dns-direct`, and without this only sniffing
+            // could attach the name to the connection.
+            "reverse_mapping": true,
         ]
 
         let route: [String: Any] = [
@@ -302,17 +317,31 @@ public enum SingBoxConfigGenerator {
         return rule.count > 1 ? rule : nil
     }
 
-    static func directDNSServer(_ directDNS: DirectDNS) -> [String: Any] {
+    static func directDNSServer(_ directDNS: DirectDNS, networkResolvers: [String] = [])
+        -> [String: Any]
+    {
         switch directDNS {
         case .system:
-            return ["type": "local", "tag": "dns-direct"]
+            // The network's own resolver, named explicitly (see `Input.networkResolvers`);
+            // sing-box dials it from the physical interface, so a LAN address is fine.
+            guard let first = networkResolvers.first else {
+                return ["type": "local", "tag": "dns-direct"]
+            }
+            return udpDNSServer(first)
         case .custom(let servers):
             // sing-box has no fallback list: only the first server is used (the UI says so).
             guard let first = servers.first else {
                 return ["type": "local", "tag": "dns-direct"]
             }
-            return ["type": "udp", "tag": "dns-direct", "server": first, "detour": "direct"]
+            return udpDNSServer(first)
         }
+    }
+
+    /// `dns-direct` as a plain UDP server. No `detour: direct`: sing-box 1.13 refuses to
+    /// start with it ("detour to an empty direct outbound makes no sense", 2026-08-26); the
+    /// default dialer already leaves through the physical interface (`auto_detect_interface`).
+    static func udpDNSServer(_ server: String) -> [String: Any] {
+        ["type": "udp", "tag": "dns-direct", "server": server]
     }
 
     static func resolver(for meta: OpenVPNMeta) -> String {

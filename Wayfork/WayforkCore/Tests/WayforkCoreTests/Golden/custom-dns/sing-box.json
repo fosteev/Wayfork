@@ -2,6 +2,7 @@
   "dns" : {
     "final" : "dns-direct",
     "independent_cache" : true,
+    "reverse_mapping" : true,
     "rules" : [
       {
         "action" : "predefined",
@@ -43,7 +44,6 @@
     ],
     "servers" : [
       {
-        "detour" : "direct",
         "server" : "9.9.9.9",
         "tag" : "dns-direct",
         "type" : "udp"

@@ -751,7 +751,8 @@ final class AppModel {
         let result = RuntimePlanBuilder.build(
             store: store, secrets: planSecrets, bundlePath: bundlePath,
             resolvedServerAddresses: resolved,
-            systemDNSServers: systemDNS.routable(override: override))
+            systemDNSServers: systemDNS.routable(override: override),
+            networkResolvers: systemDNS.networkServers)
         for warning in result.warnings {
             if case .missingSecret(let id) = warning {
                 logs.app(.warning, "\(store.tunnel(id: id)?.name ?? "?") skipped: secret missing")

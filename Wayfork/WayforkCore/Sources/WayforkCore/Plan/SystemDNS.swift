@@ -10,6 +10,7 @@ public enum SystemDNS {
     static let dnsKey = "State:/Network/Global/DNS"
     static let ipv4Key = "State:/Network/Global/IPv4"
     static let manualDNSPattern = "Setup:/Network/Service/[^/]+/DNS"
+    static let networkDNSPattern = "State:/Network/Service/[^/]+/DNS"
 
     public struct Snapshot: Equatable, Sendable {
         /// IPv4 addresses of the system resolvers, unique, in configuration order.
@@ -21,15 +22,21 @@ public enum SystemDNS {
         /// IPv4 resolvers entered by hand for the primary service (System Settings ›
         /// Network › DNS, `Setup:`); while On this is the daemon's own override (F12).
         public var manualServers: [String]
+        /// IPv4 resolvers the network supplied to the primary service (DHCP,
+        /// `State:/Network/Service/<primary>/DNS`). Unlike `servers` they are not touched by
+        /// the daemon's override, so `dns-direct` can name them explicitly instead of asking
+        /// DHCP again (docs/design/03-routing.md, "Notes on specific choices").
+        public var networkServers: [String]
 
         public init(
             servers: [String], router: String?, primaryService: String? = nil,
-            manualServers: [String] = []
+            manualServers: [String] = [], networkServers: [String] = []
         ) {
             self.servers = servers
             self.router = router
             self.primaryService = primaryService
             self.manualServers = manualServers
+            self.networkServers = networkServers
         }
 
         /// The resolvers mDNSResponder actually uses while the daemon overrides the system
@@ -76,14 +83,22 @@ public enum SystemDNS {
             primary = ipv4[kSCDynamicStorePropNetPrimaryService as String] as? String
         }
         var manual: [String] = []
-        if let primary,
-            let setup = SCDynamicStoreCopyValue(
+        var network: [String] = []
+        if let primary {
+            if let setup = SCDynamicStoreCopyValue(
                 store, "Setup:/Network/Service/\(primary)/DNS" as CFString) as? [String: Any]
-        {
-            manual = ipv4Addresses(setup)
+            {
+                manual = ipv4Addresses(setup)
+            }
+            if let state = SCDynamicStoreCopyValue(
+                store, "State:/Network/Service/\(primary)/DNS" as CFString) as? [String: Any]
+            {
+                network = ipv4Addresses(state)
+            }
         }
         return Snapshot(
-            servers: servers, router: router, primaryService: primary, manualServers: manual)
+            servers: servers, router: router, primaryService: primary, manualServers: manual,
+            networkServers: network)
     }
 
     /// `ServerAddresses` of a DNS entry: IPv4 only, unique, in order.
@@ -123,7 +138,7 @@ public enum SystemDNS {
                 let store = SCDynamicStoreCreate(nil, "Wayfork" as CFString, callback, &context),
                 SCDynamicStoreSetNotificationKeys(
                     store, [SystemDNS.dnsKey, SystemDNS.ipv4Key] as CFArray,
-                    [SystemDNS.manualDNSPattern] as CFArray),
+                    [SystemDNS.manualDNSPattern, SystemDNS.networkDNSPattern] as CFArray),
                 SCDynamicStoreSetDispatchQueue(store, queue)
             else { return nil }
             self.box = box

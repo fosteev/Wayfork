@@ -21,13 +21,37 @@ private func twoTunnelStore() -> Store {
 
 private func generate(
     _ store: Store, uuids: [UUID: String] = [Fixtures.homeID: homeUUID],
-    resolved: [String: [String]] = [:], systemDNS: [String] = []
+    resolved: [String: [String]] = [:], systemDNS: [String] = [], network: [String] = []
 ) -> SingBoxConfigGenerator.Output {
     SingBoxConfigGenerator.generate(
         SingBoxConfigGenerator.Input(
             store: store, vlessUUIDs: uuids,
             openVPNBinaryPath: RuntimePlanBuilder.openVPNBinaryPath(bundlePath: bundlePath),
-            resolvedServerAddresses: resolved, systemDNSServers: systemDNS))
+            resolvedServerAddresses: resolved, systemDNSServers: systemDNS,
+            networkResolvers: network))
+}
+
+@Test func theDirectResolverNamesTheNetworkResolverInsteadOfAskingDHCP() throws {
+    let explicit = try json(
+        generate(twoTunnelStore(), network: ["192.168.31.1", "1.1.1.1"]).config)
+    let servers = try #require((explicit["dns"] as? [String: Any])?["servers"] as? [[String: Any]])
+    let direct = try #require(servers.first { $0["tag"] as? String == "dns-direct" })
+    #expect(direct["type"] as? String == "udp")
+    #expect(direct["server"] as? String == "192.168.31.1")
+    // sing-box 1.13 refuses `detour: direct` on a DNS server ("empty direct outbound").
+    #expect(direct["detour"] == nil)
+    // Nothing known about the network: sing-box's own DHCP lookup, as before.
+    let fallback = try json(generate(twoTunnelStore()).config)
+    let servers2 = try #require((fallback["dns"] as? [String: Any])?["servers"] as? [[String: Any]])
+    #expect(servers2.first { $0["tag"] as? String == "dns-direct" }?["type"] as? String == "local")
+    // A custom resolver wins over the network's.
+    var custom = twoTunnelStore()
+    custom.settings.directDNS = .custom(servers: ["9.9.9.9"])
+    let customConfig = try json(generate(custom, network: ["192.168.31.1"]).config)
+    let servers3 = try #require(
+        (customConfig["dns"] as? [String: Any])?["servers"] as? [[String: Any]])
+    #expect(
+        servers3.first { $0["tag"] as? String == "dns-direct" }?["server"] as? String == "9.9.9.9")
 }
 
 private func excludedRanges(_ output: SingBoxConfigGenerator.Output) throws -> [IPv4Prefix] {
@@ -186,7 +210,7 @@ private func excludedRanges(_ output: SingBoxConfigGenerator.Output) throws -> [
     let servers = try #require(dns["servers"] as? [[String: Any]])
     #expect(servers[0]["type"] as? String == "udp")
     #expect(servers[0]["server"] as? String == "9.9.9.9")
-    #expect(servers[0]["detour"] as? String == "direct")
+    #expect(servers[0]["detour"] == nil)
     #expect(servers[1]["server"] as? String == "10.1.1.1")
     #expect((config["log"] as? [String: Any])?["level"] as? String == "debug")
     #expect(output.routedTunnels.map(\.id) == [Fixtures.workID])

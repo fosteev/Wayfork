@@ -34,7 +34,7 @@ REALITY, vision). Placeholders in angle brackets.
 
   "dns": {
     "servers": [
-      { "type": "local", "tag": "dns-direct" },
+      { "type": "udp", "tag": "dns-direct", "server": "<DHCP resolver>" },
       { "type": "udp",   "tag": "dns-t-<work>", "server": "10.8.0.1", "detour": "t-<work>" },
       { "type": "fakeip","tag": "fakeip", "inet4_range": "198.18.0.0/15" }
     ],
@@ -44,6 +44,7 @@ REALITY, vision). Placeholders in angle brackets.
     ],
     "final": "dns-direct",
     "strategy": "ipv4_only",
+    "reverse_mapping": true,
     "independent_cache": true
   },
 
@@ -145,11 +146,27 @@ Notes on specific choices:
   performance in Later.
 - `strategy: ipv4_only` for OpenVPN outbounds: tunnels are IPv4-only in MVP. VLESS gets
   the raw domain and resolves server-side.
-- `dns-direct` of type `local` uses the OS resolvers through sing-box's own socket, which
-  is bound to the physical interface, so there is no loop through the hijack rule.
-  `settings.directDNS = .custom` replaces it with `{"type":"udp","server":"<ip>","detour":"direct"}`
-  entries (first is primary; sing-box has no fallback list, so only the first is used —
-  the UI says so).
+- `dns-direct` names the network's own resolver explicitly
+  (`{"type":"udp","server":"<DHCP resolver>"}`, the first of
+  `SystemDNS.Snapshot.networkServers` — `State:/Network/Service/<primary>/DNS`, which the
+  F12 override in `Setup:` never touches); sing-box dials it from the physical interface,
+  so there is no loop through the hijack rule and a LAN address is fine. Only when the
+  network supplied none does it fall back to `type: local`. `local` was the default until
+  2026-08-26: on macOS it asks DHCP for the servers itself and, when that times out (seen
+  5 times in 41 starts), falls back to the *system* resolver — sing-box itself under the
+  override — and every direct name (OpenVPN servers by name, Direct rules) hung.
+  `settings.directDNS = .custom` replaces it with `{"type":"udp","server":"<ip>"}`
+  (first is primary; sing-box has no fallback list, so only the first is used — the UI
+  says so). Neither entry carries `detour: direct`: sing-box 1.13 refuses to start with it
+  ("detour to an empty direct outbound makes no sense", found 2026-08-26 when the explicit
+  `dns-direct` first shipped); the default dialer already binds to the physical interface
+  via `auto_detect_interface`.
+- `reverse_mapping: true`: sing-box remembers which name a *real* answer was for and attaches
+  it to later flows to that IP. The exceptions (`rules-direct`) get real IPs from
+  `dns-direct`, so without it a flow with nothing to sniff — SSH to a Direct-listed host —
+  reaches the router as a bare IP, misses every domain rule and takes the default tunnel
+  (2026-08-26: `git pull` from gitlab.sccloud.ru, which blocks the VLESS exit, was reset).
+  IP rules (F11) still win when they come first in the rule order.
 - `hijack-dns` captures every plain-DNS packet that enters TUN. **While Wayfork is On the
   system resolver is Wayfork itself (F12):** the daemon points the primary network
   service's DNS at `172.19.0.2` — the neighbour of the TUN's own address inside its /30,
@@ -179,10 +196,8 @@ Notes on specific choices:
   the effective resolvers or the gateway change (a different list changes the config →
   sing-box restart); the daemon's own override is not a change. IPv6 resolvers are
   ignored: the TUN is IPv4-only.
-  `dns-direct` (`type: local`) does not loop through the override: sing-box's local
-  transport on macOS takes the DHCP-supplied servers of the default interface instead of
-  the system resolver configuration (`dns/local[dns-direct]: dhcp: updated DNS servers
-  from en0`), and its sockets are bound to the physical interface.
+  `dns-direct` does not loop through the override: it names the DHCP-supplied resolver
+  explicitly (above) and its sockets are bound to the physical interface.
   **DDR is refused.** mDNSResponder asks the system resolver for `_dns.resolver.arpa`
   (RFC 9462) and, when the advertised DoH/DoT endpoint's certificate covers the resolver's
   address, moves every query to 443/853 — plain DNS no longer, so `hijack-dns` never sees

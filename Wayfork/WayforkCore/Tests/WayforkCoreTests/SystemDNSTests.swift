@@ -41,3 +41,16 @@ import Testing
     #expect(manualGateway.routable(override: tun) == [tun])
     #expect(manualGateway.unroutable(override: nil) == ["192.168.31.1"])
 }
+
+// The network's own resolvers are what `dns-direct` names explicitly; the override never
+// touches them (they live in `State:`, the override in `Setup:`).
+
+@Test func networkResolversAreKeptApartFromTheEffectiveOnes() {
+    let tun = "172.19.0.2"
+    let on = SystemDNS.Snapshot(
+        servers: [tun], router: "192.168.31.1", manualServers: [tun],
+        networkServers: ["192.168.31.1"])
+    #expect(on.effectiveServers(override: tun) == [tun])
+    #expect(on.networkServers == ["192.168.31.1"])
+    #expect(SystemDNS.Snapshot(servers: [], router: nil).networkServers.isEmpty)
+}
