@@ -4,7 +4,7 @@ All notable changes to Wayfork are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [0.1.0] — unreleased
+## [0.1.0] — 2026-08-26
 
 First release: per-domain split tunneling across several VPNs at once from the menu bar.
 
@@ -51,6 +51,9 @@ First release: per-domain split tunneling across several VPNs at once from the m
 
 ### Known limitations
 
+- Not notarized: the download is signed with an Apple Development certificate, so
+  Gatekeeper blocks it until `xattr -dr com.apple.quarantine /Applications/Wayfork.app`
+  (README, "Install").
 - IPv4 only while On: no IPv6 address on the TUN and no AAAA answers.
 - Browsers using their own DNS-over-HTTPS bypass domain rules (they are seen by IP only).
 - No kill switch: a matched domain whose tunnel is down fails to connect instead of leaking,

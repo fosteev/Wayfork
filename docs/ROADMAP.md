@@ -372,8 +372,10 @@ pending.
 
 ### M4 — Release
 
-Scripts and docs written 2026-08-25; the first notarized build and the tag wait for the
-maintainer (Developer ID identity and notarytool profile are not on the build machine).
+Scripts and docs written 2026-08-25. 0.1.0 shipped 2026-08-26 without notarization
+(no Apple Developer Program membership): signed with the Apple Development identity,
+users clear the quarantine flag by hand (README, "Install"). Notarized builds come with
+the membership; `release.sh` already supports them.
 
 - [x] `scripts/release.sh`: archive, Developer ID signing, notarization, stapling, DMG
       (smoke-tested with `--skip-notarize` and an Apple Development identity: archive,
@@ -382,8 +384,11 @@ maintainer (Developer ID identity and notarytool profile are not on the build ma
       (browser DoH, IPv4-only while on — no AAAA answers, no kill switch yet, F10/F11
       caveats), releasing.
 - [x] `CHANGELOG.md` for 0.1.0 (date filled in at tagging).
-- [ ] First notarized build (`scripts/release.sh --version 0.1.0`), tag `v0.1.0`, GitHub
+- [x] `scripts/release.sh --skip-notarize` falls back to the Apple Development identity;
+      README "Install" documents the quarantine step, CHANGELOG lists it as a limitation.
+- [x] 0.1.0: `scripts/release.sh --skip-notarize --version 0.1.0`, tag `v0.1.0`, GitHub
       release with the DMG and its `.sha256`.
+- [ ] First notarized build once a Developer ID identity and a notarytool profile exist.
 
 ### M5 — System resolver override (F12)
 

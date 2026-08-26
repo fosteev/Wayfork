@@ -44,13 +44,29 @@ What comes next is in [docs/ROADMAP.md](docs/ROADMAP.md); changes per version in
 Requires macOS 14 (Sonoma) or later, Apple silicon or Intel.
 
 1. Download `Wayfork-<version>.dmg` from the
-   [Releases](https://github.com/fosteev/Wayfork/releases) page (the `.sha256` next to it
-   is for `shasum -a 256 -c`).
-2. Open the image and drag **Wayfork** to **Applications**. The app is signed with a
-   Developer ID and notarized, so Gatekeeper opens it without ceremony.
-3. Launch Wayfork. It lives in the menu bar; there is no Dock icon.
+   [Releases](https://github.com/fosteev/Wayfork/releases) page. The `.sha256` next to it
+   is for `shasum -a 256 -c Wayfork-<version>.dmg.sha256`.
+2. Open the image and drag **Wayfork** to **Applications**.
+3. Clear the quarantine flag — the 0.1 builds are signed with an Apple developer
+   certificate but **not notarized**, so Gatekeeper refuses to open a downloaded copy
+   ("Apple could not verify Wayfork is free of malware"). In Terminal:
 
-Building from source is described under [Development](#development).
+   ```sh
+   xattr -dr com.apple.quarantine /Applications/Wayfork.app
+   ```
+
+   Do this for the whole bundle (`-r`), not just for the app: it also covers the helper
+   and the bundled `sing-box` / `openvpn` that Wayfork launches for you. The alternative —
+   try to open the app, then *System Settings › Privacy & Security › Open Anyway* — clears
+   the app itself; if the helper then fails to start, run the command above.
+4. Launch Wayfork. It lives in the menu bar; there is no Dock icon.
+
+Why no notarization: it needs a paid Apple Developer Program membership, which this
+project does not have yet. The signature is a real Apple-issued one, so `codesign
+--verify --deep --strict /Applications/Wayfork.app` succeeds and the privileged helper
+registers normally; only the download check is missing. If you would rather not trust
+a binary you cannot verify through Apple, build it yourself — a free Apple ID is enough,
+see [Development](#development).
 
 ### First run
 
@@ -186,7 +202,11 @@ scripts/release.sh --skip-notarize   # archive + sign + DMG smoke test (any iden
 `Wayfork/WayforkCore` is a local Swift package shared by both. Plain `xcodebuild` and
 Xcode's Run produce ad-hoc signed builds that work for UI work but cannot register the
 privileged helper — use `scripts/dev-sign.sh` for that, then copy the app to
-`/Applications` (the app re-registers the helper when the bundle changes). Pinned versions
+`/Applications` (the app re-registers the helper when the bundle changes). The script
+needs an *Apple Development* identity in the keychain: sign in to Xcode with any Apple ID
+(*Settings › Accounts*, no paid membership needed) and Xcode creates one for your
+personal team. A build made this way is trusted on your own Mac without the quarantine
+step from [Install](#install). Pinned versions
 live in `scripts/versions.env`; bundled binaries go to `Wayfork/Resources/bin/`
 (git-ignored). Design notes are in [docs/design/](docs/design/), the UI prototype the
 screenshots come from is
@@ -195,14 +215,18 @@ screenshots come from is
 ### Releasing
 
 `scripts/release.sh` archives the app, signs everything (app, daemon, bundled binaries)
-with a *Developer ID Application* identity — hardened runtime, secure timestamps —
-notarizes it with `notarytool`, staples the ticket and produces a signed, notarized
-`build/release/Wayfork-<version>.dmg` with a `.sha256`. It needs the identity in the
-keychain and a notarytool credentials profile
-(`xcrun notarytool store-credentials <name> …`), passed as `--identity` /
-`--keychain-profile` or `WAYFORK_RELEASE_IDENTITY` / `WAYFORK_NOTARY_PROFILE`. Bump
-`MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in the project, update `CHANGELOG.md`,
-run the script, tag `v<version>` and attach the DMG to the GitHub release.
+inside out with hardened runtime and secure timestamps, and produces
+`build/release/Wayfork-<version>.dmg` with a `.sha256`. Bump `MARKETING_VERSION` and
+`CURRENT_PROJECT_VERSION` in the project, date the entry in `CHANGELOG.md`, commit, run
+the script, tag `v<version>` and attach the DMG and the checksum to the GitHub release.
+
+Until the project has an Apple Developer Program membership, releases are made with
+`--skip-notarize`: the script signs with the *Apple Development* identity and skips
+notarization, hence the quarantine step in [Install](#install). With a *Developer ID
+Application* identity in the keychain and a notarytool credentials profile
+(`xcrun notarytool store-credentials <name> …`, passed as `--keychain-profile` or
+`WAYFORK_NOTARY_PROFILE`) the same script notarizes and staples the app and the DMG, and
+the Install step goes away.
 
 ## License
 

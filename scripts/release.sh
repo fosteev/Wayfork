@@ -14,9 +14,13 @@
 #                              profile stored once with
 #                                xcrun notarytool store-credentials <name> \
 #                                    --apple-id <id> --team-id <team> --password <app-specific>
-#   --skip-notarize            sign and package only. Works with any identity (e.g. Apple
-#                              Development) as a local smoke test; the result is not
-#                              accepted by Gatekeeper on other Macs.
+#   --skip-notarize            sign and package only, no notarization. Without a Developer
+#                              ID this is the release mode: the first "Apple Development"
+#                              identity is used when no --identity is given. The signature
+#                              is valid everywhere (the daemon registers, the Team ID
+#                              requirement holds), but Gatekeeper refuses to open the
+#                              downloaded app until the user clears the quarantine flag
+#                              (README, "Install").
 #   --skip-archive             reuse build/release/Wayfork.xcarchive from a previous run.
 #   --version X.Y.Z            must equal MARKETING_VERSION in the project — a guard
 #                              against tagging a build of the wrong version.
@@ -78,6 +82,10 @@ done
 if [[ -z "$IDENTITY" ]]; then
     IDENTITY="$(security find-identity -v -p codesigning \
         | awk -F'"' '/Developer ID Application/ { print $2; exit }')"
+    if [[ -z "$IDENTITY" && "$SKIP_NOTARIZE" -eq 1 ]]; then
+        IDENTITY="$(security find-identity -v -p codesigning \
+            | awk -F'"' '/Apple Development/ { print $2; exit }')"
+    fi
     [[ -n "$IDENTITY" ]] || die "no 'Developer ID Application' identity in the keychain; pass --identity (any identity works with --skip-notarize)"
 fi
 
@@ -103,7 +111,7 @@ if [[ "$SKIP_NOTARIZE" -eq 0 ]]; then
         || die "no notarytool profile: pass --keychain-profile or set WAYFORK_NOTARY_PROFILE (or --skip-notarize)"
 else
     [[ "$CERT_NAME" == "Developer ID Application"* ]] \
-        || warn "'$CERT_NAME' is not a Developer ID identity: the output runs here but not on other Macs"
+        || warn "'$CERT_NAME' is not a Developer ID identity: Gatekeeper will block the download until the quarantine flag is cleared (see README)"
 fi
 
 SETTINGS="$(xcodebuild -project "$PROJECT" -scheme Wayfork -configuration Release \
@@ -241,8 +249,9 @@ echo "  dmg:      $DMG"
 echo "  sha256:   $(cut -d' ' -f1 "$DMG.sha256")"
 echo "  archive:  $ARCHIVE"
 if [[ "$SKIP_NOTARIZE" -eq 1 ]]; then
-    echo "  NOT notarized: for a real release run without --skip-notarize"
-else
-    echo "  next:     git tag -a v$VERSION -m 'Wayfork $VERSION' && git push origin v$VERSION,"
-    echo "            then attach the .dmg and .sha256 to the GitHub release"
+    echo "  NOT notarized: users must run"
+    echo "            xattr -dr com.apple.quarantine /Applications/Wayfork.app"
+    echo "            after copying the app (README, \"Install\")"
 fi
+echo "  next:     git tag -a v$VERSION -m 'Wayfork $VERSION' && git push origin v$VERSION,"
+echo "            then attach the .dmg and .sha256 to the GitHub release"
