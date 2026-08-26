@@ -257,7 +257,13 @@ struct QuickAddView: View {
             }
         }
         .onAppear(perform: prefill)
-        .onChange(of: input) { error = nil }
+        .onChange(of: input) {
+            error = nil
+            // A pasted fake IP becomes the wildcard rule of the name behind it (`FakeIP`).
+            if case .pattern(let pattern, _)? = FakeIP.translate(input, index: model.fakeIPs) {
+                input = pattern
+            }
+        }
         .onChange(of: enabledTunnels.map(\.id)) { _, ids in
             if let tunnelID = target?.tunnelID, !ids.contains(tunnelID) {
                 target = ids.first.map(RuleTarget.tunnel)

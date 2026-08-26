@@ -116,8 +116,8 @@ Written as user scenarios. Technical details belong to Phase 2.
   every application that asks the system resolver gets a fake IP and is routed by domain —
   including hosts whose public DNS record is a private address (an office Jira reachable
   only through its VPN), which never enter the TUN otherwise.
-- A resolver typed by hand in System Settings › Network › DNS takes precedence over the
-  override; Wayfork warns and leaves it alone.
+- A resolver typed by hand in System Settings › Network › DNS is replaced too and put back
+  when Wayfork turns Off.
 - Setting "Use Wayfork as the system resolver while On" (on by default) turns it off for
   people who run their own resolver setup.
 
@@ -397,12 +397,18 @@ manual check pending.
       DDR (`_dns.resolver.arpa`) refused, 443/853 to the resolvers rejected.
 - [x] DaemonCore: `ResolverOverridePlanner` — pure decisions (write / restore / nothing and
       the resulting state) over a resolver snapshot and the saved record; tests.
-- [x] Daemon: `ResolverOverride` actor — `State:/Network/Service/<primary>/DNS` via
-      `SCDynamicStore`, `run/dns-override.json` record, re-applied on configd rewrites and
-      primary-service changes, restored on stop, crash backoff, SIGTERM and at bootstrap.
-- [x] App: plan flag from Settings, status logging (active / shadowed by manual DNS /
-      failed), toggle in Settings › General › DNS.
-- [ ] Manual check: `scutil --dns` shows 172.19.0.1 while On and the DHCP resolver after
-      Off; `dscacheutil -q host -a name <office host>` → fake IP; Wi-Fi → Ethernet switch
-      keeps the override; `kill -9` of the daemon → resolver restored at next launch;
-      manual DNS in System Settings → warning in the log and `scutil --dns` unchanged.
+- [x] Daemon: `ResolverOverride` actor — the primary service's manual DNS
+      (`Setup:/Network/Service/<primary>/DNS` via `SCPreferences`), `run/dns-override.json`
+      record with the verbatim original, probe through `getaddrinfo` with back-out,
+      re-applied on user edits and primary-service changes, restored on stop, crash
+      backoff, SIGTERM and at bootstrap.
+- [x] App: plan flag from Settings, status logging (active / failed), toggle in
+      Settings › General › DNS.
+- [ ] Manual check: `scutil --dns` shows 172.19.0.2 without `if_index` while On and the
+      previous setting after Off; `dscacheutil -q host -a name probe.wayfork.internal` →
+      172.19.0.2 and `<office host>` → fake IP; Wi-Fi → Ethernet switch keeps the
+      override; `kill -9` of the daemon → resolver restored at next launch; a manual DNS
+      entry made before Turn On comes back after Turn Off.
+      Two dead ends on 2026-08-26: the TUN's own address 172.19.0.1 (mDNSResponder treats
+      it as loopback) and `State:` (resolver scoped to en0 by `if_index`); both left
+      OpenVPN unable to resolve its server.

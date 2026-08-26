@@ -7,6 +7,9 @@ extension AppModel {
     /// Quick add from the popover. Returns an error message or nil.
     @discardableResult
     func quickAdd(input: String, target: RuleTarget) -> String? {
+        var input = input
+        var inferred: RuleMatch?
+        if let message = translateFakeIP(&input, match: &inferred) { return message }
         switch QuickAdd.evaluate(input: input, target: target, store: store) {
         case .invalid(let message):
             return message
@@ -29,6 +32,9 @@ extension AppModel {
     /// Adds a rule at the end of a group. Returns an error message or nil.
     @discardableResult
     func addRule(pattern input: String, match: RuleMatch, target: RuleTarget) -> String? {
+        var input = input
+        var match = match
+        if let message = translateFakeIP(&input, match: &match) { return message }
         switch RuleEditing.normalize(
             input, match: match, target: target, store: store, excluding: nil)
         {
@@ -46,6 +52,9 @@ extension AppModel {
     /// Edits pattern and match of an existing rule. Returns an error message or nil.
     @discardableResult
     func updateRule(id: UUID, pattern input: String, match: RuleMatch) -> String? {
+        var input = input
+        var match = match
+        if let message = translateFakeIP(&input, match: &match) { return message }
         guard let rule = store.rules.first(where: { $0.id == id }) else { return nil }
         switch RuleEditing.normalize(
             input, match: match, target: rule.target, store: store, excluding: id)
@@ -97,6 +106,30 @@ extension AppModel {
             } else {
                 store.rules.insert(rule, at: store.endIndexOfGroup(group))
             }
+        }
+    }
+
+    /// A pasted fake IP becomes the wildcard rule of the name behind it (`FakeIP`); the
+    /// fields replace it live, this is the safety net for the submit path. Returns an error
+    /// message for a fake IP the logs have not explained.
+    private func translateFakeIP(_ input: inout String, match: inout RuleMatch) -> String? {
+        var inferred: RuleMatch? = match
+        let message = translateFakeIP(&input, match: &inferred)
+        if let inferred { match = inferred }
+        return message
+    }
+
+    private func translateFakeIP(_ input: inout String, match: inout RuleMatch?) -> String? {
+        switch FakeIP.translate(input, index: fakeIPs) {
+        case nil:
+            return nil
+        case .unknown(let address):
+            return FakeIP.message(forUnknown: address)
+        case .pattern(let pattern, let name):
+            logs.app(.info, "\(input) is the fake IP of \(name): using \(pattern)")
+            input = pattern
+            match = RulePattern.inferMatch(pattern)
+            return nil
         }
     }
 

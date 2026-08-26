@@ -51,9 +51,18 @@ public enum SingBoxConfigGenerator {
     }
 
     public static let tunInterface = "utun100"
-    /// The TUN's own address: the system resolver while On (F12).
     public static let tunHostAddress = "172.19.0.1"
     public static let tunAddress = tunHostAddress + "/30"
+    /// The system resolver while On (F12): the *other* address of the TUN's /30. The TUN's
+    /// own address never works for this — mDNSResponder treats an address that belongs to a
+    /// local interface as loopback and its queries never enter the TUN (2026-08-26: only
+    /// applications with their own resolvers got answers), whereas a neighbour address is
+    /// routed through `utun100` like any other and `hijack-dns` answers it.
+    public static let resolverAddress = "172.19.0.2"
+    /// A name sing-box answers by itself (`predefined`, TTL 0): the daemon resolves it
+    /// through the system resolver right after the override to prove that mDNSResponder
+    /// reaches the TUN, and backs the override out when it does not.
+    public static let resolverProbeName = "probe.wayfork.internal"
     public static let fakeIPv4Range = "198.18.0.0/15"
     /// LAN, CGNAT, link-local and multicast: kept out of the TUN entirely.
     static let lanRanges = [
@@ -172,6 +181,13 @@ public enum SingBoxConfigGenerator {
         ])
 
         var dnsRules: [[String: Any]] = [
+            // F12: the daemon's proof that the system resolver reaches the TUN.
+            [
+                "domain": [resolverProbeName],
+                "action": "predefined",
+                "rcode": "NOERROR",
+                "answer": ["\(resolverProbeName). 0 IN A \(resolverAddress)"],
+            ],
             // No designated (encrypted) resolver, ever: see the DDR route rule above.
             ["domain": [ddrDiscoveryName], "action": "reject"],
             ["rule_set": RuleSetGenerator.directTag, "server": "dns-direct"],

@@ -290,6 +290,10 @@ private struct RuleRowView: View {
                     }
                     .onAppear { focused = true }
                     .onChange(of: binding.wrappedValue.text) { _, text in
+                        if let pattern = fakeIPReplacement(text, model: model) {
+                            binding.wrappedValue.text = pattern
+                            return
+                        }
                         binding.wrappedValue.match = inferredMatch(
                             text, current: binding.wrappedValue.match)
                     }
@@ -458,6 +462,10 @@ private struct NewRuleRow: View {
                 .onExitCommand(perform: cancel)
                 .onAppear { focused = true }
                 .onChange(of: editing?.text ?? "") { _, value in
+                    if let pattern = fakeIPReplacement(value, model: model) {
+                        editing?.text = pattern
+                        return
+                    }
                     editing?.match = inferredMatch(value, current: editing?.match ?? .suffix)
                 }
             Picker("Match", selection: match) {
@@ -497,6 +505,16 @@ private func matchTitle(_ match: RuleMatch) -> String {
     case .app: "App"
     case .ip: "IP"
     }
+}
+
+/// A fake IP pasted into a pattern field turns into the wildcard rule of the name behind it
+/// (`FakeIP`); nil when the text is anything else or the name is unknown.
+@MainActor
+private func fakeIPReplacement(_ text: String, model: AppModel) -> String? {
+    if case .pattern(let pattern, _)? = FakeIP.translate(text, index: model.fakeIPs) {
+        return pattern
+    }
+    return nil
 }
 
 /// Match to use after typing (F11): `*` → wildcard, an address or subnet → IP, and back to

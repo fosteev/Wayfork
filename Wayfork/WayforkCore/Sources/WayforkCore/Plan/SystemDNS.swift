@@ -19,7 +19,7 @@ public enum SystemDNS {
         /// The primary network service (`PrimaryService` of `Global/IPv4`), if any.
         public var primaryService: String?
         /// IPv4 resolvers entered by hand for the primary service (System Settings ›
-        /// Network › DNS). They take precedence over the daemon's override (F12).
+        /// Network › DNS, `Setup:`); while On this is the daemon's own override (F12).
         public var manualServers: [String]
 
         public init(
@@ -33,11 +33,12 @@ public enum SystemDNS {
         }
 
         /// The resolvers mDNSResponder actually uses while the daemon overrides the system
-        /// resolver with `override` (F12): the manual ones when present, else the override
-        /// itself. `nil` (override off) leaves the plain system resolvers.
+        /// resolver with `override` (F12): the override alone — the daemon replaces a manual
+        /// entry too (and puts it back when Off), so `manualServers` never stays effective.
+        /// `nil` (override off) leaves the plain system resolvers.
         public func effectiveServers(override: String?) -> [String] {
             guard let override else { return servers }
-            return manualServers.isEmpty ? [override] : manualServers
+            return [override]
         }
 
         /// The effective resolvers the generator may route into the TUN. A host route for

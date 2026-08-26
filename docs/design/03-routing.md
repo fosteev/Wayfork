@@ -152,9 +152,12 @@ Notes on specific choices:
   the UI says so).
 - `hijack-dns` captures every plain-DNS packet that enters TUN. **While Wayfork is On the
   system resolver is Wayfork itself (F12):** the daemon points the primary network
-  service's DNS at the TUN address (`172.19.0.1`; docs/design/05-daemon.md, "System
-  resolver override"), so mDNSResponder's queries enter the TUN and `hijack-dns` answers
-  them with fake IPs. Nothing else works reliably. A LAN-hosted resolver *can* be routed
+  service's DNS at `172.19.0.2` — the neighbour of the TUN's own address inside its /30,
+  never the TUN address itself, which mDNSResponder treats as loopback (docs/design/
+  05-daemon.md, "System resolver override") — so mDNSResponder's queries enter the TUN and
+  `hijack-dns` answers them with fake IPs; a `predefined` answer for
+  `probe.wayfork.internal` lets the daemon prove the path before trusting it. Nothing
+  else works reliably. A LAN-hosted resolver *can* be routed
   into the TUN by carving its /32 out of `route_exclude_address` (the same
   `IPv4Prefix.subtracting` trick as the TUN's own /30) — but not when it is the default
   gateway (`Router` of `Global/IPv4`, the usual home router): the kernel validates a
@@ -167,18 +170,15 @@ Notes on specific choices:
   through sniffing only (`dig @192.168.31.1` returned real addresses, `dig @8.8.8.8` fake
   IPs, 2026-08-26) — and never for a host whose public record is a private address (an
   office Jira), which never enters the TUN at all.
-  The carve-out stays for the resolvers that remain *effective* under the override: a
-  resolver entered by hand in System Settings (`Setup:/Network/Service/<primary>/DNS`)
-  takes precedence over the daemon's `State:` override in configd's merge, so the app
-  reads it (`SystemDNS.snapshot().manualServers`), carves it out when it sits in a LAN
-  range and is not the gateway, warns when it is the gateway, and the daemon reports the
-  override as *shadowed*. With the override off (Settings) the plain system resolvers are
-  treated the same way (`Snapshot.effectiveServers(override:)`). The app watches
-  `State:/Network/Global/DNS`, `Global/IPv4` and the services' `Setup:` DNS with
-  `SCDynamicStore` and re-applies when the effective resolvers or the gateway change (a
-  different list changes the config → sing-box restart); the override flipping
-  `Global/DNS` to the TUN address is not a change. IPv6 resolvers are ignored: the TUN is
-  IPv4-only.
+  The override replaces the manual entry too (a resolver typed into System Settings is
+  saved and put back when Off), so while it is on the only effective resolver is
+  `172.19.0.2` (`Snapshot.effectiveServers(override:)`) and there is nothing to carve. The
+  carve-out and the gateway warning remain for the override-off setting, where the plain
+  system resolvers are what mDNSResponder uses. The app watches `State:/Network/Global/DNS`,
+  `Global/IPv4` and the services' `Setup:` DNS with `SCDynamicStore` and re-applies when
+  the effective resolvers or the gateway change (a different list changes the config →
+  sing-box restart); the daemon's own override is not a change. IPv6 resolvers are
+  ignored: the TUN is IPv4-only.
   `dns-direct` (`type: local`) does not loop through the override: sing-box's local
   transport on macOS takes the DHCP-supplied servers of the default interface instead of
   the system resolver configuration (`dns/local[dns-direct]: dhcp: updated DNS servers

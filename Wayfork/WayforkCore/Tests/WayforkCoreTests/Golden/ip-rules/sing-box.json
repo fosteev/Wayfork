@@ -4,6 +4,16 @@
     "independent_cache" : true,
     "rules" : [
       {
+        "action" : "predefined",
+        "answer" : [
+          "probe.wayfork.internal. 0 IN A 172.19.0.2"
+        ],
+        "domain" : [
+          "probe.wayfork.internal"
+        ],
+        "rcode" : "NOERROR"
+      },
+      {
         "action" : "reject",
         "domain" : [
           "_dns.resolver.arpa"

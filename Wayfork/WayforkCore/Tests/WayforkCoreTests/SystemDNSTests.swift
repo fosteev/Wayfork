@@ -19,7 +19,8 @@ import Testing
     #expect(offline.routable().isEmpty && offline.unroutable().isEmpty)
 }
 
-// F12: while the daemon overrides the system resolver, only a manual entry stays effective.
+// F12: while the daemon overrides the system resolver, nothing else is effective — a manual
+// entry is replaced (and restored later) just like the DHCP one.
 
 @Test func theOverrideReplacesTheSystemResolversUnlessManualOnesExist() {
     let tun = "172.19.0.1"
@@ -32,11 +33,11 @@ import Testing
     let manual = SystemDNS.Snapshot(
         servers: ["8.8.8.8"], router: "192.168.31.1", primaryService: "wifi",
         manualServers: ["8.8.8.8"])
-    #expect(manual.effectiveServers(override: tun) == ["8.8.8.8"])
-    #expect(manual.routable(override: tun) == ["8.8.8.8"])
+    #expect(manual.effectiveServers(override: tun) == [tun])
+    #expect(manual.effectiveServers(override: nil) == ["8.8.8.8"])
 
     let manualGateway = SystemDNS.Snapshot(
         servers: ["192.168.31.1"], router: "192.168.31.1", manualServers: ["192.168.31.1"])
-    #expect(manualGateway.routable(override: tun).isEmpty)
-    #expect(manualGateway.unroutable(override: tun) == ["192.168.31.1"])
+    #expect(manualGateway.routable(override: tun) == [tun])
+    #expect(manualGateway.unroutable(override: nil) == ["192.168.31.1"])
 }

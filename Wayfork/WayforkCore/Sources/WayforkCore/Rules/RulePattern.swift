@@ -122,6 +122,26 @@ public enum RulePattern {
         return name.hasSuffix(".app") ? String(name.dropLast(4)) : name
     }
 
+    /// The wildcard covering a host's siblings: `*.example.com` for `gitlab.example.com`.
+    /// A two-label host is returned as is (a suffix rule covers it and its subdomains), and
+    /// so is a host right under a public second-level suffix (`foo.co.uk`), where dropping
+    /// the label would cover half the internet.
+    public static func wildcardForSiblings(of host: String) -> String {
+        let labels = host.lowercased().split(separator: ".").map(String.init)
+        guard labels.count >= 3 else { return host.lowercased() }
+        let parent = Array(labels.dropFirst())
+        if parent.count == 2, parent[1].count == 2, publicSecondLevelLabels.contains(parent[0]) {
+            return host.lowercased()
+        }
+        return "*." + parent.joined(separator: ".")
+    }
+
+    /// Second-level labels that act as public suffixes under two-letter TLDs (`co.uk`,
+    /// `com.au`, `ac.jp`); enough for `wildcardForSiblings` without a suffix list.
+    static let publicSecondLevelLabels: Set<String> = [
+        "co", "com", "net", "org", "gov", "edu", "ac", "or", "ne", "gob", "mil", "info",
+    ]
+
     /// Regular expression emitted for a wildcard pattern, e.g. `^.+\.cdn\.example\.com$`.
     public static func wildcardRegex(_ pattern: String) -> String {
         var out = "^"

@@ -251,44 +251,66 @@ new rule until it happens to close (2026-08-26, "rules need an app restart"). Af
 
 While sing-box is `running` the daemon makes Wayfork the system resolver
 (docs/design/03-routing.md, "Notes on specific choices"). `ResolverOverride` (actor) writes
+the primary service's **manual** DNS entry — `Setup:/Network/Service/<PrimaryService>/DNS`
+in `preferences.plist`, the same thing `networksetup -setdnsservers` writes — through
+`SCPreferences` (path `/NetworkServices/<id>/DNS`, commit + apply, root):
 
 ```
-State:/Network/Service/<PrimaryService>/DNS = { ServerAddresses: ["172.19.0.1"],
-                                                SearchDomains, DomainName: <as before> }
+{ ServerAddresses: ["172.19.0.2"], SearchDomains: <manual ones> + <DHCP domain, e.g. lan> }
 ```
 
-through `SCDynamicStore` (root), `<PrimaryService>` being `PrimaryService` of
-`State:/Network/Global/IPv4`. configd folds it into `State:/Network/Global/DNS`, and
-mDNSResponder sends every query to the TUN address, where `hijack-dns` answers. Search
-domains are kept so that `host.lan` still resolves (through `dns-direct`).
+`<PrimaryService>` is `PrimaryService` of `State:/Network/Global/IPv4`. configd folds it
+into `State:/Network/Global/DNS`, and mDNSResponder sends every query to `172.19.0.2`,
+which is routed into the TUN like any other address of the carved-out /30, where
+`hijack-dns` answers.
 
-- **Record.** Before the first write the previous value of the key (or its absence) is
-  saved to `run/dns-override.json` (`{service, original}`, 0600). Restore = write the
-  original back (or remove the key when there was none) and delete the record.
+Two things that do **not** work, both found the hard way on 2026-08-26:
+
+- *The TUN's own address* (`172.19.0.1`): mDNSResponder treats an address that belongs to
+  a local interface as loopback and its queries never reach the TUN — only applications
+  with built-in resolvers (Chromium, Electron) got answers while everything behind
+  `getaddrinfo` (OpenVPN's `remote`, the app's `HostResolver`, curl) failed.
+- *Writing `State:/Network/Service/<id>/DNS`* (the Tunnelblick way): IPMonitor publishes a
+  resolver taken from `State:` with the service interface's `if_index` (`scutil --dns`:
+  `if_index : 14 (en0)`), and mDNSResponder then sends every query out of that interface —
+  to the LAN router, never into the TUN. A resolver taken from `Setup:` has no `if_index`
+  and goes by the routing table. Verified side by side with `scutil` / `networksetup` and
+  `dscacheutil -q host -a name probe.wayfork.internal`.
+
+- **Record.** Before the first write the previous manual entry (or its absence) is saved
+  to `run/dns-override.json` (`{service, original, originalRaw}`; the raw property list
+  is what gets restored, so keys Wayfork does not model survive). Restore = write it back
+  (an empty dictionary when there was none — what `networksetup … empty` leaves) and
+  delete the record. `Setup:` is persistent, so a leftover override survives a reboot;
+  the daemon restores it at bootstrap (launchd starts it at boot). If Wayfork is removed
+  while On, System Settings keeps `172.19.0.2` — README says how to clear it.
 - **Lifecycle.** Active iff the plan says so (`RuntimePlan.overrideSystemDNS`) *and* the
   engine is `running`; every other engine state (`starting` during a crash backoff,
   `failed`, `stopped`) restores at once, so there is no window with a resolver that leads
   nowhere. `stop` restores before `run/` is wiped (the record is not transient); SIGTERM
   goes through `stop`; bootstrap restores a leftover record before anything else.
-- **Rewrites.** configd rewrites the key on DHCP renew, network switch and primary-service
-  change. The actor watches `State:/Network/Global/DNS`, `Global/IPv4` and the services'
-  `Setup:` DNS (`SystemDNS.Watcher`) and re-plans while active: a foreign value on the
-  same service becomes the new original and is overridden again; a new primary service
-  gets the old one restored and the override moved; no primary service (network down)
-  restores and reports `failed`. The daemon's own write triggers a notification too — the
-  planner finds everything consistent and does nothing.
-- **Manual DNS.** A resolver entered in System Settings lives in
-  `Setup:/Network/Service/<id>/DNS` and takes precedence over `State:` in configd's merge.
-  The daemon still writes the override (it takes effect the moment the manual entry is
-  cleared) and reports `shadowed(manual: [...])`; the app logs a warning saying where to
-  clear it. Wayfork never edits `Setup:` — that is the user's persistent configuration.
+- **Probe.** Right after an activation the actor resolves `probe.wayfork.internal`
+  through `getaddrinfo` (→ mDNSResponder → the TUN); sing-box answers that name itself
+  with a `predefined` DNS rule (`172.19.0.2`, TTL 0, so the answer is never cached and
+  no upstream is involved). No answer within 5 s → the override is backed out, the
+  status reads `failed("… got no answer through 172.19.0.2 …")`, and it stays off
+  until sing-box restarts. A mistake in the resolver path costs five seconds, not the
+  user's network. The lookup runs on a dispatch thread, never on the cooperative pool
+  (a blocked pool thread stalled the whole daemon for 30 s).
+- **Rewrites.** The actor watches `State:/Network/Global/DNS`, `Global/IPv4` and the
+  services' `Setup:` DNS (`SystemDNS.Watcher`) and re-plans while active: a foreign
+  value on the same service (the user edited DNS in System Settings) becomes the new
+  original and is overridden again; a new primary service gets the old one restored and
+  the override moved; no primary service (network down) restores and reports `failed`.
+  The daemon's own write triggers a notification too — the planner finds everything
+  consistent and does nothing.
 - **Status.** `RuntimeStatus.resolverOverride`: `off`, `active(service)`,
-  `shadowed(manual)`, `failed(reason)`.
+  `failed(reason)` (`shadowed` remains in the enum but is no longer produced).
 
 The decisions — `write` / `restore` / nothing, and the resulting state — are a pure
 function in `WayforkDaemonCore` (`ResolverOverridePlanner.plan`) over a
-`ResolverSnapshot` (primary service, its `State:` entry, its `Setup:` servers) and the
-saved record; unit-tested. The actor only performs the I/O.
+`ResolverSnapshot` (primary service, its manual entry, the network's search domains) and
+the saved record; unit-tested. The actor only performs the I/O.
 
 ## Developer mode (no app, no launchd)
 
@@ -310,7 +332,7 @@ delete it afterwards. This is how M2 is verified before the app exists.
 | `run/t-<id>.sock` | 0600 | management socket |
 | `run/*.pid` | 0600 | |
 | `run/cache.db` | 0600 | sing-box cache |
-| `run/dns-override.json` | 0600 | the primary service's DNS entry before the override (F12); survives `stop`'s wipe until restored |
+| `run/dns-override.json` | 0600 | the primary service's manual DNS entry before the override (F12); survives `stop`'s wipe until restored |
 | `/Library/Logs/Wayfork/daemon.log` | 0600 | daemon's own log (also `os_log`, subsystem `com.wayfork.daemon`) |
 | `/Library/Logs/Wayfork/<source>.log` | 0600 | raw child output (`sing-box.log`, `openvpn-<id>.log`), 5 × 1 MB rotation, one `<ISO-8601> <LEVEL> <message>` per line |
 

@@ -156,11 +156,11 @@ secrets), `~/Library/Logs/Wayfork/` (app and mirrored runtime logs),
 - **Browser DoH bypasses domain rules**: a browser that resolves names over DNS-over-HTTPS
   never asks Wayfork's resolver, so its traffic is seen by IP only — disable secure DNS or
   use IP / application rules for it.
-- **Manual DNS in System Settings wins**: while On, Wayfork points the Mac's DNS at its own
-  resolver; a server entered by hand in System Settings › Network › DNS takes precedence,
-  so apps then get real addresses and are routed by sniffing only (never for a host whose
-  record is a private address). The log says so — clear the manual entry to route by
-  domain.
+- **Wayfork owns the DNS setting while On**: System Settings › Network › DNS shows
+  `172.19.0.2` (Wayfork's resolver) while On; an entry you made yourself is put back when
+  Off. Editing it while On is undone on the spot. If Wayfork was removed while On and DNS
+  still says `172.19.0.2`, run `networksetup -setdnsservers Wi-Fi empty` (or your service's
+  name).
 - **No kill switch**: a matched domain whose tunnel is down fails to connect rather than
   leaking, and a default tunnel that is down blocks unmatched traffic, but there is no global
   "block everything when a tunnel drops".

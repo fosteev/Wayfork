@@ -59,6 +59,8 @@ final class AppModel {
     // MARK: - Collaborators
 
     let logs = LogCenter()
+    /// Which name got which fake IP, from sing-box's log (`FakeIP`, docs/design/02-ux.md).
+    private(set) var fakeIPs = FakeIPIndex()
     let secrets: any SecretStore
     private let repository: StoreRepository
     private let client = DaemonClient()
@@ -85,7 +87,16 @@ final class AppModel {
         self.secrets = secrets
         self.repository = repository
         client.onStatus = { [weak self] status in self?.handleStatus(status) }
-        client.onLogLines = { [weak self] lines in self?.logs.receive(lines) }
+        client.onLogLines = { [weak self] lines in
+            guard let self else { return }
+            logs.receive(lines)
+            for line in lines where line.source == "sing-box" {
+                fakeIPs.ingest(line.message)
+            }
+        }
+        for line in logs.lines where line.source == "sing-box" {
+            fakeIPs.ingest(line.message)
+        }
         client.onTraffic = { [weak self] snapshot in self?.handleTraffic(snapshot) }
         client.onInterruption = { [weak self] in self?.handleDaemonInterruption() }
         client.onInvalidation = { [weak self] in self?.handleDaemonInvalidation() }
@@ -626,7 +637,7 @@ final class AppModel {
         case .active(let service):
             logs.app(
                 .info,
-                "system resolver is Wayfork (\(SingBoxConfigGenerator.tunHostAddress)) on service \(service)"
+                "system resolver is Wayfork (\(SingBoxConfigGenerator.resolverAddress)) on service \(service)"
             )
         case .shadowed(let manual):
             logs.app(
@@ -681,7 +692,7 @@ final class AppModel {
 
     /// The TUN address while the daemon is asked to be the system resolver (F12).
     private var resolverOverrideAddress: String? {
-        store.settings.overrideSystemDNS ? SingBoxConfigGenerator.tunHostAddress : nil
+        store.settings.overrideSystemDNS ? SingBoxConfigGenerator.resolverAddress : nil
     }
 
     private func systemDNSChanged() {

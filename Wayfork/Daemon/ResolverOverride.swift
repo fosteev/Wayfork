@@ -7,7 +7,11 @@ import WayforkDaemonCore
 /// "System resolver override"). `ResolverOverridePlanner` decides; this actor reads and
 /// writes `SCDynamicStore` and keeps `run/dns-override.json`.
 actor ResolverOverride {
-    static let address = SingBoxConfigGenerator.tunHostAddress
+    static let address = SingBoxConfigGenerator.resolverAddress
+    static let probeName = SingBoxConfigGenerator.resolverProbeName
+    /// mDNSResponder answers through the TUN well under a second; anything slower is a
+    /// resolver that leads nowhere.
+    static let probeTimeout: Duration = .seconds(5)
 
     enum Failure: Error, CustomStringConvertible {
         case storeUnavailable
@@ -30,6 +34,10 @@ actor ResolverOverride {
     private var watcher: SystemDNS.Watcher?
     private var desired = false
     private var engineRunning = false
+    /// Why the override is held off until sing-box restarts: the probe found that the
+    /// system resolver does not reach the TUN (2026-08-26: the TUN's own address never did).
+    private var blocked: String?
+    private var probe: Task<Void, Never>?
     private var state = ResolverOverrideState.off {
         didSet { if state != oldValue { events.yield(.resolverOverride(state)) } }
     }
@@ -50,6 +58,7 @@ actor ResolverOverride {
 
     /// Follows the engine: the override is in place only while sing-box runs.
     func setEngineRunning(_ running: Bool) {
+        if running != engineRunning { blocked = nil }  // a new sing-box deserves a new try
         engineRunning = running
         reconcile()
     }
@@ -67,7 +76,7 @@ actor ResolverOverride {
     }
 
     private func reconcile() {
-        let active = desired && engineRunning
+        let active = desired && engineRunning && blocked == nil
         let (actions, planned) = ResolverOverridePlanner.plan(
             active: active, snapshot: readSnapshot(), saved: readRecord(), address: Self.address)
         var result = planned
@@ -84,6 +93,14 @@ actor ResolverOverride {
             startWatching()
         } else {
             watcher = nil
+            probe?.cancel()
+            probe = nil
+        }
+        if let blocked, !active, desired, engineRunning {
+            result = .failed(reason: blocked)
+        }
+        if case .active = result, probe == nil, state != result {
+            startProbe()
         }
         if result != state {
             switch result {
@@ -91,11 +108,10 @@ actor ResolverOverride {
                 hub.post(.info, "system resolver restored")
             case .active(let service):
                 hub.post(.info, "system resolver → \(Self.address) on service \(service)")
-            case .shadowed(let manual):
+            case .shadowed(let manual):  // not produced since the move to `Setup:`
                 hub.post(
                     .warning,
-                    "system resolver override shadowed by manual DNS \(manual.joined(separator: ", "))"
-                )
+                    "system resolver override shadowed by \(manual.joined(separator: ", "))")
             case .failed(let reason):
                 hub.post(.error, "system resolver override failed: \(reason)")
             }
@@ -103,10 +119,41 @@ actor ResolverOverride {
         state = result
     }
 
-    // MARK: - SCDynamicStore
+    // MARK: - Probe
 
-    private static func stateKey(_ service: String) -> String {
-        "State:/Network/Service/\(service)/DNS"
+    /// Resolves `probe.wayfork.internal` through the system resolver (getaddrinfo →
+    /// mDNSResponder → the TUN → sing-box's `predefined` answer). No answer within
+    /// `probeTimeout` → the override is backed out until sing-box restarts.
+    private func startProbe() {
+        probe = Task { [weak self] in
+            let answered = await ResolverProbe.resolves(
+                ResolverOverride.probeName, within: ResolverOverride.probeTimeout)
+            guard !Task.isCancelled, let self else { return }
+            await self.probed(answered)
+        }
+    }
+
+    private func probed(_ answered: Bool) {
+        probe = nil
+        if answered {
+            hub.post(.info, "system resolver verified: \(Self.probeName) answered through the TUN")
+            return
+        }
+        blocked =
+            "\(Self.probeName) got no answer through \(Self.address) within \(Self.probeTimeout)"
+        hub.post(.error, "system resolver override backed out: \(blocked ?? "")")
+        reconcile()
+    }
+
+    // MARK: - SCDynamicStore / SCPreferences
+
+    /// The manual DNS goes into `Setup:` (what `networksetup -setdnsservers` writes):
+    /// a resolver published from `State:` carries the service interface's `if_index` and
+    /// mDNSResponder then sends every query out of that interface — to the LAN router,
+    /// never into the TUN (2026-08-26, `scutil --dns`: `if_index : 14 (en0)` from `State:`,
+    /// none from `Setup:`; the probe answered only for the latter).
+    private static func preferencesPath(_ service: String) -> String {
+        "/NetworkServices/\(service)/DNS"
     }
 
     private func readSnapshot() -> ResolverSnapshot {
@@ -115,24 +162,37 @@ actor ResolverOverride {
                 as? [String: Any],
             let primary = ipv4[kSCDynamicStorePropNetPrimaryService as String] as? String
         else {
-            return ResolverSnapshot(primaryService: nil, stateEntry: nil)
+            return ResolverSnapshot(primaryService: nil, entry: nil)
         }
-        let entry =
-            SCDynamicStoreCopyValue(store, Self.stateKey(primary) as CFString) as? [String: Any]
-        let setup =
-            SCDynamicStoreCopyValue(store, "Setup:/Network/Service/\(primary)/DNS" as CFString)
-            as? [String: Any]
+        var entry: ResolverEntry?
+        var raw: Data?
+        if let prefs = SCPreferencesCreate(nil, "WayforkDaemon" as CFString, nil),
+            let dictionary = SCPreferencesPathGetValue(
+                prefs, Self.preferencesPath(primary) as CFString) as? [String: Any]
+        {
+            entry = Self.entry(from: dictionary)
+            raw = try? PropertyListSerialization.data(
+                fromPropertyList: dictionary, format: .binary, options: 0)
+        }
+        var network: [String] = []
+        if let state = SCDynamicStoreCopyValue(
+            store, "State:/Network/Service/\(primary)/DNS" as CFString) as? [String: Any]
+        {
+            network = state[kSCPropNetDNSSearchDomains as String] as? [String] ?? []
+            if let domain = state[kSCPropNetDNSDomainName as String] as? String,
+                !network.contains(domain)
+            {
+                network.append(domain)
+            }
+        }
         return ResolverSnapshot(
-            primaryService: primary,
-            stateEntry: entry.map(Self.entry(from:)),
-            manualServers: (setup?[kSCPropNetDNSServerAddresses as String] as? [String]) ?? [])
+            primaryService: primary, entry: entry, entryRaw: raw, networkSearchDomains: network)
     }
 
     private static func entry(from dictionary: [String: Any]) -> ResolverEntry {
         ResolverEntry(
             serverAddresses: dictionary[kSCPropNetDNSServerAddresses as String] as? [String] ?? [],
-            searchDomains: dictionary[kSCPropNetDNSSearchDomains as String] as? [String] ?? [],
-            domainName: dictionary[kSCPropNetDNSDomainName as String] as? String)
+            searchDomains: dictionary[kSCPropNetDNSSearchDomains as String] as? [String] ?? [])
     }
 
     private static func dictionary(from entry: ResolverEntry) -> [String: Any] {
@@ -142,34 +202,41 @@ actor ResolverOverride {
         if !entry.searchDomains.isEmpty {
             dictionary[kSCPropNetDNSSearchDomains as String] = entry.searchDomains
         }
-        if let domainName = entry.domainName {
-            dictionary[kSCPropNetDNSDomainName as String] = domainName
-        }
         return dictionary
     }
 
     private func perform(_ action: ResolverOverrideAction) throws(Failure) {
-        guard let store else { throw .storeUnavailable }
         switch action {
         case .write(let service, let entry, let record):
             // The record goes first: a crash right after the write must still be undoable.
             try writeRecord(record)
-            let key = Self.stateKey(service)
-            guard
-                SCDynamicStoreSetValue(
-                    store, key as CFString, Self.dictionary(from: entry) as CFDictionary)
-            else { throw .writeFailed(key: key) }
+            try writePreferences(service: service, value: Self.dictionary(from: entry))
         case .restore(let record):
-            let key = Self.stateKey(record.service)
-            let ok: Bool
-            if let original = record.original {
-                ok = SCDynamicStoreSetValue(
-                    store, key as CFString, Self.dictionary(from: original) as CFDictionary)
-            } else {
-                ok = SCDynamicStoreRemoveValue(store, key as CFString)
+            var value: Any?
+            if let raw = record.originalRaw {
+                value = try? PropertyListSerialization.propertyList(from: raw, format: nil)
+            } else if let original = record.original {
+                value = Self.dictionary(from: original)
             }
-            guard ok else { throw .writeFailed(key: key) }
+            try writePreferences(service: record.service, value: value)
             unlink(env.runPath(RunLayout.resolverOverrideRecord))
+        }
+    }
+
+    /// Commits and applies `value` (nil removes the manual entry) as the service's DNS.
+    private func writePreferences(service: String, value: Any?) throws(Failure) {
+        let key = Self.preferencesPath(service)
+        guard let prefs = SCPreferencesCreate(nil, "WayforkDaemon" as CFString, nil) else {
+            throw .storeUnavailable
+        }
+        guard SCPreferencesLock(prefs, true) else { throw .writeFailed(key: key) }
+        defer { SCPreferencesUnlock(prefs) }
+        // No manual entry = an empty DNS dictionary, which is what `networksetup
+        // -setdnsservers <service> empty` leaves behind.
+        let dictionary = (value as? [String: Any]) ?? [:]
+        let set = SCPreferencesPathSetValue(prefs, key as CFString, dictionary as CFDictionary)
+        guard set, SCPreferencesCommitChanges(prefs), SCPreferencesApplyChanges(prefs) else {
+            throw .writeFailed(key: key)
         }
     }
 
@@ -207,5 +274,42 @@ actor ResolverOverride {
             FileManager.default.createFile(
                 atPath: recordPath, contents: data, attributes: [.posixPermissions: 0o600])
         else { throw .recordUnwritable(recordPath) }
+    }
+}
+
+/// `getaddrinfo` with a deadline. The lookup blocks for up to 30 s when the resolver is
+/// dead, so it runs on a plain dispatch thread — never on the cooperative pool, whose
+/// width in a launchd daemon is small enough that one blocked thread stalled every actor
+/// for the full 30 s (2026-08-26). The lingering lookup after the deadline is harmless.
+enum ResolverProbe {
+    static func resolves(_ host: String, within timeout: Duration) async -> Bool {
+        await withTaskGroup(of: Bool.self) { group in
+            group.addTask { await lookup(host) }
+            group.addTask {
+                try? await Task.sleep(for: timeout)
+                return false
+            }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
+        }
+    }
+
+    private static func lookup(_ host: String) async -> Bool {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                continuation.resume(returning: lookupBlocking(host))
+            }
+        }
+    }
+
+    private static func lookupBlocking(_ host: String) -> Bool {
+        var hints = addrinfo()
+        hints.ai_family = AF_INET
+        hints.ai_socktype = SOCK_STREAM
+        var result: UnsafeMutablePointer<addrinfo>?
+        let code = getaddrinfo(host, nil, &hints, &result)
+        if let result { freeaddrinfo(result) }
+        return code == 0
     }
 }
