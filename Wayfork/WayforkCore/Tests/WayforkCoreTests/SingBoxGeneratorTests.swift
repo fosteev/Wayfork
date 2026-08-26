@@ -21,13 +21,34 @@ private func twoTunnelStore() -> Store {
 
 private func generate(
     _ store: Store, uuids: [UUID: String] = [Fixtures.homeID: homeUUID],
-    resolved: [String: [String]] = [:]
+    resolved: [String: [String]] = [:], systemDNS: [String] = []
 ) -> SingBoxConfigGenerator.Output {
     SingBoxConfigGenerator.generate(
         SingBoxConfigGenerator.Input(
             store: store, vlessUUIDs: uuids,
             openVPNBinaryPath: RuntimePlanBuilder.openVPNBinaryPath(bundlePath: bundlePath),
-            resolvedServerAddresses: resolved))
+            resolvedServerAddresses: resolved, systemDNSServers: systemDNS))
+}
+
+private func excludedRanges(_ output: SingBoxConfigGenerator.Output) throws -> [IPv4Prefix] {
+    let config = try json(output.config)
+    let inbound = try #require((config["inbounds"] as? [[String: Any]])?.first)
+    return try #require(inbound["route_exclude_address"] as? [String]).compactMap { IPv4Prefix($0) }
+}
+
+@Test func systemResolversInsideTheLANEnterTheTUN() throws {
+    let excluded = try excludedRanges(
+        generate(
+            twoTunnelStore(),
+            systemDNS: ["192.168.31.1", "8.8.8.8", "fe80::1%en0", "192.168.31.1"]))
+    let resolver = try #require(IPv4Prefix("192.168.31.1"))
+    #expect(!excluded.contains { $0.contains(resolver) })
+    for neighbour in ["192.168.31.0", "192.168.31.2", "192.168.30.1", "10.0.0.1", "172.16.0.1"] {
+        let address = try #require(IPv4Prefix(neighbour))
+        #expect(excluded.contains { $0.contains(address) }, "\(neighbour) must stay excluded")
+    }
+    // A public resolver already enters the TUN: nothing to carve, config unchanged.
+    #expect(generate(twoTunnelStore(), systemDNS: ["8.8.8.8"]).config == generate(twoTunnelStore()).config)
 }
 
 @Test func generatedConfigFollowsRoutingDesign() throws {

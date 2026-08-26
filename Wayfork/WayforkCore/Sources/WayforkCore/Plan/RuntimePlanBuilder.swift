@@ -74,9 +74,10 @@ public enum RuntimePlanBuilder {
     /// `resolvedServerAddresses`: IPv4 addresses of the OpenVPN `remote` hostnames from
     /// `HostResolver.resolveIPv4(HostResolver.openVPNHosts(in: store))`; empty when the
     /// caller could not resolve (the servers are then matched by name only).
+    /// `systemDNSServers`: `SystemDNS.servers()`, routed into the TUN by the generator.
     public static func build(
         store: Store, secrets: PlanSecrets, bundlePath: String,
-        resolvedServerAddresses: [String: [String]] = [:]
+        resolvedServerAddresses: [String: [String]] = [:], systemDNSServers: [String] = []
     ) -> RuntimePlanBuildResult {
         var warnings: [PlanWarning] = []
         var openVPN: [OpenVPNRuntime] = []
@@ -116,7 +117,8 @@ public enum RuntimePlanBuilder {
                 store: effectiveStore,
                 vlessUUIDs: secrets.vlessUUIDs,
                 openVPNBinaryPath: openVPNBinaryPath(bundlePath: bundlePath),
-                resolvedServerAddresses: resolvedServerAddresses))
+                resolvedServerAddresses: resolvedServerAddresses,
+                systemDNSServers: systemDNSServers))
         let plan = RuntimePlan(
             singBox: SingBoxPlan(config: generated.config, ruleSets: generated.ruleSets),
             openVPN: openVPN,

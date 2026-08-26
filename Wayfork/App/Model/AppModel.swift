@@ -72,6 +72,10 @@ final class AppModel {
     private var trafficStaleTask: Task<Void, Never>?
     private(set) var lastPlan: RuntimePlan?
     private var bootstrapped = false
+    /// Re-applies when the system resolvers change: they are routed into the TUN
+    /// (docs/design/03-routing.md, "Notes on specific choices").
+    private var dnsWatcher: SystemDNS.Watcher?
+    private var appliedSystemDNS: [String]?
 
     init(
         secrets: any SecretStore = KeychainSecretStore(),
@@ -85,6 +89,9 @@ final class AppModel {
         client.onTraffic = { [weak self] snapshot in self?.handleTraffic(snapshot) }
         client.onInterruption = { [weak self] in self?.handleDaemonInterruption() }
         client.onInvalidation = { [weak self] in self?.handleDaemonInvalidation() }
+        dnsWatcher = SystemDNS.Watcher(queue: .main) { [weak self] in
+            MainActor.assumeIsolated { self?.systemDNSChanged() }
+        }
     }
 
     // MARK: - Derived
@@ -647,6 +654,14 @@ final class AppModel {
         scheduleApply()
     }
 
+    private func systemDNSChanged() {
+        guard desiredOn else { return }
+        let servers = SystemDNS.servers()
+        guard servers != appliedSystemDNS else { return }
+        logs.app(.info, "system DNS changed: \(servers.joined(separator: ", "))")
+        scheduleApply()
+    }
+
     private func scheduleApply() {
         applyTask?.cancel()
         applyTask = Task { [weak self] in
@@ -672,9 +687,11 @@ final class AppModel {
         for host in hosts where resolved[host] == nil {
             logs.app(.warning, "cannot resolve \(host): its OpenVPN server is matched by name only")
         }
+        let systemDNS = SystemDNS.servers()
+        appliedSystemDNS = systemDNS
         let result = RuntimePlanBuilder.build(
             store: store, secrets: planSecrets, bundlePath: bundlePath,
-            resolvedServerAddresses: resolved)
+            resolvedServerAddresses: resolved, systemDNSServers: systemDNS)
         for warning in result.warnings {
             if case .missingSecret(let id) = warning {
                 logs.app(.warning, "\(store.tunnel(id: id)?.name ?? "?") skipped: secret missing")
@@ -685,7 +702,7 @@ final class AppModel {
         let vless = result.routedTunnels.count - openVPN
         logs.app(
             .info,
-            "apply: plan \(result.plan.planHash.prefix(8)) (\(openVPN) openvpn, \(vless) vless, \(StatusText.activeRuleCount(store)) rules)"
+            "apply: plan \(result.plan.planHash.prefix(8)) (\(openVPN) openvpn, \(vless) vless, \(StatusText.activeRuleCount(store)) rules; system dns \(systemDNS.isEmpty ? "none" : systemDNS.joined(separator: " ")))"
         )
         do {
             let reply = try await client.apply(result.plan)

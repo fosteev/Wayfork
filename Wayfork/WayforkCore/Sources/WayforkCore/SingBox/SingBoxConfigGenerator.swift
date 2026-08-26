@@ -14,18 +14,24 @@ public enum SingBoxConfigGenerator {
         /// IPv4 addresses of the OpenVPN `remote` hostnames (lowercased host → addresses),
         /// resolved by the caller (`HostResolver`). A route rule can only match a hostname
         /// when sing-box knows the flow's domain, which it never does for openvpn's own UDP
-        /// packets (its resolver query goes to the LAN, past the TUN), so the servers' addresses
-        /// go into the `ip_cidr` half of the direct rule as well.
+        /// packets (its resolver query is answered with a real address, and sing-box only
+        /// learns a flow's domain through fake-ip or sniffing), so the servers' addresses go
+        /// into the `ip_cidr` half of the direct rule as well.
         public var resolvedServerAddresses: [String: [String]]
+        /// IPv4 addresses of the system resolvers (`SystemDNS.servers()`). Those inside the
+        /// LAN ranges are carved out of `route_exclude_address` so that the system resolver's
+        /// queries enter the TUN and `hijack-dns` sees them.
+        public var systemDNSServers: [String]
 
         public init(
             store: Store, vlessUUIDs: [UUID: String], openVPNBinaryPath: String,
-            resolvedServerAddresses: [String: [String]] = [:]
+            resolvedServerAddresses: [String: [String]] = [:], systemDNSServers: [String] = []
         ) {
             self.store = store
             self.vlessUUIDs = vlessUUIDs
             self.openVPNBinaryPath = openVPNBinaryPath
             self.resolvedServerAddresses = resolvedServerAddresses
+            self.systemDNSServers = systemDNSServers
         }
     }
 
@@ -129,9 +135,13 @@ public enum SingBoxConfigGenerator {
 
         // F11: a tunnel IP rule inside the LAN ranges must enter the TUN, so its range is
         // carved out of the exclusion list. Direct IP rules stay excluded — direct either way.
-        let carved = routed.flatMap { tunnel in
+        var carved = routed.flatMap { tunnel in
             (activeRules[tunnel.id] ?? []).filter(\.isIP).compactMap { IPv4Prefix($0.pattern) }
         }
+        // The system resolvers must enter the TUN for `hijack-dns` to see their queries, and a
+        // router-hosted resolver sits inside the LAN ranges (03-routing.md, "Notes on
+        // specific choices"). Public resolvers are not excluded to begin with: no-op.
+        carved += input.systemDNSServers.compactMap { IPv4Prefix($0) }.filter(\.isHost)
 
         dnsServers.append([
             "type": "fakeip",

@@ -233,6 +233,9 @@ actor Supervisor {
                 try await engine.writeRuleSets(
                     plan.singBox.ruleSets.filter { files.contains($0.key) })
                 hub.post(.info, "rule-sets updated in place (\(files.count) file(s))")
+                await engine.cutConnections(
+                    matching: RuleSetSelectors.change(
+                        from: current.ruleSets, to: plan.singBox.ruleSets, files: files))
             case .start, .restart:
                 try await engine.writeRuleSets(plan.singBox.ruleSets)
                 try await engine.check(config: plan.singBox.config, hash: plan.singBox.configHash)

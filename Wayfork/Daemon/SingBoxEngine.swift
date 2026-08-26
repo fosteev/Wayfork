@@ -17,6 +17,9 @@ actor SingBoxEngine {
     private let hub: ClientHub
     private let events: AsyncStream<SupervisorEvent>.Continuation
     private let sampler: TrafficSampler
+    private let closer = ConnectionCloser()
+    /// How long after a rule-set rewrite the reload has landed (measured ~350 ms on 1.13.19).
+    static let ruleSetReloadGrace: Duration = .seconds(1)
 
     /// Hash of the config the running (or last started) process was started with.
     private(set) var configHash: String?
@@ -59,6 +62,31 @@ actor SingBoxEngine {
                 throw .internalError(message: "cannot write \(name): \(error)")
             }
             ruleSets[name] = contents
+        }
+    }
+
+    /// After `writeRuleSets`: once sing-box has reloaded the files, close the connections the
+    /// change covers (all of them when it is unknown) so they reconnect under the new rules
+    /// (docs/design/05-daemon.md, "Connection cut on rule change").
+    func cutConnections(matching change: RuleSetSelectors?) {
+        Task { [weak self] in
+            try? await Task.sleep(for: SingBoxEngine.ruleSetReloadGrace)
+            guard let self else { return }
+            await self.performCut(change)
+        }
+    }
+
+    private func performCut(_ change: RuleSetSelectors?) async {
+        guard let endpoint, process != nil else { return }
+        do {
+            let closed = try await closer.close(matching: change, at: endpoint)
+            hub.post(
+                .info,
+                change == nil
+                    ? "rules changed: closed all \(closed) connection(s)"
+                    : "rules changed: closed \(closed) affected connection(s)")
+        } catch {
+            hub.post(.warning, "rules changed: cannot close connections (\(error))")
         }
     }
 

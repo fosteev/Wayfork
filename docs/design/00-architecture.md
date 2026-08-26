@@ -105,8 +105,10 @@ Reconcile algorithm (daemon):
    start added, restart changed. Unchanged processes are left alone.
 2. sing-box:
    - `configHash` unchanged, rule-set contents changed → rewrite rule-set files only.
-     sing-box reloads `type: local` rule-sets on file change — no restart, no dropped
-     connections. *(Verify on the pinned version; fallback is a restart.)*
+     sing-box reloads `type: local` rule-sets on file change — no restart (verified on
+     1.13.19). Established connections keep their old outbound, so the daemon then closes
+     the ones the changed matchers cover through the Clash API
+     ([05-daemon.md](05-daemon.md), "Connection cut on rule change").
    - `configHash` changed → write config, run `sing-box check`; on failure keep the old
      process running and return the error; on success restart sing-box (< 1 s, in-flight
      connections through TUN are dropped).

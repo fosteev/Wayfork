@@ -221,6 +221,30 @@ and VLESS alike. Interface counters would only cover OpenVPN, so one mechanism s
   reused id, or an id that moved to another outbound, is treated as a new connection. The
   snapshot lists only tunnels seen since Turn On; the app reads a missing entry as zero.
 
+## Connection cut on rule change
+
+sing-box reloads a rewritten rule-set within ~350 ms but leaves established connections on
+the outbound they were matched to. A browser's keep-alive connection therefore ignores a
+new rule until it happens to close (2026-08-26, "rules need an app restart"). After a
+`rewriteRuleSets` the daemon closes the affected connections:
+
+- `RuleSetSelectors` (`WayforkDaemonCore`) flattens a rule-set file in sing-box's source
+  format into its matchers (`domain`, `domain_suffix`, `domain_regex`,
+  `process_path_regex`, `ip_cidr`); the symmetric difference of the old and new file, over
+  all rewritten files, is the *change*. A connection is affected when its Clash API
+  `metadata.host` (fake-ip or sniffed domain) matches a changed domain matcher, its
+  `processPath` a changed app matcher, or its `destinationIP` a changed CIDR. Matching is a
+  deliberate superset of sing-box's (a rule moved between tunnels is both removed and added).
+- 1 s after the rewrite (`SingBoxEngine.ruleSetReloadGrace`, so the reload has landed and
+  reconnects hit the new rules) the engine fetches `GET /connections` and issues
+  `DELETE /connections/<id>` for each affected one; if a file is not in the expected shape
+  the change is unknown and `DELETE /connections` closes everything. One INFO line reports
+  the count. Failures are logged and otherwise ignored — the rules are already in effect
+  for new connections.
+- `ClashConnection` now decodes `metadata.host` / `destinationIP` / `processPath` for this;
+  they are used inside the daemon only and never forwarded (the privacy note under
+  "Traffic sampling" stands).
+
 ## Developer mode (no app, no launchd)
 
 `WayforkDaemon --dev-apply <plan.json>` runs the same `Supervisor` from a terminal as root:

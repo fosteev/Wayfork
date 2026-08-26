@@ -150,8 +150,21 @@ Notes on specific choices:
   `settings.directDNS = .custom` replaces it with `{"type":"udp","server":"<ip>","detour":"direct"}`
   entries (first is primary; sing-box has no fallback list, so only the first is used —
   the UI says so).
-- `hijack-dns` captures every plain-DNS packet that enters TUN, i.e. the system resolver's
-  queries to the router. System DNS settings are never modified.
+- `hijack-dns` captures every plain-DNS packet that enters TUN. System DNS settings are
+  never modified — instead the system resolvers' addresses are routed *into* the TUN: the
+  app reads `State:/Network/Global/DNS` (`SystemDNS.servers()`, IPv4 only) and the
+  generator carves each address that falls inside `lanRanges` out of
+  `route_exclude_address` as a /32, the same `IPv4Prefix.subtracting` trick as the TUN's
+  own /30. Without that, a router-hosted resolver (`192.168.x.1`, the usual case) sits in
+  the excluded LAN range, mDNSResponder's queries bypass sing-box entirely, every
+  application connects by real IP and domain rules only work through sniffing (found
+  2026-08-26: `dig @192.168.31.1` returned real addresses, `dig @8.8.8.8` fake IPs). The
+  carved /32 is more specific than the LAN link route for unscoped sockets, while sing-box's
+  own sockets (bound to the physical interface, `auto_detect_interface`) and the gateway
+  lookup of the default route stay on the physical interface through scoped routing, so
+  `dns-direct` (`type: local`) does not loop. The app watches the key with `SCDynamicStore`
+  and re-applies on change (a different resolver changes the config → sing-box restart).
+  IPv6 resolvers are ignored: the TUN is IPv4-only.
 - `process_path` for openvpn: sing-box's `find_process` resolves the owning process of a
   new connection via `libproc`. If lookup fails the packet still goes `direct` by `final`,
   so the worst case is a tunnel domain rule matching the VPN server's hostname — the
@@ -336,17 +349,21 @@ nothing — its rules are not emitted either.
 
 | Change | Action |
 |--------|--------|
-| Rule added/edited/removed/reordered/toggled | rewrite `rules-*.json` → sing-box reloads local rule-sets on file change (verify; else restart) |
+| Rule added/edited/removed/reordered/toggled | rewrite `rules-*.json` → sing-box reloads local rule-sets on file change (verified on 1.13.19: ~350 ms after an atomic rename); the daemon then closes the connections the changed matchers cover ([05-daemon.md](05-daemon.md), "Connection cut on rule change") |
 | Exception (Direct rule) added/edited/removed | rewrite `rules-direct.json` → same hot reload |
 | IP rule (F11) | rewrite `rules-…-ip.json` → hot reload; a *tunnel* IP rule inside a private range also changes `route_exclude_address` → restart |
 | Default tunnel set/cleared/changed | `route.final` / `dns.final` change → restart |
 | Tunnel enabled/disabled, added, removed | outbounds change → `sing-box check` → restart sing-box (< 1 s) |
 | Tunnel DNS changed, `discoveredDNS` updated | dns section changes → restart |
 | `directDNS`, log level | restart |
+| System resolvers changed (network switch) | `route_exclude_address` changes → restart |
 | Tunnel credentials / OpenVPN config body | no sing-box change; openvpn process restarted |
 
 Existing fake-ip mappings survive restarts through `cache.db`. Newly added rules for domains
 that clients already resolved to real IPs are still honored through sniffing (SNI/Host).
+A rule-set reload does not touch established connections, though: a browser's keep-alive
+HTTP/2 connection keeps its old outbound until it closes, which looked like "rules need an
+app restart" (2026-08-26). Hence the connection cut after every rewrite.
 
 ## Startup verification
 
