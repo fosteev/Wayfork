@@ -123,7 +123,8 @@ public enum RuntimePlanBuilder {
             singBox: SingBoxPlan(config: generated.config, ruleSets: generated.ruleSets),
             openVPN: openVPN,
             autoReconnect: store.settings.autoReconnect,
-            logLevel: store.settings.logLevel)
+            logLevel: store.settings.logLevel,
+            overrideSystemDNS: store.settings.overrideSystemDNS)
         return RuntimePlanBuildResult(
             plan: plan, warnings: warnings, routedTunnels: generated.routedTunnels)
     }

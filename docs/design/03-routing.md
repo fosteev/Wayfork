@@ -150,21 +150,50 @@ Notes on specific choices:
   `settings.directDNS = .custom` replaces it with `{"type":"udp","server":"<ip>","detour":"direct"}`
   entries (first is primary; sing-box has no fallback list, so only the first is used —
   the UI says so).
-- `hijack-dns` captures every plain-DNS packet that enters TUN. System DNS settings are
-  never modified — instead the system resolvers' addresses are routed *into* the TUN: the
-  app reads `State:/Network/Global/DNS` (`SystemDNS.servers()`, IPv4 only) and the
-  generator carves each address that falls inside `lanRanges` out of
-  `route_exclude_address` as a /32, the same `IPv4Prefix.subtracting` trick as the TUN's
-  own /30. Without that, a router-hosted resolver (`192.168.x.1`, the usual case) sits in
-  the excluded LAN range, mDNSResponder's queries bypass sing-box entirely, every
-  application connects by real IP and domain rules only work through sniffing (found
-  2026-08-26: `dig @192.168.31.1` returned real addresses, `dig @8.8.8.8` fake IPs). The
-  carved /32 is more specific than the LAN link route for unscoped sockets, while sing-box's
-  own sockets (bound to the physical interface, `auto_detect_interface`) and the gateway
-  lookup of the default route stay on the physical interface through scoped routing, so
-  `dns-direct` (`type: local`) does not loop. The app watches the key with `SCDynamicStore`
-  and re-applies on change (a different resolver changes the config → sing-box restart).
-  IPv6 resolvers are ignored: the TUN is IPv4-only.
+- `hijack-dns` captures every plain-DNS packet that enters TUN. **While Wayfork is On the
+  system resolver is Wayfork itself (F12):** the daemon points the primary network
+  service's DNS at the TUN address (`172.19.0.1`; docs/design/05-daemon.md, "System
+  resolver override"), so mDNSResponder's queries enter the TUN and `hijack-dns` answers
+  them with fake IPs. Nothing else works reliably. A LAN-hosted resolver *can* be routed
+  into the TUN by carving its /32 out of `route_exclude_address` (the same
+  `IPv4Prefix.subtracting` trick as the TUN's own /30) — but not when it is the default
+  gateway (`Router` of `Global/IPv4`, the usual home router): the kernel validates a
+  gateway route's next hop against the route's own interface, a /32 for the gateway
+  through `utun100` fails that check and every send through the default route returns
+  `ENETUNREACH` (every sing-box dial "network is unreachable", OpenVPN stuck in `WAIT`,
+  2026-08-26). And even a routable resolver can be upgraded by macOS to encrypted DNS
+  (DDR, below) on a socket bound to the physical interface that never enters the TUN.
+  Without a hijacked resolver every application connects by real IP and domain rules work
+  through sniffing only (`dig @192.168.31.1` returned real addresses, `dig @8.8.8.8` fake
+  IPs, 2026-08-26) — and never for a host whose public record is a private address (an
+  office Jira), which never enters the TUN at all.
+  The carve-out stays for the resolvers that remain *effective* under the override: a
+  resolver entered by hand in System Settings (`Setup:/Network/Service/<primary>/DNS`)
+  takes precedence over the daemon's `State:` override in configd's merge, so the app
+  reads it (`SystemDNS.snapshot().manualServers`), carves it out when it sits in a LAN
+  range and is not the gateway, warns when it is the gateway, and the daemon reports the
+  override as *shadowed*. With the override off (Settings) the plain system resolvers are
+  treated the same way (`Snapshot.effectiveServers(override:)`). The app watches
+  `State:/Network/Global/DNS`, `Global/IPv4` and the services' `Setup:` DNS with
+  `SCDynamicStore` and re-applies when the effective resolvers or the gateway change (a
+  different list changes the config → sing-box restart); the override flipping
+  `Global/DNS` to the TUN address is not a change. IPv6 resolvers are ignored: the TUN is
+  IPv4-only.
+  `dns-direct` (`type: local`) does not loop through the override: sing-box's local
+  transport on macOS takes the DHCP-supplied servers of the default interface instead of
+  the system resolver configuration (`dns/local[dns-direct]: dhcp: updated DNS servers
+  from en0`), and its sockets are bound to the physical interface.
+  **DDR is refused.** mDNSResponder asks the system resolver for `_dns.resolver.arpa`
+  (RFC 9462) and, when the advertised DoH/DoT endpoint's certificate covers the resolver's
+  address, moves every query to 443/853 — plain DNS no longer, so `hijack-dns` never sees
+  it and every application connects by real IP again (found 2026-08-26 with 1.1.1.1 as the
+  system resolver: the discovery query was hijacked, forwarded to the DoT `dns.final` —
+  also Cloudflare — and answered for real; mDNSResponder went DoH3 over UDP 443 into the
+  default tunnel). Two rules: the first DNS rule answers `_dns.resolver.arpa` with
+  `reject`, and a route rule right after `hijack-dns` rejects TCP/UDP 443 and 853 to every
+  routed system resolver (`ip_cidr` /32 list), which also breaks an upgrade mDNSResponder
+  cached before Wayfork was turned on so that it falls back to port 53. sing-box's own DoT
+  upstream is unaffected: outbound dials do not pass through route rules.
 - `process_path` for openvpn: sing-box's `find_process` resolves the owning process of a
   new connection via `libproc`. If lookup fails the packet still goes `direct` by `final`,
   so the worst case is a tunnel domain rule matching the VPN server's hostname — the
@@ -186,6 +215,7 @@ With `Store.defaultTunnelID` set to `Work` the config above changes as follows:
 "dns": {
   "servers": [ …, { "type": "tls", "tag": "dns-t-<home>", "server": "1.1.1.1", "detour": "t-<home>" } ],
   "rules": [
+    { "domain": ["_dns.resolver.arpa"], "action": "reject" },
     { "rule_set": "rules-direct", "server": "dns-direct" },
     { "rule_set": ["rules-t-<work>", "rules-t-<home>"], "query_type": ["A", "AAAA"], "server": "fakeip" },
     { "query_type": ["A", "AAAA"], "server": "fakeip" }
@@ -196,6 +226,7 @@ With `Store.defaultTunnelID` set to `Work` the config above changes as follows:
   "rules": [
     { "action": "sniff" },
     { "protocol": "dns", "action": "hijack-dns" },
+    { "ip_cidr": ["<system resolver>/32"], "port": [443, 853], "action": "reject" },
     { "process_path": ["<bundle>/Contents/Resources/bin/openvpn"], "outbound": "direct" },
     { "rule_set": "rules-direct", "outbound": "direct" },
     { "rule_set": "rules-t-<work>", "outbound": "t-<work>" },
@@ -356,7 +387,7 @@ nothing — its rules are not emitted either.
 | Tunnel enabled/disabled, added, removed | outbounds change → `sing-box check` → restart sing-box (< 1 s) |
 | Tunnel DNS changed, `discoveredDNS` updated | dns section changes → restart |
 | `directDNS`, log level | restart |
-| System resolvers changed (network switch) | `route_exclude_address` changes → restart |
+| Effective resolvers or gateway changed (network switch, manual DNS edited) | `route_exclude_address` / reject rule change → restart; the daemon moves the override on its own |
 | Tunnel credentials / OpenVPN config body | no sing-box change; openvpn process restarted |
 
 Existing fake-ip mappings survive restarts through `cache.db`. Newly added rules for domains

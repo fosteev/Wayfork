@@ -72,10 +72,10 @@ final class AppModel {
     private var trafficStaleTask: Task<Void, Never>?
     private(set) var lastPlan: RuntimePlan?
     private var bootstrapped = false
-    /// Re-applies when the system resolvers change: they are routed into the TUN
-    /// (docs/design/03-routing.md, "Notes on specific choices").
+    /// Re-applies when the system resolvers or the default gateway change: the resolvers are
+    /// routed into the TUN (docs/design/03-routing.md, "Notes on specific choices").
     private var dnsWatcher: SystemDNS.Watcher?
-    private var appliedSystemDNS: [String]?
+    private var appliedSystemDNS: SystemDNS.Snapshot?
 
     init(
         secrets: any SecretStore = KeychainSecretStore(),
@@ -567,6 +567,9 @@ final class AppModel {
         let old = status
         status = new
         syncDiscoveredDNS(new)
+        if new.resolverOverride != old?.resolverOverride {
+            logResolverOverride(new.resolverOverride, previous: old?.resolverOverride)
+        }
         if !new.engine.isRunning { clearTraffic() }
         if case .starting = transition, globalState != .starting {
             startingTimeoutTask?.cancel()
@@ -613,6 +616,28 @@ final class AppModel {
         traffic = nil
     }
 
+    /// F12: the daemon's hold on the system resolver, as it changes.
+    private func logResolverOverride(
+        _ state: ResolverOverrideState, previous: ResolverOverrideState?
+    ) {
+        switch state {
+        case .off:
+            if let previous, previous != .off { logs.app(.info, "system resolver restored") }
+        case .active(let service):
+            logs.app(
+                .info,
+                "system resolver is Wayfork (\(SingBoxConfigGenerator.tunHostAddress)) on service \(service)"
+            )
+        case .shadowed(let manual):
+            logs.app(
+                .warning,
+                "manual DNS \(manual.joined(separator: ", ")) in System Settings › Network › DNS shadows Wayfork's resolver: clear it so that every app is routed by domain"
+            )
+        case .failed(let reason):
+            logs.app(.warning, "system resolver override failed: \(reason)")
+        }
+    }
+
     private func syncDiscoveredDNS(_ status: RuntimeStatus) {
         for (key, servers) in status.discoveredDNS {
             guard let id = UUID(uuidString: key),
@@ -654,11 +679,27 @@ final class AppModel {
         scheduleApply()
     }
 
+    /// The TUN address while the daemon is asked to be the system resolver (F12).
+    private var resolverOverrideAddress: String? {
+        store.settings.overrideSystemDNS ? SingBoxConfigGenerator.tunHostAddress : nil
+    }
+
     private func systemDNSChanged() {
         guard desiredOn else { return }
-        let servers = SystemDNS.servers()
-        guard servers != appliedSystemDNS else { return }
-        logs.app(.info, "system DNS changed: \(servers.joined(separator: ", "))")
+        let snapshot = SystemDNS.snapshot()
+        let override = resolverOverrideAddress
+        // The daemon's own override flipping `Global/DNS` to the TUN address is not a change.
+        if let applied = appliedSystemDNS,
+            snapshot.effectiveServers(override: override)
+                == applied.effectiveServers(override: override),
+            snapshot.router == applied.router
+        {
+            return
+        }
+        logs.app(
+            .info,
+            "system DNS changed: \(snapshot.effectiveServers(override: override).joined(separator: ", ")) (gateway \(snapshot.router ?? "none"))"
+        )
         scheduleApply()
     }
 
@@ -687,11 +728,19 @@ final class AppModel {
         for host in hosts where resolved[host] == nil {
             logs.app(.warning, "cannot resolve \(host): its OpenVPN server is matched by name only")
         }
-        let systemDNS = SystemDNS.servers()
+        let systemDNS = SystemDNS.snapshot()
+        let override = resolverOverrideAddress
         appliedSystemDNS = systemDNS
+        for resolver in systemDNS.unroutable(override: override) {
+            logs.app(
+                .warning,
+                "system resolver \(resolver) is the default gateway and cannot be routed into the TUN: its queries bypass hijack-dns, domain rules rely on sniffing"
+            )
+        }
         let result = RuntimePlanBuilder.build(
             store: store, secrets: planSecrets, bundlePath: bundlePath,
-            resolvedServerAddresses: resolved, systemDNSServers: systemDNS)
+            resolvedServerAddresses: resolved,
+            systemDNSServers: systemDNS.routable(override: override))
         for warning in result.warnings {
             if case .missingSecret(let id) = warning {
                 logs.app(.warning, "\(store.tunnel(id: id)?.name ?? "?") skipped: secret missing")
@@ -702,7 +751,7 @@ final class AppModel {
         let vless = result.routedTunnels.count - openVPN
         logs.app(
             .info,
-            "apply: plan \(result.plan.planHash.prefix(8)) (\(openVPN) openvpn, \(vless) vless, \(StatusText.activeRuleCount(store)) rules; system dns \(systemDNS.isEmpty ? "none" : systemDNS.joined(separator: " ")))"
+            "apply: plan \(result.plan.planHash.prefix(8)) (\(openVPN) openvpn, \(vless) vless, \(StatusText.activeRuleCount(store)) rules; system dns \(systemDNS.effectiveServers(override: override).isEmpty ? "none" : systemDNS.effectiveServers(override: override).joined(separator: " ")), gateway \(systemDNS.router ?? "none"))"
         )
         do {
             let reply = try await client.apply(result.plan)

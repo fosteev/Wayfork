@@ -11,6 +11,8 @@ public enum RunLayout {
     public static let singBoxPID = "sing-box.pid"
     /// Survives `stop`: fake-ip mappings must outlive restarts.
     public static let cacheFile = "cache.db"
+    /// The system resolver entry saved before the override (F12); restored, then deleted.
+    public static let resolverOverrideRecord = "dns-override.json"
 
     public static func openVPNConfig(_ id: String) -> String { "t-\(id).ovpn" }
     public static func managementSocket(_ id: String) -> String { "t-\(id).sock" }
@@ -25,7 +27,7 @@ public enum RunLayout {
 
     /// Everything except `cache.db` is wiped on stop and on daemon startup.
     public static func isTransient(_ fileName: String) -> Bool {
-        fileName != cacheFile
+        fileName != cacheFile && fileName != resolverOverrideRecord
     }
 
     public static func isPIDFile(_ fileName: String) -> Bool {

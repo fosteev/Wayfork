@@ -45,7 +45,8 @@ public struct RuleSetSelectors: Sendable, Equatable {
                 }
                 switch key {
                 case "domain": selectors.domain.formUnion(items.map { $0.lowercased() })
-                case "domain_suffix": selectors.domainSuffix.formUnion(items.map { $0.lowercased() })
+                case "domain_suffix":
+                    selectors.domainSuffix.formUnion(items.map { $0.lowercased() })
                 case "domain_regex": selectors.domainRegex.formUnion(items)
                 case "process_path_regex": selectors.processPathRegex.formUnion(items)
                 case "ip_cidr": selectors.ipCIDR.formUnion(items)
@@ -81,7 +82,8 @@ public struct RuleSetSelectors: Sendable, Equatable {
     ) -> RuleSetSelectors? {
         var change = RuleSetSelectors()
         for file in files {
-            guard let before = selectors(of: previous[file]), let after = selectors(of: current[file])
+            guard let before = selectors(of: previous[file]),
+                let after = selectors(of: current[file])
             else { return nil }
             change.formUnion(before.symmetricDifference(after))
         }

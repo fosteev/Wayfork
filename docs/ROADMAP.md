@@ -107,6 +107,20 @@ Written as user scenarios. Technical details belong to Phase 2.
 - IPv6 rules come with IPv6 support (Later); loopback, link-local, multicast and Wayfork's
   own ranges are rejected.
 
+**F12. System resolver override** *(added 2026-08-26)*
+- While Wayfork is On, the Mac's DNS points at Wayfork's own resolver (the TUN address);
+  when it turns Off, crashes or the daemon is unloaded, the previous setting comes back.
+- Why: routing the system resolver's queries *into* the TUN only works for a resolver that
+  is not the default gateway (most home routers are), and even then macOS may upgrade the
+  resolver to encrypted DNS (DDR) on a socket that never enters the TUN. With the override
+  every application that asks the system resolver gets a fake IP and is routed by domain —
+  including hosts whose public DNS record is a private address (an office Jira reachable
+  only through its VPN), which never enter the TUN otherwise.
+- A resolver typed by hand in System Settings › Network › DNS takes precedence over the
+  override; Wayfork warns and leaves it alone.
+- Setting "Use Wayfork as the system resolver while On" (on by default) turns it off for
+  people who run their own resolver setup.
+
 ### Later
 
 **L1. Rule sources beyond a single domain**
@@ -370,3 +384,25 @@ maintainer (Developer ID identity and notarytool profile are not on the build ma
 - [x] `CHANGELOG.md` for 0.1.0 (date filled in at tagging).
 - [ ] First notarized build (`scripts/release.sh --version 0.1.0`), tag `v0.1.0`, GitHub
       release with the DMG and its `.sha256`.
+
+### M5 — System resolver override (F12)
+
+Design in [03-routing.md](design/03-routing.md) ("Notes on specific choices") and
+[05-daemon.md](design/05-daemon.md) ("System resolver override"). Implemented 2026-08-26;
+manual check pending.
+
+- [x] Core: `Settings.overrideSystemDNS`, `RuntimePlan.overrideSystemDNS` (in the plan
+      hash), `RuntimeStatus.resolverOverride`, `SystemDNS.Snapshot` reads the primary
+      service's manual (`Setup:`) resolvers and the generator protects the *effective* ones;
+      DDR (`_dns.resolver.arpa`) refused, 443/853 to the resolvers rejected.
+- [x] DaemonCore: `ResolverOverridePlanner` — pure decisions (write / restore / nothing and
+      the resulting state) over a resolver snapshot and the saved record; tests.
+- [x] Daemon: `ResolverOverride` actor — `State:/Network/Service/<primary>/DNS` via
+      `SCDynamicStore`, `run/dns-override.json` record, re-applied on configd rewrites and
+      primary-service changes, restored on stop, crash backoff, SIGTERM and at bootstrap.
+- [x] App: plan flag from Settings, status logging (active / shadowed by manual DNS /
+      failed), toggle in Settings › General › DNS.
+- [ ] Manual check: `scutil --dns` shows 172.19.0.1 while On and the DHCP resolver after
+      Off; `dscacheutil -q host -a name <office host>` → fake IP; Wi-Fi → Ethernet switch
+      keeps the override; `kill -9` of the daemon → resolver restored at next launch;
+      manual DNS in System Settings → warning in the log and `scutil --dns` unchanged.

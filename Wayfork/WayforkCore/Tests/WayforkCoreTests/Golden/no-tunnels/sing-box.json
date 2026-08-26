@@ -4,6 +4,12 @@
     "independent_cache" : true,
     "rules" : [
       {
+        "action" : "reject",
+        "domain" : [
+          "_dns.resolver.arpa"
+        ]
+      },
+      {
         "rule_set" : "rules-direct",
         "server" : "dns-direct"
       }

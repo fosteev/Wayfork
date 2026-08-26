@@ -42,7 +42,9 @@ private func fixture(_ name: String) throws -> Data {
 @Test func appWildcardAndIPMatchersCoverTheirConnections() throws {
     let empty = render([])
     let app = try #require(
-        change(empty, render([Rule(pattern: "/Applications/Telegram.app", match: .app, tunnelID: tunnel)])))
+        change(
+            empty,
+            render([Rule(pattern: "/Applications/Telegram.app", match: .app, tunnelID: tunnel)])))
     #expect(
         app.matches(
             host: "", destinationIP: "194.221.250.50",
@@ -50,7 +52,9 @@ private func fixture(_ name: String) throws -> Data {
     #expect(!app.matches(host: "", destinationIP: "", processPath: "/Applications/Safari.app/x"))
 
     let wildcard = try #require(
-        change(empty, render([Rule(pattern: "*.cdn.example.com", match: .wildcard, tunnelID: tunnel)])))
+        change(
+            empty, render([Rule(pattern: "*.cdn.example.com", match: .wildcard, tunnelID: tunnel)]))
+    )
     #expect(wildcard.matches(host: "a.cdn.example.com", destinationIP: "", processPath: ""))
     #expect(!wildcard.matches(host: "cdn.example.com", destinationIP: "", processPath: ""))
 

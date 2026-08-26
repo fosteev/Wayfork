@@ -9,6 +9,7 @@ enum SupervisorEvent: Sendable {
     case engine(EngineState)
     case tunnel(id: String, state: TunnelState)
     case discoveredDNS(id: String, servers: [String])
+    case resolverOverride(ResolverOverrideState)
 }
 
 /// Single owner of every child process. XPC handlers hop onto it; `apply`/`stop`/
@@ -19,6 +20,7 @@ actor Supervisor {
     let hub: ClientHub
     private let engine: SingBoxEngine
     private let sampler: TrafficSampler
+    private let resolver: ResolverOverride
     private let events: AsyncStream<SupervisorEvent>
     private let eventSink: AsyncStream<SupervisorEvent>.Continuation
     private var sessions: [String: OpenVPNSession] = [:]
@@ -41,6 +43,7 @@ actor Supervisor {
             of: SupervisorEvent.self, bufferingPolicy: .unbounded)
         sampler = TrafficSampler(hub: hub)
         engine = SingBoxEngine(env: env, hub: hub, events: eventSink, sampler: sampler)
+        resolver = ResolverOverride(env: env, hub: hub, events: eventSink)
     }
 
     // MARK: - Startup
@@ -48,6 +51,7 @@ actor Supervisor {
     /// Kills leftovers from a previous daemon, wipes `run/`, removes stale routes.
     func bootstrap() async {
         startEventPump()
+        await resolver.restoreLeftover()
         await killLeftovers()
         wipeRunDirectory()
         await removeStaleRoutes()
@@ -112,12 +116,15 @@ actor Supervisor {
         switch event {
         case .engine(let state):
             status.engine = state
+            await resolver.setEngineRunning(state.isRunning)
         case .tunnel(let id, let state):
             guard sessions[id] != nil else { return }
             status.tunnels[id] = state
         case .discoveredDNS(let id, let servers):
             guard sessions[id] != nil else { return }
             status.discoveredDNS[id] = servers
+        case .resolverOverride(let state):
+            status.resolverOverride = state
         }
         await hub.setStatus(status)
     }
@@ -248,6 +255,7 @@ actor Supervisor {
             failure = error
             hub.post(.error, "sing-box: \(error)")
         }
+        await resolver.setDesired(plan.overrideSystemDNS)
 
         for runtime in plan.openVPN where actions.startOpenVPN.contains(runtime.id) {
             let session = OpenVPNSession(
@@ -278,6 +286,7 @@ actor Supervisor {
     private func performStop() async {
         hub.post(.info, "stop requested")
         await engine.stop()
+        await resolver.setDesired(false)
         await sampler.reset()
         await stopSessions(Array(sessions.keys))
         wipeRunDirectory()

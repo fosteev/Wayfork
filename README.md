@@ -31,9 +31,10 @@ none. All tunnels stay up simultaneously; there is no switching.
   row for what bypasses the tunnels; hover for session totals.
 - **Logs and diagnostics**: one window for the app, sing-box and per-tunnel OpenVPN logs;
   "Export Diagnostics" zips logs and a sanitized config for bug reports.
-- **Settings**: launch at login, connect on launch, auto-reconnect with backoff, resolver
-  for direct traffic (system / custom), log level and retention, JSON export/import of
-  tunnels and rules (with or without secrets).
+- **Settings**: launch at login, connect on launch, auto-reconnect with backoff, Wayfork as
+  the system resolver while On (so every app is routed by domain; restored when Off),
+  resolver for direct traffic (system / custom), log level and retention, JSON
+  export/import of tunnels and rules (with or without secrets).
 
 What comes next is in [docs/ROADMAP.md](docs/ROADMAP.md); changes per version in
 [CHANGELOG.md](CHANGELOG.md).
@@ -155,6 +156,11 @@ secrets), `~/Library/Logs/Wayfork/` (app and mirrored runtime logs),
 - **Browser DoH bypasses domain rules**: a browser that resolves names over DNS-over-HTTPS
   never asks Wayfork's resolver, so its traffic is seen by IP only — disable secure DNS or
   use IP / application rules for it.
+- **Manual DNS in System Settings wins**: while On, Wayfork points the Mac's DNS at its own
+  resolver; a server entered by hand in System Settings › Network › DNS takes precedence,
+  so apps then get real addresses and are routed by sniffing only (never for a host whose
+  record is a private address). The log says so — clear the manual entry to route by
+  domain.
 - **No kill switch**: a matched domain whose tunnel is down fails to connect rather than
   leaking, and a default tunnel that is down blocks unmatched traffic, but there is no global
   "block everything when a tunnel drops".

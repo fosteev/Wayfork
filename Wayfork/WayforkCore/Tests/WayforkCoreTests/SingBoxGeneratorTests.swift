@@ -47,8 +47,26 @@ private func excludedRanges(_ output: SingBoxConfigGenerator.Output) throws -> [
         let address = try #require(IPv4Prefix(neighbour))
         #expect(excluded.contains { $0.contains(address) }, "\(neighbour) must stay excluded")
     }
-    // A public resolver already enters the TUN: nothing to carve, config unchanged.
-    #expect(generate(twoTunnelStore(), systemDNS: ["8.8.8.8"]).config == generate(twoTunnelStore()).config)
+    // A public resolver already enters the TUN: nothing to carve.
+    #expect(
+        try excludedRanges(generate(twoTunnelStore(), systemDNS: ["8.8.8.8"]))
+            == excludedRanges(generate(twoTunnelStore())))
+}
+
+@Test func systemResolversCannotUpgradeToEncryptedDNS() throws {
+    let config = try json(
+        generate(twoTunnelStore(), systemDNS: ["192.168.31.1", "8.8.8.8"]).config)
+    let rules = try #require((config["route"] as? [String: Any])?["rules"] as? [[String: Any]])
+    // Right after hijack-dns, before anything could send it elsewhere.
+    #expect(rules[1]["action"] as? String == "hijack-dns")
+    #expect(rules[2]["ip_cidr"] as? [String] == ["192.168.31.1/32", "8.8.8.8/32"])
+    #expect(rules[2]["port"] as? [Int] == [443, 853])
+    #expect(rules[2]["action"] as? String == "reject")
+    #expect(rules[3]["process_path"] != nil)
+    // Without system resolvers there is nothing to protect.
+    let bare = try json(generate(twoTunnelStore()).config)
+    let bareRules = try #require((bare["route"] as? [String: Any])?["rules"] as? [[String: Any]])
+    #expect(!bareRules.contains { $0["port"] != nil })
 }
 
 @Test func generatedConfigFollowsRoutingDesign() throws {
@@ -65,14 +83,17 @@ private func excludedRanges(_ output: SingBoxConfigGenerator.Output) throws -> [
     #expect(servers[1]["server"] as? String == "10.8.0.1")
     #expect(servers[1]["detour"] as? String == work.outboundTag)
     let dnsRules = try #require(dns["rules"] as? [[String: Any]])
-    #expect(dnsRules.count == 3)
-    #expect(dnsRules[0]["rule_set"] as? String == "rules-direct")
-    #expect(dnsRules[0]["server"] as? String == "dns-direct")
-    // OpenVPN servers by name resolve for real (never a fake IP).
-    #expect(dnsRules[1]["domain"] as? [String] == ["vpn.example.org"])
+    #expect(dnsRules.count == 4)
+    // DDR discovery is refused so that mDNSResponder never upgrades past hijack-dns.
+    #expect(dnsRules[0]["domain"] as? [String] == ["_dns.resolver.arpa"])
+    #expect(dnsRules[0]["action"] as? String == "reject")
+    #expect(dnsRules[1]["rule_set"] as? String == "rules-direct")
     #expect(dnsRules[1]["server"] as? String == "dns-direct")
-    #expect(dnsRules[2]["rule_set"] as? [String] == [work.ruleSetTag, home.ruleSetTag])
-    #expect(dnsRules[2]["server"] as? String == "fakeip")
+    // OpenVPN servers by name resolve for real (never a fake IP).
+    #expect(dnsRules[2]["domain"] as? [String] == ["vpn.example.org"])
+    #expect(dnsRules[2]["server"] as? String == "dns-direct")
+    #expect(dnsRules[3]["rule_set"] as? [String] == [work.ruleSetTag, home.ruleSetTag])
+    #expect(dnsRules[3]["server"] as? String == "fakeip")
     #expect(dns["final"] as? String == "dns-direct")
     #expect(dns["strategy"] as? String == "ipv4_only")
 
@@ -172,7 +193,7 @@ private func excludedRanges(_ output: SingBoxConfigGenerator.Output) throws -> [
     empty.tunnels = []
     let bare = generate(empty, uuids: [:])
     let bareConfig = try json(bare.config)
-    #expect(((bareConfig["dns"] as? [String: Any])?["rules"] as? [Any])?.count == 1)
+    #expect(((bareConfig["dns"] as? [String: Any])?["rules"] as? [Any])?.count == 2)
     #expect(((bareConfig["route"] as? [String: Any])?["rule_set"] as? [Any])?.count == 2)
     #expect(bare.ruleSets.keys.sorted() == ["rules-direct-ip.json", "rules-direct.json"])
 }
@@ -200,10 +221,10 @@ private func defaultTunnelStore(defaultID: UUID) -> Store {
     let dns = try #require(config["dns"] as? [String: Any])
     #expect(dns["final"] as? String == "dns-\(work.outboundTag)")
     let dnsRules = try #require(dns["rules"] as? [[String: Any]])
-    #expect(dnsRules.count == 4)
-    #expect(dnsRules[3]["query_type"] as? [String] == ["A", "AAAA"])
-    #expect(dnsRules[3]["server"] as? String == "fakeip")
-    #expect(dnsRules[3]["rule_set"] == nil)
+    #expect(dnsRules.count == 5)
+    #expect(dnsRules[4]["query_type"] as? [String] == ["A", "AAAA"])
+    #expect(dnsRules[4]["server"] as? String == "fakeip")
+    #expect(dnsRules[4]["rule_set"] == nil)
     // No extra resolver for an OpenVPN default: its udp server already exists.
     let servers = try #require(dns["servers"] as? [[String: Any]])
     #expect(
@@ -243,7 +264,7 @@ private func defaultTunnelStore(defaultID: UUID) -> Store {
     let config = try json(output.config)
     #expect((config["route"] as? [String: Any])?["final"] as? String == "direct")
     #expect((config["dns"] as? [String: Any])?["final"] as? String == "dns-direct")
-    #expect(((config["dns"] as? [String: Any])?["rules"] as? [Any])?.count == 2)
+    #expect(((config["dns"] as? [String: Any])?["rules"] as? [Any])?.count == 3)
 
     // VLESS default without its UUID → left out of the config, so no default either.
     let noSecret = generate(defaultTunnelStore(defaultID: Fixtures.homeID), uuids: [:])
@@ -379,6 +400,9 @@ private func configVariants() -> [(String, SingBoxConfigGenerator.Output)] {
         Rule(pattern: "192.168.50.0/24", match: .ip, target: .direct),
     ]
     variants.append(("ip-rules", generate(ips)))
+    // A LAN resolver carved into the TUN plus a public one: DDR refusal on both.
+    variants.append(
+        ("system-dns", generate(twoTunnelStore(), systemDNS: ["192.168.31.5", "8.8.8.8"])))
     return variants
 }
 
@@ -440,7 +464,7 @@ private func configVariants() -> [(String, SingBoxConfigGenerator.Output)] {
     // DNS rules keep referencing the domain sets only.
     let dnsRules = try #require((config["dns"] as? [String: Any])?["rules"] as? [[String: Any]])
     #expect(
-        dnsRules[2]["rule_set"] as? [String] == [
+        dnsRules[3]["rule_set"] as? [String] == [
             Fixtures.work.ruleSetTag, Fixtures.home.ruleSetTag,
         ])
     #expect(
@@ -503,8 +527,8 @@ private func configVariants() -> [(String, SingBoxConfigGenerator.Output)] {
     #expect(rules[processIndex + 2]["rule_set"] != nil)  // the Direct rule-sets follow
     let dns = try #require(config["dns"] as? [String: Any])
     let dnsRules = try #require(dns["rules"] as? [[String: Any]])
-    #expect(dnsRules[1]["domain"] as? [String] == ["vpn.example.org"])
-    #expect(dnsRules[1]["server"] as? String == "dns-direct")
+    #expect(dnsRules[2]["domain"] as? [String] == ["vpn.example.org"])
+    #expect(dnsRules[2]["server"] as? String == "dns-direct")
 
     // Resolved addresses of the names join the literals (sorted, deduplicated, no garbage);
     // the name stays so that sniffed/fake-ip flows keep matching too. Unknown hosts and
@@ -536,5 +560,6 @@ private func configVariants() -> [(String, SingBoxConfigGenerator.Output)] {
     let plainRules = try #require((plain["route"] as? [String: Any])?["rules"] as? [[String: Any]])
     #expect(!plainRules.contains { $0["ip_cidr"] != nil && $0["rule_set"] == nil })
     let plainDNS = try #require((plain["dns"] as? [String: Any])?["rules"] as? [[String: Any]])
-    #expect(!plainDNS.contains { $0["domain"] != nil })
+    // (The DDR refusal is a domain rule too, but it names no server.)
+    #expect(!plainDNS.contains { $0["domain"] != nil && $0["server"] != nil })
 }

@@ -54,6 +54,8 @@ public struct Settings: Codable, Sendable, Hashable {
     public var autoReconnect: Bool
     public var notifyOnTunnelFailure: Bool
     public var directDNS: DirectDNS
+    /// Wayfork is the system resolver while On (F12, docs/design/03-routing.md).
+    public var overrideSystemDNS: Bool
     public var logLevel: LogLevel
     public var logRetentionDays: Int
 
@@ -63,6 +65,7 @@ public struct Settings: Codable, Sendable, Hashable {
         autoReconnect: Bool = true,
         notifyOnTunnelFailure: Bool = true,
         directDNS: DirectDNS = .system,
+        overrideSystemDNS: Bool = true,
         logLevel: LogLevel = .info,
         logRetentionDays: Int = 7
     ) {
@@ -71,13 +74,14 @@ public struct Settings: Codable, Sendable, Hashable {
         self.autoReconnect = autoReconnect
         self.notifyOnTunnelFailure = notifyOnTunnelFailure
         self.directDNS = directDNS
+        self.overrideSystemDNS = overrideSystemDNS
         self.logLevel = logLevel
         self.logRetentionDays = logRetentionDays
     }
 
     private enum CodingKeys: String, CodingKey {
         case launchAtLogin, connectOnLaunch, autoReconnect, notifyOnTunnelFailure
-        case directDNS, logLevel, logRetentionDays
+        case directDNS, overrideSystemDNS, logLevel, logRetentionDays
     }
 
     public init(from decoder: Decoder) throws {
@@ -93,6 +97,9 @@ public struct Settings: Codable, Sendable, Hashable {
             try c.decodeIfPresent(Bool.self, forKey: .notifyOnTunnelFailure)
             ?? defaults.notifyOnTunnelFailure
         directDNS = try c.decodeIfPresent(DirectDNS.self, forKey: .directDNS) ?? defaults.directDNS
+        overrideSystemDNS =
+            try c.decodeIfPresent(Bool.self, forKey: .overrideSystemDNS)
+            ?? defaults.overrideSystemDNS
         logLevel = try c.decodeIfPresent(LogLevel.self, forKey: .logLevel) ?? defaults.logLevel
         logRetentionDays =
             try c.decodeIfPresent(Int.self, forKey: .logRetentionDays) ?? defaults.logRetentionDays

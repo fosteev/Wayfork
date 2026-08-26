@@ -10,6 +10,12 @@ First release: per-domain split tunneling across several VPNs at once from the m
 
 ### Added
 
+- **System resolver override**: while On, the Mac's DNS points at Wayfork's own resolver
+  and is restored when Off (also after a crash), so every application that asks the
+  system resolver is routed by domain — including hosts whose public record is a private
+  address. A resolver entered by hand in System Settings takes precedence and is reported
+  in the log; a setting turns the override off. Encrypted-DNS discovery (DDR) is refused
+  and port 443/853 to the resolvers is rejected so that macOS cannot sidestep it.
 - **Tunnels**: OpenVPN profiles (`.ovpn` with inline certs and keys, username/password and
   key passphrase asked once and kept in the Keychain) and VLESS URIs (TCP, WebSocket, gRPC;
   TLS and REALITY). Rename, enable/disable, reconnect, replace the config.

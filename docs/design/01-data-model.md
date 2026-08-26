@@ -76,6 +76,7 @@ struct Settings: Codable {
     var autoReconnect = true
     var notifyOnTunnelFailure = true
     var directDNS: DirectDNS = .system   // resolver for non-matched traffic
+    var overrideSystemDNS = true         // Wayfork is the system resolver while On (F12)
     var logLevel: LogLevel = .info
     var logRetentionDays = 7
 }

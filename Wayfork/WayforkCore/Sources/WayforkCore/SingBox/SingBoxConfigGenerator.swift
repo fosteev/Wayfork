@@ -18,9 +18,12 @@ public enum SingBoxConfigGenerator {
         /// learns a flow's domain through fake-ip or sniffing), so the servers' addresses go
         /// into the `ip_cidr` half of the direct rule as well.
         public var resolvedServerAddresses: [String: [String]]
-        /// IPv4 addresses of the system resolvers (`SystemDNS.servers()`). Those inside the
-        /// LAN ranges are carved out of `route_exclude_address` so that the system resolver's
-        /// queries enter the TUN and `hijack-dns` sees them.
+        /// IPv4 addresses of the system resolvers (`SystemDNS.Snapshot.routable`). Those
+        /// inside the LAN ranges are carved out of `route_exclude_address` so that the system
+        /// resolver's queries enter the TUN and `hijack-dns` sees them. Must never contain the
+        /// default gateway: a host route for the gateway through the TUN makes it unreachable
+        /// from the physical interface and every outbound dial fails with "network is
+        /// unreachable" (2026-08-26).
         public var systemDNSServers: [String]
 
         public init(
@@ -48,7 +51,9 @@ public enum SingBoxConfigGenerator {
     }
 
     public static let tunInterface = "utun100"
-    public static let tunAddress = "172.19.0.1/30"
+    /// The TUN's own address: the system resolver while On (F12).
+    public static let tunHostAddress = "172.19.0.1"
+    public static let tunAddress = tunHostAddress + "/30"
     public static let fakeIPv4Range = "198.18.0.0/15"
     /// LAN, CGNAT, link-local and multicast: kept out of the TUN entirely.
     static let lanRanges = [
@@ -59,6 +64,8 @@ public enum SingBoxConfigGenerator {
     public static let fallbackTunnelDNS = "1.1.1.1"
     /// DoT resolver used as `dns.final` when the default tunnel is VLESS (detoured through it).
     public static let defaultTunnelDoTServer = "1.1.1.1"
+    /// The DDR special-use name (RFC 9462) mDNSResponder queries to upgrade to DoH/DoT.
+    public static let ddrDiscoveryName = "_dns.resolver.arpa"
 
     public static func generate(_ input: Input) -> Output {
         let store = input.store
@@ -83,8 +90,22 @@ public enum SingBoxConfigGenerator {
         var routeRules: [[String: Any]] = [
             ["action": "sniff"],
             ["protocol": "dns", "action": "hijack-dns"],
-            ["process_path": [input.openVPNBinaryPath], "outbound": "direct"],
         ]
+        if !input.systemDNSServers.isEmpty {
+            // DDR (RFC 9462): mDNSResponder asks the system resolver for `_dns.resolver.arpa`
+            // and, when the advertised DoH/DoT endpoint's certificate covers the resolver's
+            // address, moves every query to 443/853 — past `hijack-dns`, real addresses
+            // again (2026-08-26, 1.1.1.1: DoH3 over UDP 443). The DNS rule below refuses
+            // the discovery; this rule cuts an upgrade cached before Wayfork started, so
+            // mDNSResponder falls back to plain 53. Never matches sing-box's own DoT
+            // upstream: outbound dials do not pass through route rules.
+            routeRules.append([
+                "ip_cidr": input.systemDNSServers.map { "\($0)/32" },
+                "port": [443, 853],
+                "action": "reject",
+            ])
+        }
+        routeRules.append(["process_path": [input.openVPNBinaryPath], "outbound": "direct"])
         // The OpenVPN servers themselves always go direct, by address and by name: the
         // process match above is best effort (seen to miss the very first UDP flow after
         // start), and a control channel routed into another tunnel is a tunnel-in-tunnel.
@@ -139,8 +160,9 @@ public enum SingBoxConfigGenerator {
             (activeRules[tunnel.id] ?? []).filter(\.isIP).compactMap { IPv4Prefix($0.pattern) }
         }
         // The system resolvers must enter the TUN for `hijack-dns` to see their queries, and a
-        // router-hosted resolver sits inside the LAN ranges (03-routing.md, "Notes on
-        // specific choices"). Public resolvers are not excluded to begin with: no-op.
+        // LAN-hosted resolver sits inside the excluded ranges (03-routing.md, "Notes on
+        // specific choices"). Public resolvers are not excluded to begin with: no-op. The
+        // caller leaves out the default gateway (see `Input.systemDNSServers`).
         carved += input.systemDNSServers.compactMap { IPv4Prefix($0) }.filter(\.isHost)
 
         dnsServers.append([
@@ -150,7 +172,9 @@ public enum SingBoxConfigGenerator {
         ])
 
         var dnsRules: [[String: Any]] = [
-            ["rule_set": RuleSetGenerator.directTag, "server": "dns-direct"]
+            // No designated (encrypted) resolver, ever: see the DDR route rule above.
+            ["domain": [ddrDiscoveryName], "action": "reject"],
+            ["rule_set": RuleSetGenerator.directTag, "server": "dns-direct"],
         ]
         if !servers.hosts.isEmpty {
             // OpenVPN resolves its `remote` through the system resolver: answer with real

@@ -18,23 +18,27 @@ public struct RuntimePlan: Codable, Sendable, Hashable {
     /// `Settings.logLevel`: sets `openvpn --verb`. Part of the OpenVPN diff key, so a change
     /// restarts every OpenVPN process (sing-box restarts anyway: `log.level` is in the config).
     public var logLevel: LogLevel
+    /// Make Wayfork the system resolver while sing-box runs (F12, docs/design/05-daemon.md).
+    public var overrideSystemDNS: Bool
 
     public init(
         version: Int = RuntimePlan.currentVersion,
         singBox: SingBoxPlan,
         openVPN: [OpenVPNRuntime],
         autoReconnect: Bool = true,
-        logLevel: LogLevel = .info
+        logLevel: LogLevel = .info,
+        overrideSystemDNS: Bool = true
     ) {
         self.version = version
         self.singBox = singBox
         self.openVPN = openVPN
         self.autoReconnect = autoReconnect
         self.logLevel = logLevel
+        self.overrideSystemDNS = overrideSystemDNS
     }
 
     private enum CodingKeys: String, CodingKey {
-        case version, singBox, openVPN, autoReconnect, logLevel
+        case version, singBox, openVPN, autoReconnect, logLevel, overrideSystemDNS
     }
 
     public init(from decoder: Decoder) throws {
@@ -44,6 +48,7 @@ public struct RuntimePlan: Codable, Sendable, Hashable {
         openVPN = try c.decode([OpenVPNRuntime].self, forKey: .openVPN)
         autoReconnect = try c.decodeIfPresent(Bool.self, forKey: .autoReconnect) ?? true
         logLevel = try c.decodeIfPresent(LogLevel.self, forKey: .logLevel) ?? .info
+        overrideSystemDNS = try c.decodeIfPresent(Bool.self, forKey: .overrideSystemDNS) ?? true
     }
 
     /// Hash over everything the daemon acts on; reported back as `RuntimeStatus.planHash`.
@@ -54,6 +59,7 @@ public struct RuntimePlan: Codable, Sendable, Hashable {
                 "\($0)=\(Hashing.sha256Hex(singBox.ruleSets[$0] ?? ""))"
             })
         parts.append(contentsOf: openVPN.map { "\($0.id)=\($0.configHash)" })
+        parts.append("overrideSystemDNS=\(overrideSystemDNS)")
         return Hashing.sha256Hex(parts.joined(separator: "\n"))
     }
 }

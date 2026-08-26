@@ -25,6 +25,9 @@ struct GeneralSettingsView: View {
                     Toggle("Notify when a tunnel fails", isOn: setting(\.notifyOnTunnelFailure))
                 }
                 Section("DNS") {
+                    Toggle(
+                        "Use Wayfork as the system resolver while On",
+                        isOn: setting(\.overrideSystemDNS))
                     Picker("Direct traffic resolver", selection: dnsMode) {
                         Text("System").tag(0)
                         Text("Custom").tag(1)

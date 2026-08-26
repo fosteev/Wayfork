@@ -49,6 +49,17 @@ public enum TunnelState: Codable, Sendable, Hashable {
     }
 }
 
+/// The daemon's hold on the system resolver (F12, docs/design/05-daemon.md, "System
+/// resolver override").
+public enum ResolverOverrideState: Codable, Sendable, Hashable {
+    case off
+    /// The primary service's DNS points at the TUN.
+    case active(service: String)
+    /// Written, but a manual entry in System Settings takes precedence.
+    case shadowed(manual: [String])
+    case failed(reason: String)
+}
+
 public struct RuntimeStatus: Codable, Sendable, Hashable {
     public var engine: EngineState
     /// By tunnel id (OpenVPN tunnels only).
@@ -57,17 +68,36 @@ public struct RuntimeStatus: Codable, Sendable, Hashable {
     public var planHash: String?
     /// Last `dhcp-option DNS` values pushed by each OpenVPN server, by tunnel id.
     public var discoveredDNS: [String: [String]]
+    /// F12: whether the system resolver currently points at the TUN.
+    public var resolverOverride: ResolverOverrideState
 
     public init(
         engine: EngineState = .stopped,
         tunnels: [String: TunnelState] = [:],
         planHash: String? = nil,
-        discoveredDNS: [String: [String]] = [:]
+        discoveredDNS: [String: [String]] = [:],
+        resolverOverride: ResolverOverrideState = .off
     ) {
         self.engine = engine
         self.tunnels = tunnels
         self.planHash = planHash
         self.discoveredDNS = discoveredDNS
+        self.resolverOverride = resolverOverride
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case engine, tunnels, planHash, discoveredDNS, resolverOverride
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        engine = try c.decode(EngineState.self, forKey: .engine)
+        tunnels = try c.decode([String: TunnelState].self, forKey: .tunnels)
+        planHash = try c.decodeIfPresent(String.self, forKey: .planHash)
+        discoveredDNS =
+            try c.decodeIfPresent([String: [String]].self, forKey: .discoveredDNS) ?? [:]
+        resolverOverride =
+            try c.decodeIfPresent(ResolverOverrideState.self, forKey: .resolverOverride) ?? .off
     }
 
     public static let stopped = RuntimeStatus()
