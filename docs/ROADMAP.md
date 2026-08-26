@@ -114,7 +114,8 @@ Written as user scenarios. Technical details belong to Phase 2.
 - Import rules from a Surge / Clash / sing-box rule-set.
 
 **L2. Rule testing**
-- "Where does `<domain>` go?" — resolve which rule/tunnel matches and why.
+- "Where does `<domain>` go?" — resolve which rule/tunnel matches and why. Design:
+  [design/07-rule-testing.md](design/07-rule-testing.md) (2026-08-25, not scheduled).
 - Live connection view: active connections with domain, tunnel, bytes.
 
 **L3. More tunnel types**
