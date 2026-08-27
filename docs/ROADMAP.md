@@ -3,6 +3,8 @@
 Work proceeds strictly phase by phase. A phase is closed only after explicit maintainer
 approval; the next phase is not started before that.
 
+The Windows client has its own track: [ROADMAP-windows.md](ROADMAP-windows.md).
+
 | Phase | Deliverable | Status |
 |---|---|---|
 | 1. Features | Feature list below, split into MVP / Later | approved 2026-08-25 |
