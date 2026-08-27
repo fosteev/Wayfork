@@ -205,24 +205,33 @@ privileges, fully testable) and `cmd/wayfork-service`, `cmd/wayforkctl`. Shared
 ### WM1 — Core in Dart (`app/lib/core`)
 
 One file per Swift counterpart where it makes sense; tests against `fixtures/`.
+*(2026-08-27: done — 101 Dart tests; deltas recorded in
+[08-windows.md](design/08-windows.md) § Dart core.)*
 
-- [ ] Models (`Store`, `Tunnel`, `Rule`, `RuleMatch`, `RuleTarget`, `Settings`) with
+- [x] Models (`Store`, `Tunnel`, `Rule`, `RuleMatch`, `RuleTarget`, `Settings`) with
       the same JSON schema and version as `store.json` v2, migration hook; tests.
-- [ ] `StoreRepository`: atomic debounced writes, corrupt-file recovery, slot allocation.
-- [ ] `SecretStore`: DPAPI via `win32` (`CryptProtectData` / `CryptUnprotectData`),
-      one blob per secret, orphan cleanup; tests with a fake backend.
-- [ ] Rule pattern normalization and validation (lowercase, IDNA, wildcard, IPv4/CIDR,
+      *(`JsonText` reproduces Foundation's pretty/sorted JSON so the files stay byte-identical;
+      `fixtures/singbox/*/input.json` re-encodes byte for byte.)*
+- [x] `StoreRepository`: atomic debounced writes, corrupt-file recovery, slot allocation.
+- [x] `SecretStore`: DPAPI via `win32` (`CryptProtectData` / `CryptUnprotectData`),
+      one blob per secret, orphan cleanup; tests with a fake backend. *(`secrets.dat`;
+      the Win32 backend is exercised on a Windows machine in WM3.)*
+- [x] Rule pattern normalization and validation (lowercase, IDNA, wildcard, IPv4/CIDR,
       duplicates, shadowing, `coversTunnelServer`, `coversLocalNetwork`); tests.
-- [ ] OpenVPN config parser (directives, inline blocks, file inlining, strip list,
+      *(App rules are `.exe` paths → `(?i)^…$` regex; NFC not applied; `LocalNetwork.current()`
+      moves to WM3 with the other Win32 enumerations.)*
+- [x] OpenVPN config parser (directives, inline blocks, file inlining, strip list,
       rejects, credentials/passphrase detection, remotes); tests on the shared fixtures.
-- [ ] VLESS URI parser; tests.
-- [ ] sing-box config generator + rule-set generator: golden tests byte-for-byte against
+      *(Windows strip list adds compression and Windows-only directives.)*
+- [x] VLESS URI parser; tests.
+- [x] sing-box config generator + rule-set generator: golden tests byte-for-byte against
       `fixtures/`, including F8/F10/F11 variants; a test that runs `sing-box check` when
-      the binary is present.
-- [ ] `RuntimePlan` builder and plan hash; IPC payload types (`DaemonInfo`,
+      the binary is present. *(`WayforkPlatform` injects the interface names; golden with
+      `macOS`, `sing-box check` on the `windows` output — runs on this Mac.)*
+- [x] `RuntimePlan` builder and plan hash; IPC payload types (`DaemonInfo`,
       `RuntimeStatus`, `TunnelState`, `LogLine`, `ApplyResult`, `DaemonError`,
-      `TrafficSnapshot`) as JSON.
-- [ ] Diagnostics sanitizer; tests.
+      `TrafficSnapshot`) as JSON. *(Swift `Codable` wire form; `installPath` for `bundlePath`.)*
+- [x] Diagnostics sanitizer; tests. *(Also abbreviates `X:\Users\<name>\…`.)*
 
 ### WM2 — Service in Go
 

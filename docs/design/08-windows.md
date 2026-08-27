@@ -69,7 +69,9 @@ service keeps running the current plan across app restarts (it only reacts to `a
 The **runtime plan** is the macOS `RuntimePlan` verbatim in spirit — desired-state, not
 imperative — with two field changes: `OpenVPNRuntime.interface` carries the **adapter name**
 (`"Wayfork-1"`), not a `utun` unit, and the plan gains `overrideSystemDNS: bool` (already on
-macOS) whose Windows mechanism is NRPT (see Resolver override). The reconcile algorithm
+macOS) whose Windows mechanism is NRPT (see Resolver override); `DaemonInfo.bundlePath`
+becomes `installPath` (`%ProgramFiles%\Wayfork`) and `buildID` carries the service
+executable's Authenticode hash. The reconcile algorithm
 (diff OpenVPN by `id`+`configHash`+verb; sing-box by `configHash` / rule-set contents;
 concurrent start) is unchanged. As on macOS, `bind_interface` is resolved lazily at dial
 time — confirmed on Windows: with the adapter present but no route, the dial fails
@@ -253,17 +255,62 @@ by `flutter pub get` on Windows. CI: `.github/workflows/ci-windows.yml` (windows
 Flutter + Go jobs) runs on `WayforkWindows/**`, `fixtures/**`, `scripts/**`; `ci.yml` ignores
 the mirror set.
 
+## Dart core (WM1)
+
+`app/lib/core` mirrors `WayforkCore` file by file (`model/`, `store/`, `secrets/`, `rules/`,
+`openvpn/`, `vless/`, `singbox/`, `plan/`, `ipc/`, `diagnostics/`, `support/`) and is tested
+against `fixtures/` from `test/core/`. The deltas from the Swift core, all deliberate:
+
+- **Platform object.** `WayforkPlatform` (`windows` / `macOS`) carries what differs in the
+  generated artefacts: the TUN name (`Wayfork` vs `utun100`), the OpenVPN interface names
+  (`Wayfork-N` vs `utun<101+slot>`), the bundled `openvpn` path (`<install>\bin\openvpn.exe`)
+  and application-rule handling. The generators take it as an input: the golden tests replay
+  `fixtures/singbox/*/input.json` with `macOS` and must match byte for byte, `sing-box check`
+  runs on the `windows` output.
+- **JSON.** `JsonText` reproduces Foundation's `JSONSerialization` pretty/sorted output
+  (case-insensitive key order, `"key" : value`, empty containers spread over three lines, `/`
+  unescaped, lowercase `\u00xx`) so `sing-box.json`, the rule-sets, `store.json` and
+  `wayfork-export.json` stay byte-identical across the clients. UUIDs are held lowercase and
+  written uppercase like Swift's `UUID.uuidString`; dates are whole-second ISO 8601 UTC.
+- **App rules (F10).** The pattern is an absolute `.exe` path (drive letter or UNC, `file:`
+  URLs accepted, `/` becomes `\`, must end in `.exe`, no `.`/`..` components, case kept); the
+  rule-set emits `process_path_regex` `(?i)^<escaped path>$` — one executable, case-insensitive
+  because sing-box reports the on-disk case (S3a). macOS bundles keep `^<path>/`.
+- **Importer.** On top of the macOS strip list ([04-tunnels.md](04-tunnels.md)) the Windows
+  importer drops `comp-lzo`, `compress`, `comp-noadapt`, `allow-compression` (compression
+  framing forces the TAP fallback, see Adapters) and the Windows-only `windows-driver`,
+  `ip-win32`, `dhcp-renew`, `dhcp-release`, `register-dns`, `tap-sleep`, `route-method`,
+  `pause-exit`, `show-net-up`; all of them are reported in `strippedDirectives`. NFC
+  normalisation of rule patterns is not applied (the Dart SDK has no normaliser).
+- **Secrets.** `SecretStore` over `%LOCALAPPDATA%\Wayfork\secrets.dat`: compact JSON
+  `{"version":1,"items":{"tunnel/<id>/<kind>":"<base64 DPAPI blob>"}}`, one
+  `CryptProtectData` blob per secret (`CRYPTPROTECT_UI_FORBIDDEN`, current user), decrypted
+  only on read; the accounts (`tunnel/<id>/{ovpn,credentials,keyPassphrase,uuid}`) and the
+  orphan cleanup are the Keychain ones. The Win32 backend compiles everywhere and is exercised
+  on Windows only (WM3); the tests use a fake protector.
+- **IPC types.** `RuntimePlan`, `RuntimeStatus` and the other payloads keep the Swift
+  `Codable` wire form (`{"case":{…}}` for enums with payloads, `{"case":{}}` without) so the Go
+  service implements one contract; `DaemonInfo.installPath` replaces `bundlePath`.
+- **Host resolution.** `HostResolver.resolveIPv4` drops answers inside the fake-IP range
+  (`198.18.0.0/15`): a lookup made while Wayfork is already On may get sing-box's fake answer
+  for a server name that is not yet in the config, which must not end up in the direct
+  `ip_cidr` rule. *(The macOS core does not filter yet — worth back-porting.)*
+- **Deferred to WM3 (Win32):** `LocalNetwork.current()` and the system-DNS snapshot
+  (`GetAdaptersAddresses`); the pure halves (`SystemDnsSnapshot.routable`,
+  `coversLocalNetwork`) are ported and tested.
+
 ## Open items
 
-- **t1/pilot-gps user flow (not a Windows issue).** In S5 the `jira.pilot-gps.com` flow failed
-  (`Connection reset` / `context deadline exceeded`) while the identical mechanism carried
-  `jira.sccloud.ru`. Root: the fake-ip → `direct` outbound **connect-time re-resolution**.
-  `default_domain_resolver: dns-direct` returned the real IP for sccloud's private
-  `192.168.42.75` but not for pilot's public `185.147.81.35` (a host the tunnel pushes a `/32`
-  for). Production macOS resolves pilot-gps correctly, so the spike template is the incomplete
-  one. *(verify)* the production config's per-outbound `domain_resolver` (point each tunnel
-  outbound at its own tunnel DNS / a resolver that never returns a fake IP) and carry that into
-  the generated Windows config; add a WM-phase test for a VPN-only public domain.
+- **t1/pilot-gps user flow (not a Windows issue) — resolved 2026-08-27.** In S5 the
+  `jira.pilot-gps.com` flow failed (`Connection reset` / `context deadline exceeded`) while the
+  identical mechanism carried `jira.sccloud.ru`. Root: the fake-ip → `direct` outbound
+  **connect-time re-resolution**; the spike template only had `default_domain_resolver:
+  dns-direct`, which returned the real IP for sccloud's private `192.168.42.75` but not for
+  pilot's public `185.147.81.35` (a host the tunnel pushes a `/32` for). The production
+  generator (macOS and the Dart port alike) gives every OpenVPN outbound its own
+  `domain_resolver` — `dns-t-<id>`, the tunnel's resolver detoured through the tunnel — so a
+  VPN-only name is re-resolved where it exists; the Dart test
+  `OpenVPN outbounds resolve through their own tunnel DNS` pins this shape.
 - **OpenVPN WFP block filters** *(verify)*. OpenVPN adds per-connect WFP "block-outside-dns"
   filters; the S7 `netsh wfp` tally read 0 both before and after the kill (measurement likely
   faulty), so their teardown on a force-kill is unconfirmed. Verify they do not outlive the

@@ -21,7 +21,8 @@ WAYFORK_UPDATE_GOLDEN=1 swift test --package-path Wayfork/WayforkCore
 
 then review the diff. Rule ids in `input.json` are renumbered (`…-0000000001NN`) because
 they never reach the output; `openVPNBinaryPath` is the macOS bundle path and appears
-verbatim in `sing-box.json` — the Windows generator substitutes its own path and the Dart
-golden test compares with that substitution applied. Never put real servers, UUIDs or keys
+verbatim in `sing-box.json` — the Dart generator takes the path as input like the Swift one,
+and its golden test replays `input.json` with the macOS platform flavour (`utun` names)
+so the comparison is byte for byte. Never put real servers, UUIDs or keys
 here: `<SERVER>`-style placeholders and the reserved test UUIDs
 (`00000000-0000-4000-8000-0000000000NN`) only.
