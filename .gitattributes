@@ -1,0 +1,7 @@
+# Check out every text file with LF on every platform: the Dart and Go tests
+# compare fixtures byte for byte and gofmt rejects CRLF.
+* text=auto eol=lf
+
+*.ico binary
+*.png binary
+*.icns binary
