@@ -10,8 +10,10 @@ on:
       - 'fixtures/**'
       - 'scripts/**'
       - '.github/workflows/ci-windows.yml'
+      - '.gitattributes'
   pull_request:
     paths: *windows-paths
+  workflow_dispatch:
 
 concurrency:
   group: ci-windows-${{ github.ref }}
