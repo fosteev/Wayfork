@@ -7,7 +7,7 @@ reviewed change to the product.
 
 | Path | What | Producer / consumers |
 |------|------|----------------------|
-| `singbox/<variant>/input.json` | Generator input: `store` (the `store.json` v2 document), `vlessUUIDs` (tunnel id → UUID), `openVPNBinaryPath`, `resolvedServerAddresses`, `systemDNSServers`, `networkResolvers` | Written by `SingBoxGeneratorTests.generatedConfigMatchesGoldenFiles` in update mode; replayed by the Dart generator tests |
+| `singbox/<variant>/input.json` | Generator input: `store` (the `store.json` v2 document), `vlessUUIDs` (tunnel id → UUID), `openVPNBinaryPath`, `resolvedServerAddresses`, `systemDNSServers`, `networkResolvers` | Written by `SingBoxGeneratorTests.generatedConfigMatchesGoldenFiles` in update mode; replayed by the Dart generator tests; the Go plan/validator tests read `two-tunnels` and its rule-sets |
 | `singbox/<variant>/sing-box.json`, `rules-*.json` | Expected `sing-box.json` and rule-set files for that input, byte for byte | Same test, plus `sing-box check` runs on macOS (`TrafficTests`) and Windows |
 | `ovpn/*.ovpn`, `*.expected.ovpn` | OpenVPN profile importer samples (placeholder keys only) | `OpenVPNConfigParserTests`, Dart parser tests |
 | `vless/links.json` | VLESS links every client accepts (with the parse result) or rejects | `VLESSURIParserTests`, Dart parser tests |

@@ -235,10 +235,18 @@ One file per Swift counterpart where it makes sense; tests against `fixtures/`.
 
 ### WM2 — Service in Go
 
-- [ ] `internal/core`: plan validation (`PlanValidator`, adapter-name validation),
+*(2026-08-28: `internal/core` done and tested; the shell below is **implemented and
+unit-tested with fakes on macOS** (`internal/service`, `internal/ipc`) with the Win32 halves
+in `internal/winnet` / `internal/winproc` and the two commands — it compiles for Windows but
+has **not run in the VM yet**: every box stays open until the `--dev-apply` run on
+`wf-win` passes. Deltas in [08-windows.md](design/08-windows.md) § Service shell.)*
+
+- [x] `internal/core`: plan validation (`PlanValidator`, adapter-name validation),
       `RunLayout`, OpenVPN argv builder, management protocol parser (Windows device line),
       `OpenVPNSessionReducer`, `ResolverOverridePlanner`, Clash API decoding,
-      `TrafficAccumulator`, log ring buffers; tests on `fixtures/`.
+      `TrafficAccumulator`, log ring buffers; tests on `fixtures/`. *(2026-08-27: done —
+      81 Go tests, also reconcile planner, rule-set selectors, rotating log, atomic file;
+      deltas in [08-windows.md](design/08-windows.md) § Go core.)*
 - [ ] Service shell: `svc` handler, start idle, stop restores networking; event log
       entries for start/stop/crash.
 - [ ] Named pipe listener with ACL and client verification; JSON framing; `getInfo`,

@@ -299,6 +299,120 @@ against `fixtures/` from `test/core/`. The deltas from the Swift core, all delib
   (`GetAdaptersAddresses`); the pure halves (`SystemDnsSnapshot.routable`,
   `coversLocalNetwork`) are ported and tested.
 
+## Go core (WM2, `service/internal/core`)
+
+`internal/core` mirrors `WayforkDaemonCore` file by file (plan/status wire types, validator,
+run layout, argv, backoff, line splitter, management protocol, failure codes, session
+reducer, reconcile planner, resolver-override planner, Clash API, traffic accumulator,
+sing-box log parsing, log rings, rule-set selectors, rotating log, atomic file) and is
+tested everywhere against `fixtures/`. The deltas from the Swift daemon core:
+
+- **Wire encoding.** The Swift `Codable` shapes are reproduced with custom JSON: enum
+  cases as `{"case":{…}}`, sorted keys, whole-second UTC timestamps, `{}`/`[]` for empty
+  collections. Go's `json.Marshal` HTML-escapes `<>&` even inside a `MarshalJSON` result, so
+  the IPC layer encodes top-level payloads with `core.MarshalWire` (no escaping) — the
+  pinned literals in the Dart `ipc_test.dart` are shared with the Go tests, and the
+  two-tunnels `planHash` / OpenVPN `configHash` are pinned against values the Dart core
+  computed. The zero values of `EngineState` / `ResolverOverrideState` encode as `stopped` /
+  `off`.
+- **Run layout.** No sockets and no pid files: management is TCP on loopback with a
+  password file `t-<id>.mgmt` (transient, next to `t-<id>.ovpn`), children live in the job
+  object. `cache.db` and `dns-override.json` survive `stop` as on macOS.
+- **argv.** `--dev-node <Wayfork-N>` selects the pre-created adapter; `--management
+  127.0.0.1 <port> <run>\t-<id>.mgmt`; `--persist-key` and `--max-routes` dropped
+  (DEPRECATED in 2.7); the rest as on macOS, `--dns-updown disable` included.
+- **Management protocol.** The socket client answers the `ENTER PASSWORD:` prompt (no
+  newline; `IsManagementPasswordPrompt`) before reporting the channel up, so the reducer is
+  unchanged there. With `log on` OpenVPN echoes every `>STATE:` as `MANAGEMENT: >STATE:…`
+  and every command as `MANAGEMENT: CMD '…'` (verb 3, `D` flag, `username` arguments
+  verbatim): both become `EventEcho` and are dropped — that is the de-duplication and what
+  keeps usernames out of the log ring. `PushedRouteGateway` reads `route-gateway` from the
+  logged `PUSH_REPLY` (fallback: the net30 `ifconfig` peer).
+- **Child stdout.** `--machine-readable-output` prints `<epoch>.<micros> <flags-hex>
+  <message>` (OpenVPN `error.c`; the timestamp ignores `--suppress-timestamps`), the flags
+  being the `M_FATAL`/`M_NONFATAL`/`M_WARN`/`M_DEBUG` bitmask (`0x10`/`0x20`/`0x40`/`0x80`).
+  `ParseOutputLine` maps them to the `>LOG` letters. *(The macOS `OpenVPNOutput.parse`
+  expects letters and never matches a real line — back-port candidate.)*
+- **Adapter check.** OpenVPN `init.c` logs `"%s device [%s] opened"` with the backend
+  driver — `ovpn-dco device [Wayfork-1] opened` (spike S3c) or `tap-windows6 device
+  [Wayfork-2] opened` — the replacement for `Opened utun device utunN`; a mismatch with
+  the planned adapter is `ovpn.configError`. A soft restart logs `Preserving previous
+  TUN/TAP instance` instead (no check).
+- **Reducer.** `AddScopedRoute{Interface, Gateway}` on `CONNECTED` carries the pushed
+  gateway (empty = on-link fallback plus a warning); exits carry a code, not a signal.
+  `Options error … ([PUSH-OPTIONS])` is whitelisted in the fatal classifier.
+- **Resolver-override planner.** Over an NRPT snapshot instead of SCPreferences: the
+  service's rule is `Namespace "."` + `Comment "Wayfork"` (a stale address is still ours);
+  consistent → nothing; ours missing/stale/duplicated → `Restore` then `Write`; a foreign
+  `"."` rule → `failed` and ours removed (two catch-alls have no defined precedence);
+  inactive → `Restore` of whatever is there (rule and/or record). `run\dns-override.json` =
+  `{version, address, rules}`; the state reports `active(service: "NRPT")`.
+- **Rule-set selectors / Clash API / traffic** are straight ports (Go `regexp` is RE2 like
+  sing-box; `ip_cidr` also accepts a bare host). `InjectClashAPI` re-encodes with
+  `encoding/json` (sorted keys, two-space indent, `UseNumber`), a different pretty-print than
+  Foundation's but only sing-box reads that file.
+
+## Service shell (WM2, `service/internal/{service,ipc,winnet,winproc}`, `cmd/`)
+
+The macOS daemon's wiring (`Wayfork/Daemon/`) ported with one structural change: the
+orchestration is a cross-platform package over small I/O interfaces, so it is unit-tested
+on every platform with fakes; only the interface implementations touch Win32.
+
+- **`internal/service`** — `Supervisor` (bootstrap, serialized apply/stop/reconnect with
+  latest-wins, status, diagnostics; implements `ipc.Handler`), `SingBoxEngine` (write
+  rule-sets, `sing-box check` on an injected copy, start with startup verification —
+  `Wayfork` adapter up and `1.1.1.1` routing through it — crash counter/backoff, connection
+  cut after a rule-set rewrite), `OpenVPNSession` (process + management client feeding the
+  core reducer; effects performed in order), `ManagementClient` (TCP, answers the
+  `ENTER PASSWORD:` prompt before reporting the channel up), `ResolverOverride` (NRPT
+  planner + record + `probe.wayfork.internal` probe with the 5 s back-out), `TrafficSampler`
+  / `ConnectionCloser` (loopback `net/http`, no proxy), `Hub` (rings, rotating raw logs,
+  100 ms status coalescing, 250 ms / 200-line log batches, replay on subscribe). The I/O
+  interfaces: `ProcessRunner` / `Process`, `Network`, `Resolver`, `BinaryValidator`. The
+  tests drive a fake OpenVPN management server over real TCP (password prompt, hold,
+  PUSH_REPLY with `route-gateway`, CONNECTED, SIGTERM → EXITING) and check the scoped
+  route, discovered DNS, NRPT rule, run\ wipe and the log stream end to end.
+- **`internal/ipc`** — the pipe protocol, cross-platform: one JSON object per line,
+  requests `{"id","method","params"}`, replies `{"id","result"|"error"}`, pushes
+  `{"event","data"}`; the first line is `{"event":"hello","data":{"protocol":1,
+  "planVersion":1,"version":…}}` (the version handshake). Requests on one connection are
+  dispatched concurrently (an `apply` never delays `getStatus`), writes are serialized.
+  `pipe_windows.go` implements the listener with `x/sys/windows` alone (`CreateNamedPipe`
+  with the SDDL `D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;AU)`, blocking `ConnectNamedPipe`,
+  `GetNamedPipeClientProcessId`); no extra dependency. `Client` serves `wayforkctl`.
+- **`internal/winnet`** — adapters via `tapctl create --name Wayfork-N --hwid ovpn-dco`
+  (a duplicate counts as present; adapters of tunnels absent from the plan are kept — a
+  foreign dco adapter such as the OpenVPN GUI's is never touched), routes via `winipcfg`
+  (`LUID.AddRoute(0.0.0.0/0, <gateway>, 9999)` in the active store; startup cleanup deletes
+  every `0.0.0.0/0` on `Wayfork-*` and flushes their IPv4 addresses), route lookup by
+  longest prefix + `RouteMetric+InterfaceMetric` over `GetIpForwardTable2`, NRPT via the
+  PowerShell cmdlets the spike used (`Get/Add/Remove-DnsClientNrptRule`, arguments
+  validated by pattern before interpolation), the probe via Go's resolver (`GetAddrInfoW`
+  on Windows, NRPT-aware), diagnostics dumps (`Get-NetRoute`, `Get-NetAdapter`,
+  `Get-DnsClientNrptPolicy -Effective`, `tapctl list`), `WinVerifyTrust` for the binaries
+  and the client image (any valid Authenticode chain + inside `%ProgramFiles%\Wayfork` —
+  publisher pinning is owed with the signing setup), and the run\/logs\ DACL.
+- **`internal/winproc`** — children via `os/exec` with `CREATE_NO_WINDOW`, assigned to one
+  job object with `KILL_ON_JOB_CLOSE` right after start; `Terminate(timeout)` waits then
+  kills (sing-box gets 500 ms — no graceful stop when detached, the TUN goes with the
+  process; OpenVPN gets `signal SIGTERM` over management, then 5 s).
+- **`cmd/wayfork-service`** — the `svc` host (start idle, `Bootstrap`, pipe accept loop
+  with client verification, event-log mirror of warnings/errors, stop → `Shutdown`), and
+  `--dev-apply <plan.json>` (console, no trust checks, plan re-applied on change, pipe
+  served for `wayforkctl`). `DaemonInfo.buildID` is the SHA-256 of the executable.
+- **`cmd/wayforkctl`** — `info | status | stop | diagnostics | apply <plan> | reconnect
+  <id> | watch`, and `plan --config sing-box.json --rules <dir> --ovpn
+  <id>=<adapter>:<file>[:<user>:<password>][:passphrase=<p>] -o plan.json` to assemble a
+  plan from files the Dart core generated (the profile is taken as is — the importer's
+  stripping is the app's job).
+
+Not yet verified on Windows (owed before the WM2 boxes close): the whole shell in the
+`wf-win` VM via `--dev-apply`, `tapctl` output wording for a duplicate, the on-link
+fallback when no `route-gateway` is pushed, `CreateIpForwardEntry2` timing versus the dco
+on-link route that appears asynchronously after CONNECTED (a retry may be needed),
+`os.Rename` over a rule-set file sing-box is watching, and the event-log source
+registration (the installer's job).
+
 ## Open items
 
 - **t1/pilot-gps user flow (not a Windows issue) — resolved 2026-08-27.** In S5 the
