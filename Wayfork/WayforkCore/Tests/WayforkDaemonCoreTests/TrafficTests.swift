@@ -7,12 +7,6 @@ import WayforkCore
 private let tunnelA = "aaaaaaaa-0000-0000-0000-000000000001"
 private let tunnelB = "aaaaaaaa-0000-0000-0000-000000000002"
 
-private func fixture(_ name: String) throws -> Data {
-    let url = try #require(
-        Bundle.module.url(forResource: name, withExtension: nil, subdirectory: "Fixtures"))
-    return try Data(contentsOf: url)
-}
-
 private func connection(
     _ id: String, chains: [String], up: UInt64, down: UInt64
 ) -> ClashConnection {
@@ -96,7 +90,7 @@ private let t0 = Date(timeIntervalSince1970: 1_756_140_000)
     let binary = packageRoot.deletingLastPathComponent().appendingPathComponent(
         "Resources/bin/sing-box")
     guard FileManager.default.isExecutableFile(atPath: binary.path) else { return }
-    let goldenRoot = packageRoot.appendingPathComponent("Tests/WayforkCoreTests/Golden")
+    let goldenRoot = Fixtures.url("singbox")
     let variants = try FileManager.default.contentsOfDirectory(atPath: goldenRoot.path).sorted()
     #expect(!variants.isEmpty)
     for variant in variants {
@@ -126,7 +120,7 @@ private let t0 = Date(timeIntervalSince1970: 1_756_140_000)
 // MARK: - /connections decoding
 
 @Test func clashConnectionsDecodeTheFixture() throws {
-    let decoded = try ClashConnections.decode(fixture("clash-connections.json"))
+    let decoded = try ClashConnections.decode(Fixtures.data("clash/connections.json"))
     #expect(decoded.connections.count == 5)
     let first = decoded.connections[0]
     #expect(first.id == "0f8a9c8e-1d2b-4c3a-9e8f-7a6b5c4d3e2f")
@@ -152,7 +146,7 @@ private let t0 = Date(timeIntervalSince1970: 1_756_140_000)
 // MARK: - Accumulator
 
 @Test func accumulatorAttributesTheFixtureAndRatesTheFirstSample() throws {
-    let decoded = try ClashConnections.decode(fixture("clash-connections.json"))
+    let decoded = try ClashConnections.decode(Fixtures.data("clash/connections.json"))
     var accumulator = TrafficAccumulator()
     accumulator.restartConnections(at: t0)
     let snapshot = accumulator.ingest(decoded.connections, at: t0.addingTimeInterval(2))

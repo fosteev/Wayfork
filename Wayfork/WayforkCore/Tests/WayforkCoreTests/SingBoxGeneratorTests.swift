@@ -19,16 +19,56 @@ private func twoTunnelStore() -> Store {
     ])
 }
 
+private func input(
+    _ store: Store, uuids: [UUID: String] = [Fixtures.homeID: homeUUID],
+    resolved: [String: [String]] = [:], systemDNS: [String] = [], network: [String] = []
+) -> SingBoxConfigGenerator.Input {
+    SingBoxConfigGenerator.Input(
+        store: store, vlessUUIDs: uuids,
+        openVPNBinaryPath: RuntimePlanBuilder.openVPNBinaryPath(bundlePath: bundlePath),
+        resolvedServerAddresses: resolved, systemDNSServers: systemDNS,
+        networkResolvers: network)
+}
+
 private func generate(
     _ store: Store, uuids: [UUID: String] = [Fixtures.homeID: homeUUID],
     resolved: [String: [String]] = [:], systemDNS: [String] = [], network: [String] = []
 ) -> SingBoxConfigGenerator.Output {
     SingBoxConfigGenerator.generate(
-        SingBoxConfigGenerator.Input(
-            store: store, vlessUUIDs: uuids,
-            openVPNBinaryPath: RuntimePlanBuilder.openVPNBinaryPath(bundlePath: bundlePath),
-            resolvedServerAddresses: resolved, systemDNSServers: systemDNS,
-            networkResolvers: network))
+        input(store, uuids: uuids, resolved: resolved, systemDNS: systemDNS, network: network))
+}
+
+/// Everything the generator consumed for a golden variant, recorded as `input.json` next to
+/// the outputs so the Windows client's Dart port replays the same case byte for byte.
+/// `openVPNBinaryPath` is the macOS bundle path and appears verbatim in `sing-box.json`.
+private struct GoldenInput: Codable {
+    var store: Store
+    var vlessUUIDs: [String: String]
+    var openVPNBinaryPath: String
+    var resolvedServerAddresses: [String: [String]]
+    var systemDNSServers: [String]
+    var networkResolvers: [String]
+
+    init(_ input: SingBoxConfigGenerator.Input) {
+        store = input.store
+        // Rule ids never reach the output; number them so the record is stable across runs.
+        for index in store.rules.indices {
+            store.rules[index].id = UUID(
+                uuidString: String(format: "00000000-0000-4000-8000-0000000001%02x", index))!
+        }
+        vlessUUIDs = Dictionary(
+            uniqueKeysWithValues: input.vlessUUIDs.map {
+                ($0.key.uuidString.lowercased(), $0.value)
+            })
+        openVPNBinaryPath = input.openVPNBinaryPath
+        resolvedServerAddresses = input.resolvedServerAddresses
+        systemDNSServers = input.systemDNSServers
+        networkResolvers = input.networkResolvers
+    }
+
+    func encoded() throws -> String {
+        String(decoding: try JSONCoding.prettyEncoder.encode(self), as: UTF8.self) + "\n"
+    }
 }
 
 @Test func theDirectResolverNamesTheNetworkResolverInsteadOfAskingDHCP() throws {
@@ -366,16 +406,18 @@ private func defaultTunnelStore(defaultID: UUID) -> Store {
     #expect(next.plan.singBox.configHash == result.plan.singBox.configHash)
 }
 
-/// Golden files under `Tests/WayforkCoreTests/Golden/<variant>/`. Regenerate with
-/// `WAYFORK_UPDATE_GOLDEN=1 swift test` after an intentional generator change and review the diff.
+/// Golden files under `fixtures/singbox/<variant>/`: `input.json` plus the generated
+/// `sing-box.json` and rule-set files. Regenerate with `WAYFORK_UPDATE_GOLDEN=1 swift test`
+/// after an intentional generator change and review the diff.
 @Test func generatedConfigMatchesGoldenFiles() throws {
-    let goldenRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        .appendingPathComponent("Golden")
+    let goldenRoot = Fixtures.url("singbox")
     let update = ProcessInfo.processInfo.environment["WAYFORK_UPDATE_GOLDEN"] != nil
-    for (name, output) in configVariants() {
+    for (name, input) in configVariants() {
+        let output = SingBoxConfigGenerator.generate(input)
         let dir = goldenRoot.appendingPathComponent(name)
         var files = output.ruleSets
         files["sing-box.json"] = output.config
+        files["input.json"] = try GoldenInput(input).encoded()
         if update {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             for file in try FileManager.default.contentsOfDirectory(atPath: dir.path) {
@@ -396,41 +438,41 @@ private func defaultTunnelStore(defaultID: UUID) -> Store {
     }
 }
 
-private func configVariants() -> [(String, SingBoxConfigGenerator.Output)] {
-    var variants: [(String, SingBoxConfigGenerator.Output)] = [
-        ("two-tunnels", generate(twoTunnelStore()))
+private func configVariants() -> [(String, SingBoxConfigGenerator.Input)] {
+    var variants: [(String, SingBoxConfigGenerator.Input)] = [
+        ("two-tunnels", input(twoTunnelStore()))
     ]
     var custom = twoTunnelStore()
     custom.settings.directDNS = .custom(servers: ["9.9.9.9"])
     custom.settings.logLevel = .debug
-    variants.append(("custom-dns", generate(custom)))
+    variants.append(("custom-dns", input(custom)))
     var none = twoTunnelStore()
     none.tunnels = []
-    variants.append(("no-tunnels", generate(none)))
+    variants.append(("no-tunnels", input(none)))
     var ws = twoTunnelStore()
     ws.tunnels[1].kind = .vless(
         VLESSMeta(
             server: "s.example", port: 443, security: .tls, fingerprint: "safari", alpn: ["h2"],
             transport: .ws(path: "/x", host: "h.example")))
-    variants.append(("vless-ws", generate(ws)))
-    variants.append(("default-openvpn", generate(defaultTunnelStore(defaultID: Fixtures.workID))))
-    variants.append(("default-vless", generate(defaultTunnelStore(defaultID: Fixtures.homeID))))
+    variants.append(("vless-ws", input(ws)))
+    variants.append(("default-openvpn", input(defaultTunnelStore(defaultID: Fixtures.workID))))
+    variants.append(("default-vless", input(defaultTunnelStore(defaultID: Fixtures.homeID))))
     var apps = twoTunnelStore()
     apps.rules.append(
         Rule(pattern: "/Applications/Telegram.app", match: .app, tunnelID: Fixtures.workID))
     apps.rules.append(
         Rule(pattern: "/Applications/Bank (Beta).app", match: .app, target: .direct))
-    variants.append(("app-rules", generate(apps)))
+    variants.append(("app-rules", input(apps)))
     var ips = twoTunnelStore()
     ips.rules += [
         Rule(pattern: "10.8.0.0/24", match: .ip, tunnelID: Fixtures.workID),
         Rule(pattern: "203.0.113.7", match: .ip, tunnelID: Fixtures.homeID),
         Rule(pattern: "192.168.50.0/24", match: .ip, target: .direct),
     ]
-    variants.append(("ip-rules", generate(ips)))
+    variants.append(("ip-rules", input(ips)))
     // A LAN resolver carved into the TUN plus a public one: DDR refusal on both.
     variants.append(
-        ("system-dns", generate(twoTunnelStore(), systemDNS: ["192.168.31.5", "8.8.8.8"])))
+        ("system-dns", input(twoTunnelStore(), systemDNS: ["192.168.31.5", "8.8.8.8"])))
     return variants
 }
 
@@ -445,7 +487,8 @@ private func configVariants() -> [(String, SingBoxConfigGenerator.Output)] {
         return
     }
 
-    for (name, output) in configVariants() {
+    for (name, input) in configVariants() {
+        let output = SingBoxConfigGenerator.generate(input)
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(
             "wayfork-singbox-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

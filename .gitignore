@@ -20,6 +20,8 @@ Package.resolved.bak
 
 # Bundled binaries (fetched by scripts/, not committed)
 Wayfork/Resources/bin/
+WayforkWindows/bin/
+WayforkWindows/drivers/
 
 # Secrets / real configs
 *.ovpn
@@ -33,8 +35,21 @@ Wayfork/Resources/bin/
 .serena/
 *.log
 
-# Parser fixtures (placeholder keys only)
-!Wayfork/WayforkCore/Tests/**/*.ovpn
+# Shared test fixtures (placeholder keys only)
+!fixtures/**/*.ovpn
+
+# Flutter (WayforkWindows/app)
+.dart_tool/
+.flutter-plugins-dependencies
+ephemeral/
+WayforkWindows/app/build/
+*.iml
+
+# Go (WayforkWindows/service)
+WayforkWindows/service/bin/
 
 # Developer seed configs (real tunnels; never committed)
 local/
+
+# IDEs
+.idea/

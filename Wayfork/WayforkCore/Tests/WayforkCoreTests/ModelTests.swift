@@ -4,6 +4,23 @@ import Testing
 @testable import WayforkCore
 
 enum Fixtures {
+    /// The repo-level `fixtures/` directory, shared with the Windows client's Dart and Go
+    /// tests: golden inputs/outputs of the generator, parser samples, protocol captures.
+    static let root: URL = {
+        // <repo>/Wayfork/WayforkCore/Tests/WayforkCoreTests/ModelTests.swift → <repo>/fixtures
+        var url = URL(fileURLWithPath: #filePath)
+        for _ in 0..<5 { url.deleteLastPathComponent() }
+        return url.appendingPathComponent("fixtures")
+    }()
+
+    static func url(_ relativePath: String) -> URL {
+        root.appendingPathComponent(relativePath)
+    }
+
+    static func text(_ relativePath: String) throws -> String {
+        try String(contentsOf: url(relativePath), encoding: .utf8)
+    }
+
     static let workID = UUID(uuidString: "00000000-0000-4000-8000-000000000001")!
     static let homeID = UUID(uuidString: "00000000-0000-4000-8000-000000000002")!
     static let date = Date(timeIntervalSince1970: 1_787_659_200)  // 2026-08-25T12:00:00Z

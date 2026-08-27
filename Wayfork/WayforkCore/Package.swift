@@ -16,16 +16,10 @@ let package = Package(
         // Developer tool: builds a RuntimePlan JSON from configs on the command line so the
         // daemon can be exercised with `WayforkDaemon --dev-apply` before the app exists.
         .executableTarget(name: "wayforkctl", dependencies: ["WayforkCore"]),
-        .testTarget(
-            name: "WayforkCoreTests",
-            dependencies: ["WayforkCore"],
-            resources: [.copy("Fixtures")]
-        ),
-        .testTarget(
-            name: "WayforkDaemonCoreTests",
-            dependencies: ["WayforkDaemonCore"],
-            resources: [.copy("Fixtures")]
-        ),
+        // Test inputs and golden outputs live in the repo-level fixtures/ directory, shared
+        // with the Windows client's Dart and Go tests.
+        .testTarget(name: "WayforkCoreTests", dependencies: ["WayforkCore"]),
+        .testTarget(name: "WayforkDaemonCoreTests", dependencies: ["WayforkDaemonCore"]),
     ],
     swiftLanguageModes: [.v6]
 )

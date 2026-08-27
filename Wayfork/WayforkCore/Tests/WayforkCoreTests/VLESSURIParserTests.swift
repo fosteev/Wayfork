@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import WayforkCore
@@ -85,19 +86,58 @@ func rejectsUnsupportedTransports(_ transport: String) {
     }
 }
 
-@Test(arguments: [
-    "https://\(vlessUUID)@example.com:443", "vless://@example.com:443",
-    "vless://invalid@example.com:443", "vless://\(vlessUUID)@:443",
-    "vless://{\(vlessUUID)}@example.com:443", "vless://\(vlessUUID)@bad_host:443",
-    "vless://\(vlessUUID)@999.999.999.999:443", "vless://\(vlessUUID)@example.com",
-    "vless://\(vlessUUID)@example.com:+443",
-    "vless://\(vlessUUID)@example.com:0", "vless://\(vlessUUID)@example.com:65536",
-    "vless://\(vlessUUID)@2001:db8::1:443", "vless://\(vlessUUID)@[2001:db8::1:443",
-    "vless://\(vlessUUID)@example.com:443?fp=%ZZ",
-    "vless://\(vlessUUID)@example.com:443#%ZZ",
-])
-func rejectsMalformedLinks(_ uri: String) {
-    #expect(throws: VLESSImportError.self) { try VLESSURIParser.parse(uri) }
+/// `fixtures/vless/links.json`: links every client must accept (with the parse result) or
+/// reject. Regenerate the recorded results with `WAYFORK_UPDATE_GOLDEN=1 swift test` after an
+/// intentional parser change and review the diff.
+private struct VLESSLinks: Codable {
+    struct Accepted: Codable {
+        struct Result: Codable, Equatable {
+            var uuid: String
+            var name: String
+            var meta: VLESSMeta
+        }
+        var name: String
+        var uri: String
+        var expected: Result?
+    }
+    var accepted: [Accepted]
+    var rejected: [String]
+
+    static let path = Fixtures.url("vless/links.json")
+
+    static func load() throws -> VLESSLinks {
+        try JSONCoding.decoder.decode(VLESSLinks.self, from: Data(contentsOf: path))
+    }
+}
+
+@Test func fixtureLinksParseAsRecorded() throws {
+    var links = try VLESSLinks.load()
+    let update = ProcessInfo.processInfo.environment["WAYFORK_UPDATE_GOLDEN"] != nil
+    #expect(!links.accepted.isEmpty)
+    for index in links.accepted.indices {
+        let link = links.accepted[index]
+        let parsed = try VLESSURIParser.parse(link.uri)
+        let result = VLESSLinks.Accepted.Result(
+            uuid: parsed.uuid, name: parsed.name, meta: parsed.meta)
+        if update {
+            links.accepted[index].expected = result
+        } else {
+            #expect(result == link.expected, "\(link.name) differs from the recorded result")
+        }
+    }
+    if update {
+        let data = try JSONCoding.prettyEncoder.encode(links)
+        try (String(decoding: data, as: UTF8.self) + "\n").write(
+            to: VLESSLinks.path, atomically: true, encoding: .utf8)
+    }
+}
+
+@Test func fixtureLinksAreRejected() throws {
+    let links = try VLESSLinks.load()
+    #expect(!links.rejected.isEmpty)
+    for uri in links.rejected {
+        #expect(throws: VLESSImportError.self, "\(uri)") { try VLESSURIParser.parse(uri) }
+    }
 }
 
 @Test func sharingURIRoundTripsAndUsesStableOrder() throws {

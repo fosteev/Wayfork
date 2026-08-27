@@ -1,0 +1,65 @@
+{
+  "networkResolvers" : [
+
+  ],
+  "openVPNBinaryPath" : "/Applications/Wayfork.app/Contents/Resources/bin/openvpn",
+  "resolvedServerAddresses" : {
+
+  },
+  "store" : {
+    "rules" : [
+      {
+        "id" : "00000000-0000-4000-8000-000000000100",
+        "isEnabled" : true,
+        "match" : "suffix",
+        "pattern" : "example.com",
+        "tunnelID" : "00000000-0000-4000-8000-000000000001"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000101",
+        "isEnabled" : true,
+        "match" : "exact",
+        "pattern" : "api.other.com",
+        "tunnelID" : "00000000-0000-4000-8000-000000000001"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000102",
+        "isEnabled" : true,
+        "match" : "wildcard",
+        "pattern" : "*.cdn.example.com",
+        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000103",
+        "isEnabled" : false,
+        "match" : "suffix",
+        "pattern" : "disabled.example",
+        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+      }
+    ],
+    "schemaVersion" : 2,
+    "settings" : {
+      "autoReconnect" : true,
+      "connectOnLaunch" : false,
+      "directDNS" : {
+        "system" : {
+
+        }
+      },
+      "launchAtLogin" : false,
+      "logLevel" : "info",
+      "logRetentionDays" : 7,
+      "notifyOnTunnelFailure" : true,
+      "overrideSystemDNS" : true
+    },
+    "tunnels" : [
+
+    ]
+  },
+  "systemDNSServers" : [
+
+  ],
+  "vlessUUIDs" : {
+    "00000000-0000-4000-8000-000000000002" : "00000000-0000-4000-8000-0000000000aa"
+  }
+}

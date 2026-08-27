@@ -251,13 +251,7 @@ import Testing
 }
 
 private func fixture(named name: String) throws -> String {
-    let url = try #require(
-        Bundle.module.url(
-            forResource: name,
-            withExtension: "ovpn",
-            subdirectory: "Fixtures/ovpn"
-        ))
-    return try String(contentsOf: url, encoding: .utf8)
+    try Fixtures.text("ovpn/\(name).ovpn")
 }
 
 private func data(_ string: String) -> Data {

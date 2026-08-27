@@ -15,12 +15,6 @@ private func change(_ before: String, _ after: String) -> RuleSetSelectors? {
     RuleSetSelectors.change(from: [file: before], to: [file: after], files: [file])
 }
 
-private func fixture(_ name: String) throws -> Data {
-    let url = try #require(
-        Bundle.module.url(forResource: name, withExtension: nil, subdirectory: "Fixtures"))
-    return try Data(contentsOf: url)
-}
-
 @Test func changeCoversOnlyTheMatchersThatDiffer() throws {
     let before = render([Rule(pattern: "example.com", tunnelID: tunnel)])
     let after = render([
@@ -94,7 +88,7 @@ private func fixture(_ name: String) throws -> Data {
 }
 
 @Test func connectionMetadataIsDecoded() throws {
-    let decoded = try ClashConnections.decode(fixture("clash-connections.json")).connections
+    let decoded = try ClashConnections.decode(Fixtures.data("clash/connections.json")).connections
     let first = try #require(decoded.first)
     #expect(first.host == "example.com")
     #expect(first.destinationIP == "198.18.0.5")

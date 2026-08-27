@@ -1,0 +1,142 @@
+{
+  "networkResolvers" : [
+
+  ],
+  "openVPNBinaryPath" : "/Applications/Wayfork.app/Contents/Resources/bin/openvpn",
+  "resolvedServerAddresses" : {
+
+  },
+  "store" : {
+    "rules" : [
+      {
+        "id" : "00000000-0000-4000-8000-000000000100",
+        "isEnabled" : true,
+        "match" : "suffix",
+        "pattern" : "example.com",
+        "tunnelID" : "00000000-0000-4000-8000-000000000001"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000101",
+        "isEnabled" : true,
+        "match" : "exact",
+        "pattern" : "api.other.com",
+        "tunnelID" : "00000000-0000-4000-8000-000000000001"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000102",
+        "isEnabled" : true,
+        "match" : "wildcard",
+        "pattern" : "*.cdn.example.com",
+        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000103",
+        "isEnabled" : false,
+        "match" : "suffix",
+        "pattern" : "disabled.example",
+        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000104",
+        "isEnabled" : true,
+        "match" : "ip",
+        "pattern" : "10.8.0.0/24",
+        "tunnelID" : "00000000-0000-4000-8000-000000000001"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000105",
+        "isEnabled" : true,
+        "match" : "ip",
+        "pattern" : "203.0.113.7",
+        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000106",
+        "isEnabled" : true,
+        "match" : "ip",
+        "pattern" : "192.168.50.0/24",
+        "target" : "direct"
+      }
+    ],
+    "schemaVersion" : 2,
+    "settings" : {
+      "autoReconnect" : true,
+      "connectOnLaunch" : false,
+      "directDNS" : {
+        "system" : {
+
+        }
+      },
+      "launchAtLogin" : false,
+      "logLevel" : "info",
+      "logRetentionDays" : 7,
+      "notifyOnTunnelFailure" : true,
+      "overrideSystemDNS" : true
+    },
+    "tunnels" : [
+      {
+        "createdAt" : "2026-08-25T12:00:00Z",
+        "id" : "00000000-0000-4000-8000-000000000001",
+        "isEnabled" : true,
+        "kind" : {
+          "openVPN" : {
+            "configHash" : "abc",
+            "discoveredDNS" : [
+              "10.8.0.1"
+            ],
+            "dns" : {
+              "auto" : {
+
+              }
+            },
+            "needsCredentials" : true,
+            "needsKeyPassphrase" : false,
+            "remotes" : [
+              {
+                "host" : "vpn.example.org",
+                "port" : 1194,
+                "proto" : "udp"
+              }
+            ]
+          }
+        },
+        "name" : "Work",
+        "slot" : 0
+      },
+      {
+        "createdAt" : "2026-08-25T12:00:00Z",
+        "id" : "00000000-0000-4000-8000-000000000002",
+        "isEnabled" : true,
+        "kind" : {
+          "vless" : {
+            "allowInsecure" : false,
+            "alpn" : [
+
+            ],
+            "fingerprint" : "chrome",
+            "flow" : "xtls-rprx-vision",
+            "port" : 443,
+            "realityPublicKey" : "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+            "realityShortID" : "0123abcd",
+            "security" : "reality",
+            "server" : "home.example.net",
+            "sni" : "www.apple.com",
+            "transport" : {
+              "tcp" : {
+
+              }
+            }
+          }
+        },
+        "name" : "Home",
+        "slot" : 1
+      }
+    ]
+  },
+  "systemDNSServers" : [
+
+  ],
+  "vlessUUIDs" : {
+    "00000000-0000-4000-8000-000000000002" : "00000000-0000-4000-8000-0000000000aa"
+  }
+}

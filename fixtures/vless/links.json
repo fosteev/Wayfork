@@ -1,0 +1,142 @@
+{
+  "accepted" : [
+    {
+      "expected" : {
+        "meta" : {
+          "allowInsecure" : false,
+          "alpn" : [
+
+          ],
+          "fingerprint" : "chrome",
+          "flow" : "xtls-rprx-vision",
+          "port" : 443,
+          "realityPublicKey" : "public-key",
+          "realityShortID" : "short-id",
+          "security" : "reality",
+          "server" : "example.com",
+          "sni" : "example.com",
+          "transport" : {
+            "tcp" : {
+
+            }
+          }
+        },
+        "name" : "Reality",
+        "uuid" : "00000000-0000-4000-8000-000000000001"
+      },
+      "name" : "reality-vision-tcp",
+      "uri" : "vless://00000000-0000-4000-8000-000000000001@example.com:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=example.com&fp=chrome&pbk=public-key&sid=short-id&type=tcp#Reality"
+    },
+    {
+      "expected" : {
+        "meta" : {
+          "allowInsecure" : true,
+          "alpn" : [
+            "h2",
+            "http/1.1"
+          ],
+          "port" : 8443,
+          "security" : "tls",
+          "server" : "example.com",
+          "sni" : "example.com",
+          "transport" : {
+            "ws" : {
+              "host" : "example.com",
+              "path" : "/socket?x=1"
+            }
+          }
+        },
+        "name" : "Web Socket",
+        "uuid" : "00000000-0000-4000-8000-000000000001"
+      },
+      "name" : "tls-ws-encoded-path-alpn",
+      "uri" : "vless://00000000-0000-4000-8000-000000000001@example.com:8443?security=tls&type=ws&path=%2Fsocket%3Fx%3D1&host=example.com&alpn=h2%2C%20http%2F1.1&allowInsecure=true#%20Web%20Socket%20"
+    },
+    {
+      "expected" : {
+        "meta" : {
+          "allowInsecure" : true,
+          "alpn" : [
+
+          ],
+          "port" : 443,
+          "security" : "tls",
+          "server" : "example.com",
+          "sni" : "example.com",
+          "transport" : {
+            "grpc" : {
+              "serviceName" : "wayfork"
+            }
+          }
+        },
+        "name" : "gRPC",
+        "uuid" : "00000000-0000-4000-8000-000000000001"
+      },
+      "name" : "tls-grpc-insecure",
+      "uri" : "vless://00000000-0000-4000-8000-000000000001@example.com:443?security=tls&type=grpc&serviceName=wayfork&insecure=1#gRPC"
+    },
+    {
+      "expected" : {
+        "meta" : {
+          "allowInsecure" : false,
+          "alpn" : [
+
+          ],
+          "fingerprint" : "last",
+          "port" : 80,
+          "security" : "none",
+          "server" : "example.com",
+          "transport" : {
+            "tcp" : {
+
+            }
+          }
+        },
+        "name" : "A+B",
+        "uuid" : "00000000-0000-4000-8000-000000000001"
+      },
+      "name" : "plain-uppercase-scheme-repeated-param",
+      "uri" : "VLESS://00000000-0000-4000-8000-000000000001@example.com:80?fp=first&fp=last#A+B"
+    },
+    {
+      "expected" : {
+        "meta" : {
+          "allowInsecure" : false,
+          "alpn" : [
+
+          ],
+          "port" : 443,
+          "security" : "tls",
+          "server" : "2001:db8::1",
+          "sni" : "2001:db8::1",
+          "transport" : {
+            "tcp" : {
+
+            }
+          }
+        },
+        "name" : "IPv6",
+        "uuid" : "00000000-0000-4000-8000-000000000001"
+      },
+      "name" : "ipv6-host",
+      "uri" : "vless://00000000-0000-4000-8000-000000000001@[2001:db8::1]:443?security=tls#IPv6"
+    }
+  ],
+  "rejected" : [
+    "https://00000000-0000-4000-8000-000000000001@example.com:443",
+    "vless://@example.com:443",
+    "vless://invalid@example.com:443",
+    "vless://00000000-0000-4000-8000-000000000001@:443",
+    "vless://{00000000-0000-4000-8000-000000000001}@example.com:443",
+    "vless://00000000-0000-4000-8000-000000000001@bad_host:443",
+    "vless://00000000-0000-4000-8000-000000000001@999.999.999.999:443",
+    "vless://00000000-0000-4000-8000-000000000001@example.com",
+    "vless://00000000-0000-4000-8000-000000000001@example.com:+443",
+    "vless://00000000-0000-4000-8000-000000000001@example.com:0",
+    "vless://00000000-0000-4000-8000-000000000001@example.com:65536",
+    "vless://00000000-0000-4000-8000-000000000001@2001:db8::1:443",
+    "vless://00000000-0000-4000-8000-000000000001@[2001:db8::1:443",
+    "vless://00000000-0000-4000-8000-000000000001@example.com:443?fp=%ZZ",
+    "vless://00000000-0000-4000-8000-000000000001@example.com:443#%ZZ"
+  ]
+}
