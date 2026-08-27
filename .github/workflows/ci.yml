@@ -3,7 +3,12 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore: &windows-only
+      - 'WayforkWindows/**'
+      - 'scripts/*.ps1'
+      - '.github/workflows/ci-windows.yml'
   pull_request:
+    paths-ignore: *windows-only
 
 concurrency:
   group: ci-${{ github.ref }}

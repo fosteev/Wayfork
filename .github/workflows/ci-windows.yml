@@ -1,0 +1,71 @@
+# Windows client: Flutter app + Go service (WayforkWindows/). Mirror of ci.yml's filter —
+# runs only when the Windows tree, the shared fixtures or the scripts change.
+name: CI (Windows)
+
+on:
+  push:
+    branches: [main]
+    paths: &windows-paths
+      - 'WayforkWindows/**'
+      - 'fixtures/**'
+      - 'scripts/**'
+      - '.github/workflows/ci-windows.yml'
+  pull_request:
+    paths: *windows-paths
+
+concurrency:
+  group: ci-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: Flutter app
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: WayforkWindows/app
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Read pinned toolchain versions
+        shell: bash
+        run: grep -E '^[A-Z_]+=' ../versions.env >> "$GITHUB_ENV"
+      - uses: subosito/flutter-action@v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+      - run: flutter --version
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed .
+      - run: dart analyze --fatal-infos
+      - run: flutter test
+      - run: flutter build windows --release
+      - name: Check build output
+        shell: pwsh
+        run: |
+          $exe = 'build\windows\x64\runner\Release\wayfork.exe'
+          if (-not (Test-Path $exe)) { throw "missing $exe" }
+
+  service:
+    name: Go service
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: WayforkWindows/service
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Read pinned toolchain versions
+        shell: bash
+        run: grep -E '^[A-Z_]+=' ../versions.env >> "$GITHUB_ENV"
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: WayforkWindows/service/go.sum
+      - name: gofmt
+        shell: pwsh
+        run: |
+          $unformatted = gofmt -l .
+          if ($unformatted) { $unformatted; throw 'gofmt: files need formatting' }
+      - run: go vet ./...
+      - run: go test ./...
+      - run: go build -o bin/ ./cmd/...
