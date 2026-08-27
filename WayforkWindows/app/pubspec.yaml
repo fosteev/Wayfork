@@ -1,0 +1,25 @@
+name: wayfork
+description: "Wayfork for Windows: per-domain split tunneling across several VPNs at once."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  # Exact pins (CLAUDE.md); see ../versions.env for the Flutter/Dart toolchain.
+  sdk: 3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fluent_ui: 4.16.1
+  path_provider: 2.1.6
+  tray_manager: 0.5.3
+  win32: 6.4.0
+  window_manager: 0.5.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: 6.0.0
+
+flutter:
+  uses-material-design: true
