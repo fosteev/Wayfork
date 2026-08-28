@@ -1,9 +1,10 @@
 import 'package:collection/collection.dart';
+import 'package:wayfork/core/support/windows_adapters.dart';
 
-/// Pure snapshot logic shared by plan construction and tests.
-///
-/// Windows adapter enumeration (`GetAdaptersAddresses`) belongs to a later
-/// milestone; this file deliberately contains no platform API calls.
+/// The system resolvers as the plan builder sees them: the resolvers, default
+/// gateway and DHCP/manual split of the *primary* adapter — the one the
+/// default route leaves through (the Windows counterpart of
+/// `State:/Network/Global/DNS` + `PrimaryService` on macOS).
 final class SystemDnsSnapshot {
   SystemDnsSnapshot(
     List<String> servers,
@@ -62,4 +63,66 @@ final class SystemDnsSnapshot {
     const ListEquality<String>().hash(manualServers),
     const ListEquality<String>().hash(networkServers),
   );
+}
+
+/// Builds [SystemDnsSnapshot] from the adapters (docs/design/08-windows.md,
+/// "Resolver override"). The primary adapter is the physical one that is up,
+/// has an IPv4 default gateway and the lowest interface metric; Wayfork's own
+/// adapters never qualify, so a snapshot taken while On still describes the
+/// underlying network. With NRPT the per-adapter resolvers are never rewritten,
+/// so `manualServers` are informational and `networkServers` (DHCP) feed
+/// `dns-direct` exactly as on macOS.
+abstract final class SystemDns {
+  /// Empty without a network; IPv6 resolvers are left out (the TUN is
+  /// IPv4-only).
+  static SystemDnsSnapshot snapshot() => fromAdapters(
+    WindowsAdapters.enumerate(),
+    resolverConfig: WindowsAdapters.readResolverConfig,
+  );
+
+  /// The pure half of [snapshot]; [resolverConfig] reads the Tcpip registry
+  /// entries of an adapter by its GUID.
+  static SystemDnsSnapshot fromAdapters(
+    List<WindowsAdapter> adapters, {
+    AdapterResolverConfig Function(String adapterName)? resolverConfig,
+  }) {
+    final primary = primaryAdapter(adapters);
+    if (primary == null) return SystemDnsSnapshot(const [], null);
+    final config =
+        resolverConfig?.call(primary.adapterName) ??
+        const AdapterResolverConfig();
+    final servers = primary.dnsServers;
+    final manual = config.manualServers.isEmpty
+        ? const <String>[]
+        : servers.where(config.manualServers.contains).toList();
+    // DHCP entries count only while they are in effect: a manual entry
+    // replaces them in the adapter's list.
+    final network = config.manualServers.isEmpty
+        ? servers.where(config.dhcpServers.contains).toList()
+        : const <String>[];
+    return SystemDnsSnapshot(
+      servers,
+      primary.gateways.firstOrNull,
+      primaryService: primary.friendlyName,
+      manualServers: manual,
+      networkServers: network,
+    );
+  }
+
+  /// The adapter carrying the system default route, by lowest interface
+  /// metric; null when no physical adapter has a gateway.
+  static WindowsAdapter? primaryAdapter(List<WindowsAdapter> adapters) {
+    WindowsAdapter? best;
+    for (final adapter in adapters) {
+      if (!adapter.isUp ||
+          adapter.isLoopback ||
+          adapter.isTunnel ||
+          adapter.isWayfork ||
+          adapter.gateways.isEmpty) {
+        continue;
+      }
+      if (best == null || adapter.ipv4Metric < best.ipv4Metric) best = adapter;
+    }
+    return best;
+  }
 }
