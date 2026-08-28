@@ -295,9 +295,11 @@ against `fixtures/` from `test/core/`. The deltas from the Swift core, all delib
   (`198.18.0.0/15`): a lookup made while Wayfork is already On may get sing-box's fake answer
   for a server name that is not yet in the config, which must not end up in the direct
   `ip_cidr` rule. *(The macOS core does not filter yet — worth back-porting.)*
-- **Deferred to WM3 (Win32):** `LocalNetwork.current()` and the system-DNS snapshot
-  (`GetAdaptersAddresses`); the pure halves (`SystemDnsSnapshot.routable`,
-  `coversLocalNetwork`) are ported and tested.
+- **Win32 halves (landed in WM3a):** `LocalNetwork.current()` and `SystemDns.snapshot()`
+  are built on `WindowsAdapters.enumerate()` (`GetAdaptersAddresses`, IPv4 only, gateways
+  included) — see "Flutter app (WM3)" below; the pure halves (`SystemDnsSnapshot.routable`,
+  `coversLocalNetwork`, `LocalNetwork.fromAdapters`, `SystemDns.fromAdapters`) are tested
+  everywhere.
 
 ## Go core (WM2, `service/internal/core`)
 
@@ -437,6 +439,85 @@ on binaries and the client image (dev mode skips trust checks — WM4 with a sig
 sing-box crash-restart counting (no crash injected), the resolver re-apply on an adapter
 change, and the on-link route fallback when no `route-gateway` is pushed (both real servers
 pushed one, so `CreateIpForwardEntry2` used an explicit next-hop and needed no retry).
+
+## Flutter app (WM3)
+
+`app/lib` above the core mirrors the macOS app layer by layer. Landed so far (WM3a — the
+pure app core, the service client and the Win32 halves; everything runs and is tested on
+macOS except the three live lookups, which return empty off Windows):
+
+- **`core/app/`** ports `WayforkCore/App` one file per Swift counterpart: `GlobalState` +
+  `GlobalStateDerivation` (the tray state machine, 30 s `starting` grace), `StatusText`
+  (summary line, tunnel cards and rows, `count`), `TrafficFormat` (decimal units, fixed
+  digits, stale label), `RuleEditing` + `QuickAdd` (rule normalisation, duplicate check,
+  clipboard candidate), `StoreImporter` / `StoreExporter` (Replace/Merge, slot reassignment,
+  name collisions, F8 default, secrets map keyed by `SecretKey`) and `LogLineFormat` +
+  `AppLogFile` (the `<ISO-8601 ms> <source> <LEVEL> <message>` line, size rotation to
+  `<name>-<yyyyMMdd-HHmmss>.log`, retention prune). Deltas: the error catalogue drops
+  `helper.notApproved` (no Login Items step on Windows) and maps `helper.versionMismatch` /
+  `helper.unreachable` to one `FailureAction.repairInstallation` ("Repair the
+  installation") instead of "reinstall helper"; the app-rule message reads "Choose an
+  application (.exe)"; interface names in card details are the adapter names
+  (`10.8.0.6 on Wayfork-1`). `AppLogFile` sets no POSIX permissions — `%LOCALAPPDATA%` is
+  private by its inherited ACL.
+- **Service client (`core/ipc/`).** `ServiceTransport` is a byte stream + `write` +
+  `close`; `ServiceConnection` speaks the pipe protocol over it (NDJSON framing with the
+  64 MB line cap, the `hello` as the first event with a 5 s timeout, request/reply matched
+  by `id`, `error` strings become `ServiceException(remote)`, events fan out on broadcast
+  streams, unknown events are ignored, a pending call is rejected when the transport ends).
+  `ServiceClient` is the reconnecting wrapper the model talks to: phases `connecting` →
+  `connected` / `serviceMissing` (pipe absent → "repair installation") / `versionMismatch`
+  (hello `protocol` ≠ 1 or `planVersion` ≠ `RuntimePlan.currentVersion`; the client keeps
+  re-dialing every `backoff.max` so an upgrade picks up) / `disconnected`; it subscribes
+  after every successful hello, forwards `statusChanged` / `logLines` / `trafficChanged`,
+  and re-dials with a 0.5 s → 5 s doubling backoff (`retryNow()` skips the wait). Calls
+  while not connected fail with `ServiceException(notConnected)` as a Future error.
+  Tests drive it through an in-memory transport pair against a fake service that
+  implements the Go handler contract (`test/core/ipc/service_client_test.dart`).
+- **Named pipe transport (`NamedPipeTransport`).** `CreateFile` on `\\.\pipe\wayfork` with
+  `FILE_FLAG_OVERLAPPED` — the client-side twin of the WM2 fix: a synchronous handle would
+  serialise the pending read against every write. Reads run in a helper isolate
+  (`ReadFile` + `GetOverlappedResult(wait)` on their own event, chunks posted to the main
+  isolate); writes complete on the caller's isolate, serialised so frames never interleave;
+  `close()` = `CancelIoEx` → wait for the reader to exit → `CloseHandle`.
+  `ERROR_FILE_NOT_FOUND` → `ServiceUnavailableException` (the `serviceMissing` phase);
+  `ERROR_PIPE_BUSY` is retried for 2 s. `dart:io`'s `File` was not used: it opens the pipe
+  synchronously and would deadlock the same way.
+- **Win32 halves (`core/support/windows_adapters.dart`).** `WindowsAdapters.enumerate()`
+  walks `GetAdaptersAddresses(AF_INET, SKIP_ANYCAST|SKIP_MULTICAST|INCLUDE_GATEWAYS)` into
+  `WindowsAdapter` (GUID, friendly name, ifIndex, ifType, oper status, `Ipv4Metric`,
+  unicast addresses with on-link prefix length, IPv4 resolvers, IPv4 gateways).
+  `LocalNetwork.current()` keeps adapters that are up, not loopback (`IF_TYPE` 24), not
+  tunnel (131) and not ours (`Wayfork`, `Wayfork-N`), with `0 < prefix < 32` and outside
+  169.254/16 — the F11 "covers your LAN" check. `SystemDns.snapshot()` picks the **primary
+  adapter** = physical, up, has an IPv4 gateway, lowest `Ipv4Metric` (the counterpart of
+  macOS `PrimaryService`); `servers` = its resolvers, `router` = its first gateway,
+  `manualServers` / `networkServers` come from the adapter's Tcpip registry key
+  (`HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\<GUID>`:
+  `NameServer` = manual, `DhcpNameServer` = DHCP; DHCP entries count only while no manual
+  entry overrides them). Because the override is NRPT, the adapter lists are never rewritten
+  while On, and the Wayfork adapters never qualify as primary, so a snapshot taken while On
+  still describes the underlying network. The DPAPI backend (`DpapiProtector`) is unchanged
+  from WM1.
+- **Verified in the VM (2026-08-28, `wf-win`, arm64, Dart SDK 3.12.2 running the core as a
+  plain Dart package against `wayfork-service --dev-apply` idling on a missing plan):**
+  `GetAdaptersAddresses` enumeration (Ethernet + the spike's dormant `Wayfork-1/2` and
+  TAP adapters, loopback), primary = Ethernet with `DhcpNameServer` from the registry,
+  `LocalNetwork.current()` = the LAN /24 only, `SystemDns.snapshot()` (resolver = the
+  router, so `routable()` is empty — the macOS rule), DPAPI protect/unprotect +
+  `secrets.dat` round-trip through a fresh store (no plain text on disk); named pipe:
+  `ServiceUnavailableException` without a service, hello/getInfo/getStatus/subscribe (the
+  status push arrives right after `subscribe`), collectDiagnostics, three concurrent calls
+  on one connection in ~1 ms, `reconnect` of an unknown id → `tunnelNotFound`;
+  `ServiceClient` survives `taskkill` + restart of the service (`connected` →
+  `disconnected` → `serviceMissing`… → `connected`, re-subscribed, calls in between fail
+  with `notConnected`). Two bugs fixed by the run: `close()` awaited
+  `StreamController.close()` on a stream nobody had listened to (never completes), and a
+  `close()` racing a freshly spawned reader isolate found no I/O to cancel and sat out the
+  2 s reader timeout — the reader now reports ready before its first `ReadFile` and
+  `close()` repeats `CancelIoEx` until the reader exits (first close ≈ 110 ms = isolate
+  spawn, later ones 0 ms). The VM keeps the Dart SDK under `C:\wf\dart` and the probe
+  under `C:\wf\probe` (snapshot `s3-dart`) for the next sub-steps.
 
 ## Open items
 

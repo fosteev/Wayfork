@@ -267,7 +267,8 @@ shell.)*
 - [x] `ManagedProcess`: `CreateProcess` under a job object (`KILL_ON_JOB_CLOSE`),
       stdout/stderr line readers, exit watch, backoff restart policy. *(VM: children ran under
       the job and all died on stop; t2 exercised the permanent-failure/no-retry path.)*
-- [x] Run directory: `%ProgramData%\Wayforkun\` with SYSTEM/Administrators ACL, temp
+- [x] Run directory: `%ProgramData%\Wayfork
+un\` with SYSTEM/Administrators ACL, temp
       file + rename writes, wipe on stop, keep `cache.db`, startup cleanup (routes, DNS
       records, stray adapters). *(VM: DACL set, wiped to `cache.db` on stop, startup cleanup
       restored a stale NRPT rule + `Wayfork-*` default route left by a prior crash.)*
@@ -303,8 +304,18 @@ shell.)*
 
 ### WM3 — App in Flutter
 
+Sub-steps agreed 2026-08-28: **WM3a** pure app core (`core/app/`) + `ServiceClient` +
+Win32 halves → **WM3b** `AppModel` + apply pipeline + service states (no UI) → **WM3c**
+tray + window lifecycle → **WM3d** Dashboard + Tunnels → **WM3e** Rules + General + Logs →
+**WM3f** import/export + diagnostics + full VM run. Deltas in
+[08-windows.md](design/08-windows.md) § Flutter app.
+
 - [ ] `AppModel`: store, settings, runtime status, derived global state; `ServiceClient`
       over the pipe with reconnect, version handshake, status/log/traffic subscription.
+      *(WM3a 2026-08-28: `ServiceClient` + `NamedPipeTransport` (overlapped, reader
+      isolate), `core/app/` ports of GlobalState/StatusText/TrafficFormat/RuleEditing/
+      ImportExport/LogFile, `LocalNetwork.current()` + `SystemDns.snapshot()` over
+      `GetAdaptersAddresses`; 141 Dart tests. `AppModel` itself is WM3b.)*
 - [ ] Tray: icon per state (4 variants, pulse while transitioning), menu per the prototype,
       quick add dialog.
 - [ ] Main window: sidebar, Dashboard (cards, rates, Direct row, actions), Tunnels (inline
