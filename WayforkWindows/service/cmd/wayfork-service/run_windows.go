@@ -28,13 +28,8 @@ import (
 const ServiceName = "Wayfork"
 
 func run(args []string) error {
-	inService, err := svc.IsWindowsService()
-	if err != nil {
-		return err
-	}
-	if inService {
-		return svc.Run(ServiceName, &handler{})
-	}
+	// The subcommands come first: the installer's custom actions run as LocalSystem in
+	// session 0, where IsWindowsService can read as true.
 	switch {
 	case len(args) == 2 && args[0] == "--dev-apply":
 		return devApply(args[1])
@@ -43,8 +38,19 @@ func run(args []string) error {
 	case len(args) == 1 && args[0] == "--uninstall-cleanup":
 		return uninstallCleanup()
 	}
-	return errors.New("usage: wayfork-service [--dev-apply <plan.json> | --install-driver | " +
-		"--uninstall-cleanup] (without arguments it runs as the Wayfork service)")
+	if len(args) > 0 {
+		return errors.New("usage: wayfork-service [--dev-apply <plan.json> | --install-driver | " +
+			"--uninstall-cleanup] (without arguments it runs as the Wayfork service)")
+	}
+	inService, err := svc.IsWindowsService()
+	if err != nil {
+		return err
+	}
+	if !inService {
+		return errors.New("usage: wayfork-service [--dev-apply <plan.json> | --install-driver | " +
+			"--uninstall-cleanup] (without arguments it runs as the Wayfork service)")
+	}
+	return svc.Run(ServiceName, &handler{})
 }
 
 // runtime is everything the service host wires together.

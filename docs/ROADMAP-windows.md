@@ -402,20 +402,38 @@ left. Deltas in
 Sub-steps agreed 2026-08-28: **WM4a** the payload both architectures need (arm64 pins,
 `--install-driver` / `--uninstall-cleanup` in the service) → **WM4b** WiX authoring +
 `scripts/release-windows.ps1` → **WM4c** the release workflow, README and CHANGELOG →
-install / upgrade / uninstall run in the VM. Decisions: two MSIs (x64 and arm64, the app
+install / upgrade / uninstall run in the VM (done on arm64 2026-08-28; the amd64 run is
+owed with WM5). Decisions: two MSIs (x64 and arm64, the app
 x64 in both), a thin installer over service subcommands, and unsigned artefacts until
 there is a certificate — see [08-windows.md](design/08-windows.md) § Installer.
 
-- [ ] WiX authoring: files, `bin\`, service install/start/stop, driver install
+- [x] WiX authoring: files, `bin\`, service install/start/stop, driver install
       (`pnputil`) if the spike says so, upgrade (stop service → replace → start),
       uninstall (stop, restore DNS, delete adapters, remove `%ProgramData%\Wayfork\run`,
       keep `%LOCALAPPDATA%\Wayfork`).
-- [ ] `scripts/release-windows.ps1`: flutter build, go build with version stamp,
+      *(WM4a/WM4b 2026-08-28: `WayforkWindows/installer/Wayfork.wxs` (WiX 6.0.2) lays down
+      the payload, registers the LocalSystem service with delayed auto-start and calls
+      `wayfork-service --install-driver` / `--uninstall-cleanup` from two deferred custom
+      actions; the cleanup is skipped for the removal half of an upgrade. Install,
+      uninstall and a 0.1.0 → 0.1.1 upgrade were run on the arm64 VM — see
+      [08-windows.md](design/08-windows.md) § Installer for the results and the traps.)*
+- [x] `scripts/release-windows.ps1`: flutter build, go build with version stamp,
       Authenticode signing of every exe/dll/msi (timestamped), MSI, `.sha256`.
-- [ ] CI: release workflow builds the MSI on tag; artefacts named
+      *(WM4b 2026-08-28: one x64 app build, then per architecture the pinned binaries, the
+      cross-built service, the staged payload and `wix build` →
+      `build\release-windows\Wayfork-<version>-<arch>.msi` + `.sha256`. Signing is
+      opt-in — `-CertificatePath` — because there is no certificate yet.)*
+- [x] CI: release workflow builds the MSI on tag; artefacts named
       `Wayfork-<version>.msi` next to the DMG.
-- [ ] README: Windows install, first run, SmartScreen note, troubleshooting, limitations;
+      *(WM4c 2026-08-28: `.github/workflows/release-windows.yml` builds both MSIs on a `v*`
+      tag (the x64 runner cross-builds the arm64 service), checks the tag against the built
+      version, uploads the artefacts and attaches them to the release. Not yet exercised by
+      a real tag.)*
+- [x] README: Windows install, first run, SmartScreen note, troubleshooting, limitations;
       CHANGELOG entry.
+      *(WM4c 2026-08-28: a Windows section under Install (which package, the SmartScreen
+      warning, what the MSI registers, Repair and what uninstall keeps), the Windows build
+      and release commands under Development, and an Unreleased entry in the CHANGELOG.)*
 
 ### WM5 — End-to-end check
 

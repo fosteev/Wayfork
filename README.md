@@ -5,6 +5,9 @@ tunnels (OpenVPN `.ovpn`, VLESS `vless://`), write rules like "`*.example.com` �
 "Telegram → Home" or "`10.8.0.0/24` → Office", pick which tunnel takes everything else — or
 none. All tunnels stay up simultaneously; there is no switching.
 
+A Windows client with the same features lives in the same repository and ships as an MSI —
+see [Windows](#windows).
+
 ![Popover](docs/screenshots/popover.png)
 
 ## Features
@@ -67,6 +70,31 @@ project does not have yet. The signature is a real Apple-issued one, so `codesig
 registers normally; only the download check is missing. If you would rather not trust
 a binary you cannot verify through Apple, build it yourself — a free Apple ID is enough,
 see [Development](#development).
+
+### Windows
+
+Requires Windows 10 21H2 or Windows 11, x64 or ARM64. Pick the package that matches the
+machine — `$env:PROCESSOR_ARCHITECTURE` says `AMD64` or `ARM64`:
+
+1. Download `Wayfork-<version>-amd64.msi` (or `-arm64.msi`) from the
+   [Releases](https://github.com/fosteev/Wayfork/releases) page. The `.sha256` next to it
+   matches `Get-FileHash Wayfork-<version>-<arch>.msi`.
+2. Run it. The 0.1 builds are **not signed** — there is no code-signing certificate yet —
+   so SmartScreen says "Windows protected your PC": *More info* → *Run anyway*. The same
+   warning appears the first time you start the app.
+3. The installer puts Wayfork in `%ProgramFiles%\Wayfork`, registers the **Wayfork**
+   service (LocalSystem, delayed auto-start) and installs the bundled `ovpn-dco` adapter
+   driver — WHQL-signed by OpenVPN Inc., no prompt and no reboot. A machine that already
+   has OpenVPN installed keeps its own copy of that driver.
+4. Start **Wayfork** from the Start menu. It lives in the notification area; there is no
+   taskbar window until you open it. Flip the switch — no UAC prompt, the service is
+   already there.
+
+If the app reports that the service is missing or is a different version, repair the
+installation: *Settings › Apps › Installed apps › Wayfork › Modify → Repair*. Uninstalling
+removes the service, the `Wayfork-N` adapters, the driver package Wayfork published (never
+one that belongs to an OpenVPN install), the DNS rule and `%ProgramData%\Wayfork\run`; the
+logs and your tunnels and rules under `%LOCALAPPDATA%\Wayfork` are kept.
 
 ### First run
 
@@ -198,6 +226,22 @@ scripts/format.sh --lint         # swift-format check (scripts/format.sh to fix)
 scripts/release.sh --skip-notarize   # archive + sign + DMG smoke test (any identity)
 ```
 
+The Windows client is built on Windows with the toolchains pinned in
+`WayforkWindows/versions.env` (Flutter, Go, the .NET SDK for WiX):
+
+```powershell
+scripts\fetch-win-bins.ps1 -Arch amd64   # pinned sing-box, OpenVPN and the ovpn-dco package
+cd WayforkWindows\app;     flutter test; dart analyze --fatal-infos
+cd WayforkWindows\service; go test ./...; go vet ./...
+scripts\release-windows.ps1              # both MSIs into build\release-windows\
+```
+
+`WayforkWindows/app` is the Flutter app, `WayforkWindows/service` the Go service
+(`internal/core` is the pure, everywhere-tested half; Win32 stays behind `//go:build
+windows`, so `go test ./...` passes on macOS too), and `WayforkWindows/installer` the WiX
+source of the MSI. Deltas from the macOS design live in
+[docs/design/08-windows.md](docs/design/08-windows.md).
+
 `Wayfork/Wayfork.xcodeproj` holds the `Wayfork` app and `WayforkDaemon` targets;
 `Wayfork/WayforkCore` is a local Swift package shared by both. Plain `xcodebuild` and
 Xcode's Run produce ad-hoc signed builds that work for UI work but cannot register the
@@ -219,6 +263,15 @@ inside out with hardened runtime and secure timestamps, and produces
 `build/release/Wayfork-<version>.dmg` with a `.sha256`. Bump `MARKETING_VERSION` and
 `CURRENT_PROJECT_VERSION` in the project, date the entry in `CHANGELOG.md`, commit, run
 the script, tag `v<version>` and attach the DMG and the checksum to the GitHub release.
+
+On Windows, `scripts/release-windows.ps1` builds the app once (x64 — Flutter publishes no
+arm64 Windows toolchain), cross-builds the service for both architectures, stages the
+payload and produces `build/release-windows/Wayfork-<version>-<arch>.msi` with a
+`.sha256`. Pushing a `v<version>` tag runs the same script in CI and attaches both
+packages to the GitHub release. Artefacts are unsigned until there is an Authenticode
+certificate; with one, `-CertificatePath` (and `-CertificatePassword`) signs Wayfork's own
+binaries and the MSIs with a timestamp, and the SmartScreen note in
+[Windows](#windows) goes away.
 
 Until the project has an Apple Developer Program membership, releases are made with
 `--skip-notarize`: the script signs with the *Apple Development* identity and skips

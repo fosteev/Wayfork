@@ -35,7 +35,8 @@ func installDriver() error {
 		return err
 	}
 	inf := env.DriverInfPath()
-	if _, err := os.Stat(inf); err != nil {
+	contents, err := os.ReadFile(inf)
+	if err != nil {
 		return fmt.Errorf("driver package: %w", err)
 	}
 	if err := verifyDriverCatalogs(filepath.Dir(inf)); err != nil {
@@ -52,6 +53,16 @@ func installDriver() error {
 	before, err := driverStore(ctx, runner)
 	if err != nil {
 		return err
+	}
+	// An upgrade must not re-publish the same package: after a pnputil re-install OpenVPN
+	// reports the driver missing until a reboot (spike gotcha).
+	version := core.InfDriverVersion(string(contents))
+	for _, candidate := range core.FindDriverPackages(before, core.DriverOriginalName) {
+		if version != "" && candidate.Version == version {
+			fmt.Printf("ovpn-dco %s is already in the driver store as %s\n",
+				version, candidate.PublishedName)
+			return nil
+		}
 	}
 	result, err := runner.Run(ctx, service.ProcessSpec{
 		Executable: pnputilPath(), Args: []string{"/add-driver", inf, "/install"},
@@ -106,7 +117,7 @@ func uninstallCleanup() error {
 	defer cancel()
 
 	for _, step := range []func(context.Context, service.Environment, *winproc.Runner) error{
-		deleteAdapters, deleteDriverPackage, removeResolverOverride,
+		deleteAdapters, deleteDriverPackage, removeResolverOverride, removeRunDirectory,
 	} {
 		if err := step(ctx, env, runner); err != nil {
 			fmt.Fprintln(os.Stderr, "cleanup:", err)
@@ -217,6 +228,15 @@ func removeResolverOverride(ctx context.Context, env service.Environment, runner
 	return nil
 }
 
+// removeRunDirectory drops `%ProgramData%\Wayfork\run` — configurations, rule sets and
+// the records above. The logs next to it stay: they are what a bug report is made of.
+func removeRunDirectory(_ context.Context, env service.Environment, _ *winproc.Runner) error {
+	if err := os.RemoveAll(env.Layout.Dir); err != nil {
+		return err
+	}
+	return nil
+}
+
 // verifyDriverCatalogs checks the Authenticode signature of every catalog in the package
 // directory; `pnputil` would refuse an untrusted package as well, but the installer says
 // so before Windows does, and with our own message.
@@ -229,7 +249,7 @@ func verifyDriverCatalogs(directory string) error {
 		return fmt.Errorf("no catalog next to %s", core.DriverOriginalName)
 	}
 	for _, catalog := range catalogs {
-		if err := winnet.VerifyAuthenticode(catalog); err != nil {
+		if err := winnet.VerifyDriverCatalog(catalog); err != nil {
 			return fmt.Errorf("%s is not signed by a trusted publisher: %w", filepath.Base(catalog), err)
 		}
 	}

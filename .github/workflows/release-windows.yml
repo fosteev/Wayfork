@@ -1,0 +1,66 @@
+# Builds the Windows artefacts on a tag: one MSI per architecture with its SHA-256.
+# Everything is cross-built on the x64 runner — the app is x64 in both packages and only
+# the Go service and the bundled binaries differ (docs/design/08-windows.md, "Installer").
+name: Release (Windows)
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: release-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  msi:
+    name: MSI
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Read pinned toolchain versions
+        shell: bash
+        run: grep -E '^[A-Z_]+=' WayforkWindows/versions.env >> "$GITHUB_ENV"
+      - uses: subosito/flutter-action@v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: WayforkWindows/service/go.sum
+      - uses: actions/setup-dotnet@v5.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - run: flutter pub get
+        working-directory: WayforkWindows/app
+      - name: Build the MSIs
+        shell: pwsh
+        # Unsigned until there is a certificate; the README carries the SmartScreen note.
+        run: scripts\release-windows.ps1 -Arch both
+      - name: Check the tag against the built version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          $missing = @('amd64', 'arm64') | Where-Object {
+            -not (Test-Path "build\release-windows\Wayfork-$version-$_.msi")
+          }
+          if ($missing) { throw "the tag says $version but $($missing -join ', ') was not built" }
+      - uses: actions/upload-artifact@v5.0.0
+        with:
+          name: wayfork-msi
+          path: |
+            build/release-windows/*.msi
+            build/release-windows/*.sha256
+          if-no-files-found: error
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" build/release-windows/*.msi build/release-windows/*.sha256 --clobber

@@ -84,3 +84,14 @@ func TestNewlyPublishedClaimsOnlyWhatTheStoreGained(t *testing.T) {
 		t.Fatal("another package must not be claimed")
 	}
 }
+
+func TestInfDriverVersionReadsTheVersionAfterTheDate(t *testing.T) {
+	inf := "[Version]\r\nSignature = \"$Windows NT$\"\r\nClass = Net\r\n" +
+		"Provider = %OpenVPN%\r\nCatalogFile = ovpn-dco.cat\r\nDriverVer = 08/05/2026,2.8.4.0\r\n"
+	if got := core.InfDriverVersion(inf); got != "2.8.4.0" {
+		t.Fatalf("InfDriverVersion = %q, want 2.8.4.0", got)
+	}
+	if got := core.InfDriverVersion("[Version]\nClass = Net\n"); got != "" {
+		t.Fatalf("InfDriverVersion = %q, want empty", got)
+	}
+}

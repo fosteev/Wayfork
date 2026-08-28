@@ -4,6 +4,19 @@ All notable changes to Wayfork are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Windows client** (preview): the same features on Windows 10/11, x64 and ARM64 — a
+  Fluent UI app in the notification area over a LocalSystem service that owns sing-box,
+  the OpenVPN processes, the adapters, the routes and the DNS override. Tunnels, rules
+  (domain, application, IP), the default tunnel, traffic rates, logs, import/export and
+  Export Diagnostics all work as they do on macOS; `wayfork-export.json` carries a
+  configuration between the two, minus the application rules, which name a path per
+  platform. Shipped as `Wayfork-<version>-<arch>.msi`, unsigned until the project has an
+  Authenticode certificate.
+
 ## [0.1.0] — 2026-08-26
 
 First release: per-domain split tunneling across several VPNs at once from the menu bar.

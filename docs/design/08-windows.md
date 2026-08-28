@@ -287,6 +287,51 @@ WM4a landed the payload both packages need:
   to, and the client is accepted on the `%ProgramFiles%\Wayfork` path check alone
   (publisher pinning is still owed with the signing setup).
 
+WM4b landed the package itself (`WayforkWindows/installer/Wayfork.wxs`,
+`scripts/release-windows.ps1`), verified end to end on the arm64 VM on 2026-08-28:
+
+- **WiX 6.0.2, not 7.** WiX 7 refuses to build until the Open Source Maintenance Fee EULA
+  is accepted — a licensing decision for the maintainer, not for a build script — so the
+  pin is `WIX_VERSION=6.0.2` in `WayforkWindows/versions.env`. It is a dotnet tool
+  targeting net6.0 and runs fine on the pinned .NET 8 SDK. `wix build` warns (WIX1149)
+  that MSI's `ServiceConfig` is documented as unreliable; it is kept anyway, because
+  `DelayedAutostart` is exactly what it sets and the installed service does come out with
+  `DelayedAutostart=1`.
+- **Two bind paths.** `<Files>` has no exclude and harvests *relative to the last literal
+  directory* in the pattern, so `Include="…\data\**"` installs `flutter_assets\` straight
+  into the install folder and loses the `data\` level — which breaks both the app and the
+  service's `drivers\ovpn-dco\` lookup. The payload is therefore harvested whole
+  (`Include="!(bindpath.Payload)\**"`) and the one file that needs a component of its own,
+  `wayfork-service.exe`, is staged in a second directory and comes in through
+  `!(bindpath.Service)`.
+- **Catalog verification needs the driver action.** `WinVerifyTrust` with
+  `WINTRUST_ACTION_GENERIC_VERIFY_V2` on a `.cat` reports "No signature was present in the
+  subject" — a catalog carries no embedded signature, it *is* one. `VerifyDriverCatalog`
+  uses `DRIVER_ACTION_VERIFY` ({F750E6C3-…}) instead, which is also what enforces the
+  driver signing policy.
+- **Subcommands before the SCM check.** A deferred custom action runs as LocalSystem in
+  session 0, where `svc.IsWindowsService()` can read as true, so `run` matches
+  `--install-driver` / `--uninstall-cleanup` before it considers starting the service host.
+- **`scripts/release-windows.ps1`** builds the app once (x64) and, per architecture,
+  fetches the pinned binaries, cross-builds the service with the version stamped in,
+  stages the payload, signs when a certificate is handed to it, runs `wix build` and
+  writes `Wayfork-<version>-<arch>.msi` with a `.sha256` under `build\release-windows\`.
+  The version is read from `version.dart` and cross-checked against `pubspec.yaml`; a
+  `-Version` that disagrees is refused, the same guard the macOS script has.
+- **Verified in the VM (arm64, 2026-08-28).** Install: exit 0, the payload lands with
+  `bin\`, `data\` and `drivers\` intact, the service is registered as LocalSystem with
+  delayed auto-start, comes up on its own and logs `service 0.1.0 ready (C:\Program
+  Files\Wayfork)` — out of developer mode, so the trust checks are live — and the pipe is
+  there. The driver step found ovpn-dco 2.8.4.0 already published as `oem10.inf` (the
+  spike's OpenVPN install), skipped the publish and wrote no record, which is what keeps a
+  foreign driver safe. Uninstall: exit 0, service and files gone, the `Wayfork-N` adapters
+  deleted, `%ProgramData%\Wayfork\run` removed, the logs next to it kept,
+  `%LOCALAPPDATA%\Wayfork` untouched and `oem10.inf` still published. Upgrade (0.1.0 →
+  0.1.1): exit 0, one ARP entry at the new version, the service running and the adapter
+  still there — the cleanup action correctly did **not** run for the removal half of the
+  upgrade. Still owed: the same run on x64 (WM5's amd64 re-check) and an install with the
+  app actually launched, which needs the console.
+
 ## Repository layout (WM0)
 
 `WayforkWindows/app` (Flutter, `fluent_ui`, `lib/core` mirrors WayforkCore file by file),

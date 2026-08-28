@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Wayfork MSI (docs/design/08-windows.md, "Installer"). Built by
+  scripts/release-windows.ps1 with WiX 7:
+
+    wix build Wayfork.wxs -arch <x64|arm64> -d Version=<x.y.z>
+              -bindpath Payload=<staged payload> -bindpath Service=<staged service>
+              -o Wayfork-<version>-<arch>.msi
+
+  The package is deliberately thin: it lays down the payload, registers the service and
+  calls two subcommands of that service for the Windows plumbing (publishing the ovpn-dco
+  driver, and undoing adapters, driver and NRPT rule on uninstall).
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="Wayfork"
+      Manufacturer="Wayfork"
+      Version="$(Version)"
+      UpgradeCode="7e6b1f5c-9a3d-4f2e-8f0a-2b7c6d4e51a9"
+      Scope="perMachine"
+      Compressed="yes"
+      InstallerVersion="500"
+      Language="1033"
+      Codepage="1252">
+
+    <SummaryInformation Description="Wayfork: per-domain split tunneling across several VPNs at once." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Upgrades replace the payload with the service stopped; the old version's uninstall
+         runs first and must not take the driver and the adapters with it (see the
+         condition on CleanUp below). -->
+    <MajorUpgrade
+        Schedule="afterInstallInitialize"
+        DowngradeErrorMessage="A newer version of Wayfork is already installed." />
+
+    <Launch
+        Condition="Installed OR (VersionNT &gt;= 603)"
+        Message="Wayfork needs Windows 10 or newer." />
+
+    <!-- The icon id keeps the extension: Windows Installer reads the icon out of the
+         executable. Repair stays available — it is how the app's General page tells the
+         user to reinstall a broken service. -->
+    <Icon Id="Wayfork.exe" SourceFile="!(bindpath.Payload)\wayfork.exe" />
+    <Property Id="ARPPRODUCTICON" Value="Wayfork.exe" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/fosteev/Wayfork" />
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="Wayfork" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="Main" Title="Wayfork" Level="1">
+      <ComponentGroupRef Id="Payload" />
+      <ComponentRef Id="ServiceComponent" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+
+    <!-- The payload is harvested whole, which keeps `data\`, `bin\` and `drivers\`
+         where the app and the service look for them. `Files` has no exclude, so the
+         service executable — which needs a component of its own — is staged apart and
+         comes in through its own bind path. -->
+    <ComponentGroup Id="Payload" Directory="INSTALLFOLDER">
+      <Files Include="!(bindpath.Payload)\**" />
+    </ComponentGroup>
+
+    <Component Id="ServiceComponent" Directory="INSTALLFOLDER" Bitness="always64">
+      <File Id="WayforkServiceExe" Source="!(bindpath.Service)\wayfork-service.exe" KeyPath="yes" />
+      <ServiceInstall
+          Id="WayforkService"
+          Name="Wayfork"
+          DisplayName="Wayfork"
+          Description="Routes Wayfork's tunnels: TUN, OpenVPN processes, adapters, routes and the DNS override."
+          Type="ownProcess"
+          Start="auto"
+          ErrorControl="normal"
+          Account="LocalSystem"
+          Vital="yes">
+        <!-- Delayed start: nothing routes until the user turns Wayfork on anyway. -->
+        <ServiceConfig DelayedAutoStart="yes" OnInstall="yes" OnReinstall="yes" />
+      </ServiceInstall>
+      <ServiceControl
+          Id="WayforkServiceControl"
+          Name="Wayfork"
+          Start="install"
+          Stop="both"
+          Remove="uninstall"
+          Wait="yes" />
+    </Component>
+
+    <Component Id="StartMenuShortcut" Directory="ProgramMenuFolder" Guid="4c1d9f18-3b57-4a6e-9c1b-0d5f8e2a7b34">
+      <Shortcut
+          Id="WayforkShortcut"
+          Name="Wayfork"
+          Description="Per-domain split tunneling across several VPNs at once"
+          Target="[INSTALLFOLDER]wayfork.exe"
+          WorkingDirectory="INSTALLFOLDER" />
+      <RegistryValue Root="HKLM" Key="Software\Wayfork" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <!-- The two service subcommands. Both are deferred and run as LocalSystem; the
+         install one fails the installation, the cleanup never does. -->
+    <CustomAction
+        Id="PublishDriver"
+        FileRef="WayforkServiceExe"
+        ExeCommand="--install-driver"
+        Execute="deferred"
+        Impersonate="no"
+        Return="check" />
+    <CustomAction
+        Id="CleanUp"
+        FileRef="WayforkServiceExe"
+        ExeCommand="--uninstall-cleanup"
+        Execute="deferred"
+        Impersonate="no"
+        Return="ignore" />
+
+    <InstallExecuteSequence>
+      <!-- After the payload is on disk and before the service starts. The subcommand
+           itself skips a package the store already has in the same version. -->
+      <Custom Action="PublishDriver" After="InstallFiles" Condition="NOT REMOVE" />
+      <!-- Uninstall only, and never the removal half of an upgrade: an upgrade must keep
+           the adapters and the driver in place. -->
+      <Custom Action="CleanUp" After="StopServices" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>

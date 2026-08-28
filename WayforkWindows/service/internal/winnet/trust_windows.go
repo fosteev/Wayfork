@@ -71,6 +71,42 @@ func VerifyAuthenticode(path string) error {
 	return err
 }
 
+// driverActionVerify is DRIVER_ACTION_VERIFY, {F750E6C3-38EE-11d1-85E5-00C04FC295EE}:
+// the action that validates a driver catalog against the driver signing policy. The
+// generic action cannot do it — a `.cat` carries no embedded signature, it *is* one.
+var driverActionVerify = windows.GUID{
+	Data1: 0xF750E6C3,
+	Data2: 0x38EE,
+	Data3: 0x11D1,
+	Data4: [8]byte{0x85, 0xE5, 0x00, 0xC0, 0x4F, 0xC2, 0x95, 0xEE},
+}
+
+// VerifyDriverCatalog checks a driver package's `.cat` before pnputil publishes it
+// (docs/design/08-windows.md, "Installer").
+func VerifyDriverCatalog(path string) error {
+	name, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return err
+	}
+	fileInfo := windows.WinTrustFileInfo{
+		Size:     uint32(unsafe.Sizeof(windows.WinTrustFileInfo{})),
+		FilePath: name,
+	}
+	data := windows.WinTrustData{
+		Size:                            uint32(unsafe.Sizeof(windows.WinTrustData{})),
+		UIChoice:                        windows.WTD_UI_NONE,
+		RevocationChecks:                windows.WTD_REVOKE_NONE,
+		UnionChoice:                     windows.WTD_CHOICE_FILE,
+		StateAction:                     windows.WTD_STATEACTION_VERIFY,
+		FileOrCatalogOrBlobOrSgnrOrCert: unsafe.Pointer(&fileInfo),
+		ProvFlags:                       windows.WTD_CACHE_ONLY_URL_RETRIEVAL,
+	}
+	err = windows.WinVerifyTrustEx(windows.InvalidHWND, &driverActionVerify, &data)
+	data.StateAction = windows.WTD_STATEACTION_CLOSE
+	_ = windows.WinVerifyTrustEx(windows.InvalidHWND, &driverActionVerify, &data)
+	return err
+}
+
 // ClientImagePath resolves the executable of a process (the pipe's client).
 func ClientImagePath(pid uint32) (string, error) {
 	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)

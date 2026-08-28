@@ -35,6 +35,8 @@ type DriverRecord struct {
 }
 
 var (
+	// DriverVer=08/05/2026,2.8.4.0 — the version is the part after the comma.
+	infDriverVerPattern  = regexp.MustCompile(`(?im)^\s*DriverVer\s*=\s*[^,\r\n]*,\s*([0-9]+(?:\.[0-9]+)+)`)
 	publishedNamePattern = regexp.MustCompile(`(?i)^oem[0-9]+\.inf$`)
 	infNamePattern       = regexp.MustCompile(`(?i)^[^\\/:*?"<>|]+\.inf$`)
 	driverVersionPattern = regexp.MustCompile(`[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+`)
@@ -104,4 +106,14 @@ func NewlyPublished(before, after []DriverPackage, originalName string) (DriverP
 		}
 	}
 	return DriverPackage{}, false
+}
+
+// InfDriverVersion reads the DriverVer of an INF, so an upgrade can tell whether the
+// bundled package is the one already in the store. Empty when the INF has no DriverVer.
+func InfDriverVersion(inf string) string {
+	match := infDriverVerPattern.FindStringSubmatch(inf)
+	if len(match) != 2 {
+		return ""
+	}
+	return match[1]
 }
