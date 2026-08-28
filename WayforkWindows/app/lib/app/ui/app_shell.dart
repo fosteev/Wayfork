@@ -8,6 +8,9 @@ import 'package:wayfork/app/ui/alert_host.dart';
 import 'package:wayfork/app/ui/app_navigation.dart';
 import 'package:wayfork/app/ui/app_scope.dart';
 import 'package:wayfork/app/ui/pages/dashboard_page.dart';
+import 'package:wayfork/app/ui/pages/general_page.dart';
+import 'package:wayfork/app/ui/pages/logs_page.dart';
+import 'package:wayfork/app/ui/pages/rules_page.dart';
 import 'package:wayfork/app/ui/pages/tunnels_page.dart';
 import 'package:wayfork/app/ui/service_banner.dart';
 import 'package:wayfork/app/ui/tunnel_import.dart';
@@ -17,8 +20,6 @@ import 'package:wayfork/app/ui/widgets/components.dart';
 /// `NavigationView` over the five pages, the service banner above whatever
 /// page is open and the alert queue on top of everything. A `.ovpn` dropped
 /// anywhere in the window is imported (board 4).
-///
-/// Rules, General and Logs arrive with WM3e.
 class AppShell extends StatelessWidget {
   const AppShell({required this.onAction, required this.picker, super.key});
 
@@ -66,6 +67,7 @@ class AppShell extends StatelessWidget {
                     page: page,
                     onAction: onAction,
                     importer: importer,
+                    picker: picker,
                   ),
                 ),
             ],
@@ -89,11 +91,13 @@ class _PageBody extends StatelessWidget {
     required this.page,
     required this.onAction,
     required this.importer,
+    required this.picker,
   });
 
   final AppPage page;
   final void Function(AppAction action) onAction;
   final TunnelImporter importer;
+  final FilePicker picker;
 
   @override
   Widget build(BuildContext context) {
@@ -107,12 +111,9 @@ class _PageBody extends StatelessWidget {
           child: switch (page) {
             AppPage.dashboard => const DashboardPage(),
             AppPage.tunnels => TunnelsPage(importer: importer),
-            AppPage.rules || AppPage.general || AppPage.logs => Center(
-              child: Text(
-                '${page.title} — coming in WM3e',
-                style: FluentTheme.of(context).typography.body,
-              ),
-            ),
+            AppPage.rules => RulesPage(picker: picker, onAction: onAction),
+            AppPage.general => GeneralPage(onAction: onAction),
+            AppPage.logs => const LogsPage(),
           },
         ),
       ],

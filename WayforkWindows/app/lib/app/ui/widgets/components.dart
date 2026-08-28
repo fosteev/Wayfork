@@ -272,3 +272,84 @@ Future<bool> showQuestionDialog(
   );
   return answer ?? false;
 }
+
+/// A small rounded label next to a name: `2 rules`, `paused`, `shadowed`.
+/// [tint] colours the text and the background of the ones that carry a
+/// warning; the tooltip says why.
+class Chip extends StatelessWidget {
+  const Chip(this.text, {this.tint, this.tooltip, super.key});
+
+  final String text;
+  final Color? tint;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = FluentTheme.of(context);
+    final tint = this.tint;
+    final chip = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: tint == null
+            ? theme.resources.controlAltFillColorSecondary
+            : tint.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        text,
+        maxLines: 1,
+        style: theme.typography.caption?.copyWith(
+          color: tint ?? theme.resources.textFillColorSecondary,
+        ),
+      ),
+    );
+    final message = tooltip;
+    return message == null ? chip : Tooltip(message: message, child: chip);
+  }
+}
+
+/// A field with the validation message the model returned under it.
+class FieldWithError extends StatelessWidget {
+  const FieldWithError({required this.child, this.error, super.key});
+
+  final Widget child;
+  final String? error;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      child,
+      if (error case final message?)
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: SecondaryText(
+            message,
+            color: FluentTheme.of(context).resources.systemFillColorCritical,
+            maxLines: 2,
+          ),
+        ),
+    ],
+  );
+}
+
+/// Addresses, hashes and URIs: fixed width so they line up and do not reflow.
+class MonoText extends StatelessWidget {
+  const MonoText(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = FluentTheme.of(context);
+    return Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.typography.caption?.copyWith(
+        fontFamily: 'Consolas',
+        color: theme.resources.textFillColorSecondary,
+      ),
+    );
+  }
+}

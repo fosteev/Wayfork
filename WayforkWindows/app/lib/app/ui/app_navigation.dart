@@ -31,6 +31,15 @@ final class AppNavigator extends ChangeNotifier {
   /// Source to preselect on the Logs page, if any.
   String? get logSource => _logSource;
 
+  /// Reads the preselected source and forgets it, so the next visit to Logs
+  /// keeps whatever filter the user picked there. Deliberately silent: the
+  /// page calls it while it builds.
+  String? takeLogSource() {
+    final source = _logSource;
+    _logSource = null;
+    return source;
+  }
+
   void go(AppPage page) {
     if (_page == page) return;
     _page = page;

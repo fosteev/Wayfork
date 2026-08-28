@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wayfork/app/model/app_alert.dart';
 import 'package:wayfork/app/ui/app_navigation.dart';
 import 'package:wayfork/app/ui/pages/dashboard_page.dart';
+import 'package:wayfork/app/ui/pages/logs_page.dart';
 import 'package:wayfork/core/ipc/payloads.dart';
 
 import 'ui_harness.dart';
@@ -29,7 +30,7 @@ void main() {
 
     navigator.showLogs();
     await tester.pumpAndSettle();
-    expect(find.textContaining('Logs —'), findsOneWidget);
+    expect(find.byType(LogsPage), findsOneWidget);
   });
 
   testWidgets('a missing service shows the banner and its repair button', (

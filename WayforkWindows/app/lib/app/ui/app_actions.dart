@@ -73,3 +73,24 @@ Future<void> revealInExplorer(String path) async {
     debugPrint('cannot reveal $path: $error');
   }
 }
+
+/// Opens a folder in Explorer (the Logs folder of General).
+Future<void> openFolderInExplorer(String path) async {
+  if (!Platform.isWindows) return;
+  try {
+    await Process.start('explorer.exe', [path]);
+  } on Object catch (error) {
+    debugPrint('cannot open $path: $error');
+  }
+}
+
+/// Settings › Apps › Installed apps, where Wayfork's own installer offers the
+/// repair that reinstalls the service (the MSI itself lands in WM4).
+Future<void> openInstalledApps() async {
+  if (!Platform.isWindows) return;
+  try {
+    await Process.start('explorer.exe', ['ms-settings:appsfeatures']);
+  } on Object catch (error) {
+    debugPrint('cannot open Windows Settings: $error');
+  }
+}
