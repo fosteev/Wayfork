@@ -14,7 +14,7 @@ maintainer approval.
 | W2a. Feasibility spike | Manual run of the routing scheme on a Windows machine, go/no-go | **done 2026-08-27 — GO** (results in [design/08-windows.md](design/08-windows.md) § Spike); `bind_interface` + a metric-9999 scoped default on the dco/TAP adapter routes per tunnel without touching the system default, NRPT `.` is the airtight resolver override, job objects kill children with the parent |
 | W2b. Design | `docs/design/08-windows.md` — every platform delta, written after the spike | approved 2026-08-27 (all 10 sections from the W2a results) |
 | W2c. UI prototype | `docs/design/prototype/windows.html` — tray flyout + context menu, main window (Dashboard/Tunnels/Rules/General/Logs), first-run, service-missing | approved 2026-08-27 (8 boards, ported from variant-b.html) |
-| W3. Implementation | Milestones WM0–WM5 below | WM0/WM1/WM2 done and pushed, WM2 verified in the VM 2026-08-28; WM3 (Flutter app) in progress — WM3a-WM3c done and VM-verified, the pages (WM3d/WM3e) next |
+| W3. Implementation | Milestones WM0–WM5 below | WM0/WM1/WM2 done and pushed, WM2 verified in the VM 2026-08-28; WM3 (Flutter app) in progress — WM3a-WM3d done (WM3a-WM3c VM-verified), Rules/General/Logs (WM3e) next |
 
 ## Phase W0 — Decisions
 
@@ -307,8 +307,8 @@ un\` with SYSTEM/Administrators ACL, temp
 Sub-steps agreed 2026-08-28: **WM3a** pure app core (`core/app/`) + `ServiceClient` +
 Win32 halves → **WM3b** `AppModel` + apply pipeline + service states (no UI) → **WM3c**
 tray + window lifecycle → **WM3d** Dashboard + Tunnels → **WM3e** Rules + General + Logs →
-**WM3f** import/export + diagnostics + full VM run. WM3a-WM3c are done; the pages are
-what is left. Deltas in
+**WM3f** import/export + diagnostics + full VM run. WM3a-WM3d are done; Rules, General and
+Logs are what is left. Deltas in
 [08-windows.md](design/08-windows.md) § Flutter app.
 
 - [x] `AppModel`: store, settings, runtime status, derived global state; `ServiceClient`
@@ -339,6 +339,14 @@ what is left. Deltas in
       search, empty state, live apply with inline errors), General (toggles, service
       status block, About, Export Diagnostics), Logs (ring buffer, filters, search,
       follow, copy/clear).
+      *(WM3c 2026-08-28: the `NavigationView` shell, the service banner and the alert
+      dialog. WM3d 2026-08-28: Dashboard (toggle, tiles, cards with rates and actions,
+      Direct row, quick add) and Tunnels (rows with inline expansion, the OpenVPN and VLESS
+      panes, F8 default, delete with its rules, `.ovpn` import through the picker and
+      through a drop anywhere in the window, Add VLESS with live preview) — new pins
+      `file_selector_windows 0.9.3+6`, `file_selector_platform_interface 2.7.0`,
+      `desktop_drop 0.8.2`; 245 Dart tests. Rules, General and Logs stay open for WM3e; the
+      pages are not eyeballed on the VM console yet.)*
 - [x] Apply pipeline: store change → plan rebuild → `apply` (debounced); reconnect-only and
       hot-reload paths as in [03-routing.md](design/03-routing.md).
       *(WM3b: debounce → `HostResolver` → `SystemDns.snapshot` → `RuntimePlanBuilder` →

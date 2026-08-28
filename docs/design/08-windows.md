@@ -690,6 +690,68 @@ Scheduler refused to launch anything into session 1 — every `/it` task stayed 
 Also still unverified: an **unelevated** app opening the pipe (everything here ran from an
 elevated session), and `local_notifier`'s toasts, which need a real shell.
 
+WM3d — the first two pages (`app/lib/app/ui/pages/`, boards 3 and 4 of the prototype),
+with three new exact pins: **`file_selector_windows 0.9.3+6`**,
+**`file_selector_platform_interface 2.7.0`** and **`desktop_drop 0.8.2`**:
+
+- **Why not the `file_selector` facade.** The endorsed package would pull the Android, iOS,
+  Linux (with `dbus`), macOS and web implementations into the lock for an app that only
+  runs on Windows, so `FileSelectorWindows()` is instantiated directly behind a small
+  `FilePicker` interface (`app/services/file_picker.dart`) — which is also the seam the
+  import tests drive. `desktop_drop` still brings `dbus`/`xml`/`http` along for its Linux
+  side; there is no Windows-only drop plugin worth pinning instead.
+- **Dashboard.** Header (title, `AppModel.summary`, the global `ToggleSwitch`, dead while a
+  transition is in flight), three tiles (`4 tunnels · 2 up`, `8 rules · 2 exceptions`, the
+  combined rate — every tunnel **plus** Direct, which is the figure the tile asks for), one
+  card per **enabled** tunnel (glyph, name, type badge, rate while the card is `up` and
+  routing is on, and the action the state asks for: Reconnect / ✎ / Enable), the Direct row
+  while routing is on, and the quick-add bar. A card is a shortcut to the tunnel's row in
+  Tunnels. The empty and all-disabled states point at the Tunnels page, as the popover does
+  on macOS.
+- **Quick add.** `[Route a domain…] [target ▾] [Add|Update]` over `QuickAdd` from the core:
+  the clipboard prefill, the live fake-IP rewrite (a pasted `198.18.x.y` becomes the
+  wildcard rule of the name behind it) and the model's message under the field. Delta from
+  macOS: the bar stays visible while routing is **off** (the macOS popover hides it), because
+  the tray's *Route a domain…* has to land somewhere — `AppNavigator.quickAdd()` bumps a
+  token and every bump takes the focus back to the field.
+- **Tunnels.** Rows that expand in place — no master/detail split — with `+ Add ▾`
+  (*Import OpenVPN Config… / Add VLESS from URL…*). The expanded OpenVPN pane carries the
+  prototype's **Server** and **Adapter** lines (`Wayfork-1 · 10.8.0.27` from the live
+  `TunnelState`, `not connected` otherwise; the prototype's `ovpn-dco` tag is not something
+  the service reports, so it is dropped), name, credentials, key passphrase, the
+  Automatic/Custom DNS pair, the config's date and short hash with *Replace…*, the F8
+  default checkbox with its hint and a footer with the rule count, *Reconnect* and
+  *Delete…*. The VLESS pane is name, the masked URI with *Copy* (disabled without the
+  secret) and *Replace URL…*, the same default checkbox and footer. Deleting confirms
+  through `deleteTunnelMessage` in a `ContentDialog`; every field commits on blur or Enter
+  and shows what the model refused.
+- **Import.** `TunnelImporter` (`app/ui/tunnel_import.dart`) is the half the model
+  deliberately left to the UI: pick or drop a `.ovpn`, read it, parse it, and on
+  `missingFiles` ask *Referenced files not found* → folder picker → parse again, looping
+  until it resolves or the user cancels; `unsupported` / `noRemote` / `malformed` become
+  alerts with the macOS wording. A drop anywhere in the window (`DropTarget` around the
+  shell) switches to Tunnels and imports every `.ovpn` in it, ignoring the rest.
+  `AppModel.showAlert` is now public so these UI-side flows queue into the same alert list
+  as the model's own.
+- **Add VLESS.** A dialog with the live parse preview (name, server, security, transport)
+  that returns the `VLESSImportResult`; the page stores it. It prefills from a `vless://`
+  on the clipboard and doubles as *Replace URL…* for an existing tunnel.
+- **`PasswordBox` is not used.** `fluent_ui 4.16.1` disposes a focus node that was handed to
+  it from outside, which trips the framework's use-after-dispose assert as soon as the row
+  collapses; the secret fields are `TextBox(obscureText: true)` instead, which owns nothing
+  of ours.
+- **Tests** (245 Dart tests, all on macOS too). Widget tests cover the tiles, the card list
+  and the Direct row, the global toggle, quick add (add, update, refusal), the empty state,
+  the ✎ of a failed card, row expansion, rename with its error, the default checkbox,
+  delete with confirmation, the masked URI, the picker import and the VLESS dialog; the
+  importer's own tests cover the missing-files loop, a declined folder prompt, unreadable
+  and malformed profiles, drop filtering and *Replace…*. `test/app/ui/ui_harness.dart`
+  carries the trick the whole suite needs: the model's pipe and timers live in real async
+  while the widgets live on the tester's fake clock, so `pumpUntil` alternates
+  `tester.runAsync` with `tester.pump` until the model reaches the state under test — and
+  anything touching real files or `turnOn()` has to start inside `runAsync` or it never
+  completes.
+
 ## Open items
 
 - **t1/pilot-gps user flow (not a Windows issue) — resolved 2026-08-27.** In S5 the
