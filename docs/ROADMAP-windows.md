@@ -14,7 +14,7 @@ maintainer approval.
 | W2a. Feasibility spike | Manual run of the routing scheme on a Windows machine, go/no-go | **done 2026-08-27 — GO** (results in [design/08-windows.md](design/08-windows.md) § Spike); `bind_interface` + a metric-9999 scoped default on the dco/TAP adapter routes per tunnel without touching the system default, NRPT `.` is the airtight resolver override, job objects kill children with the parent |
 | W2b. Design | `docs/design/08-windows.md` — every platform delta, written after the spike | approved 2026-08-27 (all 10 sections from the W2a results) |
 | W2c. UI prototype | `docs/design/prototype/windows.html` — tray flyout + context menu, main window (Dashboard/Tunnels/Rules/General/Logs), first-run, service-missing | approved 2026-08-27 (8 boards, ported from variant-b.html) |
-| W3. Implementation | Milestones WM0–WM5 below | WM0/WM1/WM2 done and pushed; WM2 verified in the VM 2026-08-28; WM3 (Flutter app) next |
+| W3. Implementation | Milestones WM0–WM5 below | WM0/WM1/WM2 done and pushed, WM2 verified in the VM 2026-08-28; WM3 (Flutter app) in progress — WM3a-WM3c done and VM-verified, the pages (WM3d/WM3e) next |
 
 ## Phase W0 — Decisions
 
@@ -307,10 +307,11 @@ un\` with SYSTEM/Administrators ACL, temp
 Sub-steps agreed 2026-08-28: **WM3a** pure app core (`core/app/`) + `ServiceClient` +
 Win32 halves → **WM3b** `AppModel` + apply pipeline + service states (no UI) → **WM3c**
 tray + window lifecycle → **WM3d** Dashboard + Tunnels → **WM3e** Rules + General + Logs →
-**WM3f** import/export + diagnostics + full VM run. Deltas in
+**WM3f** import/export + diagnostics + full VM run. WM3a-WM3c are done; the pages are
+what is left. Deltas in
 [08-windows.md](design/08-windows.md) § Flutter app.
 
-- [ ] `AppModel`: store, settings, runtime status, derived global state; `ServiceClient`
+- [x] `AppModel`: store, settings, runtime status, derived global state; `ServiceClient`
       over the pipe with reconnect, version handshake, status/log/traffic subscription.
       *(WM3a 2026-08-28: `ServiceClient` + `NamedPipeTransport` (overlapped, reader
       isolate), `core/app/` ports of GlobalState/StatusText/TrafficFormat/RuleEditing/
@@ -318,9 +319,20 @@ tray + window lifecycle → **WM3d** Dashboard + Tunnels → **WM3e** Rules + Ge
       `GetAdaptersAddresses`; 141 Dart tests. WM3b 2026-08-28: `AppModel` over
       `StoreStorage` / `SecretStore` / `ServiceClient` / `LogCenter` — store, settings,
       status, traffic, derived state, tunnels/rules CRUD, service states with the
-      "repair installation" hint; 191 Dart tests, all on the fake service.)*
-- [ ] Tray: icon per state (4 variants, pulse while transitioning), menu per the prototype,
+      "repair installation" hint; 191 Dart tests, all on the fake service. WM3c
+      2026-08-28: `main.dart` composes the model from the real parts and starts
+      `bootstrap()` without blocking the first frame.)*
+- [x] Tray: icon per state (4 variants, pulse while transitioning), menu per the prototype,
       quick add dialog.
+      *(WM3c 2026-08-28: `assets/tray/{light,dark}/*.ico` from
+      `scripts/make-win-tray-icons.py` (two taskbar themes, 16-48 px), `TrayMenu` +
+      `TrayController` over a `TrayBackend`; left click toggles the window, right click
+      pops the menu. Deltas: `degraded` dims the failing branch instead of hollowing it
+      (a ring is mud at 16 px) and quick add jumps to the Dashboard field — a Win32 menu
+      holds no text box. VM 2026-08-28: `flutter test` 222/222 and
+      `flutter build windows --release` on the VM toolchain; `LoadImage` reads every
+      generated `.ico` at 16-48 px. The icon in the notification area itself is an eyeball
+      check — an ssh session has no interactive desktop.)*
 - [ ] Main window: sidebar, Dashboard (cards, rates, Direct row, actions), Tunnels (inline
       expansion, OpenVPN/VLESS forms, `.ovpn` import via picker and drop, Add VLESS with
       live preview, delete with rules), Rules (groups, inline editing, reorder, chips,
@@ -332,20 +344,29 @@ tray + window lifecycle → **WM3d** Dashboard + Tunnels → **WM3e** Rules + Ge
       *(WM3b: debounce → `HostResolver` → `SystemDns.snapshot` → `RuntimePlanBuilder` →
       `apply`, serialised; re-apply on reconnect when the service is idle or runs another
       `planHash`; the reconnect-only / hot-reload split is the service's reconcile, VM-verified
-      in WM2. Still owed: a Win32 network-change source for `systemDNSChanged()`.)*
-- [ ] Service-missing / version-mismatch states with a "repair installation" hint.
-      *(WM3b: `ServiceIssue` + `summary` + the Turn On alert in the model; the General page
-      block and the tray rendering are WM3c/e.)*
-- [ ] Windows toast notifications for permanent failures and engine errors.
-      *(WM3b: `Notifier` interface + console backend, posted by the model; the toast backend
-      (`local_notifier`) is WM3c.)*
+      in WM2. WM3c: `SystemNetworkWatcher` polls `SystemDns.snapshot()` every 5 s and feeds
+      `systemDNSChanged()` — the event APIs miss a resolver-only change, see
+      [08-windows.md](design/08-windows.md).)*
+- [x] Service-missing / version-mismatch states with a "repair installation" hint.
+      *(WM3b: `ServiceIssue` + `summary` + the Turn On alert in the model. WM3c: the
+      `ServiceBanner` on every page and the tray's "Repair Installation" entry, both
+      through `AppActionHandler`; the General page block is WM3e and the MSI repair
+      itself is WM4.)*
+- [x] Windows toast notifications for permanent failures and engine errors.
+      *(WM3b: `Notifier` interface + console backend, posted by the model. WM3c:
+      `ToastNotifier` over the new pin `local_notifier 0.1.6`; a shell that refuses the
+      setup downgrades to `SilentNotifier`.)*
 - [ ] Import/export (`wayfork-export.json`, secrets checkbox, Replace/Merge; foreign app
       rules flagged).
-- [ ] Launch at login (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`), connect on
+- [x] Launch at login (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`), connect on
       launch, quit stops everything; single-instance guard.
-      *(WM3b: connect on launch and `shutdown()` (stop + flush) in the model; `LaunchAtLogin`
-      is an interface with an in-memory backend — the registry backend and the
-      single-instance guard are WM3c.)*
+      *(WM3b: connect on launch and `shutdown()` (stop + flush) in the model. WM3c:
+      `RegistryLaunchAtLogin` writes `"<exe>" --minimized`, the runner honours the flag
+      without flashing a window, closing hides to the tray and Quit unwinds
+      hide → tray → `shutdown()` → window; the guard is a session-local named event plus
+      `FindWindowEx` on the running instance. VM 2026-08-28: the app connects to
+      `wayfork-service --dev-apply`, a second launch exits 0 and leaves the first alone,
+      and the log distinguishes `main window shown` from `launched into the tray`.)*
 - [x] Log files with rotation and retention, mirroring `runtime.log` / `wayfork.log`.
       *(WM3b: `LogCenter` over `AppLogFile` — ring, replay de-duplication, prune at launch /
       daily / on setting change.)*

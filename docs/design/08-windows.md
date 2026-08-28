@@ -580,6 +580,116 @@ WM3b — the app model, the apply pipeline and the service states, still without
   override log line names the mechanism (`via NRPT`); `deleteTunnel` does not confirm
   itself.
 
+WM3c — the tray, the window lifecycle and the Win32 backends the model was waiting for
+(`app/lib/app/services/`, `app/lib/app/ui/`, `app/lib/main.dart`, `app/windows/runner/`):
+
+- **Composition (`main.dart`).** `WidgetsFlutterBinding.ensureInitialized()` → the
+  single-instance guard → `windowManager.ensureInitialized()` → the model over the real
+  parts (`StoreRepository.defaultDirectory()`, `DpapiSecretStore` on
+  `%LOCALAPPDATA%\Wayfork\secrets.dat`, `ServiceClient(NamedPipeTransport.connect)`,
+  `LogCenter.defaultDirectory()`, `RegistryLaunchAtLogin`, the toast notifier and the
+  network watcher) → window → tray → `runApp` → `bootstrap()` **unawaited**: the
+  handshake waits up to ten seconds for the service and the first frame must not.
+- **Tray icon.** `assets/tray/{light,dark}/{off,on,pulse,degraded,error}.ico`, rendered by
+  `scripts/make-win-tray-icons.py` from the prototype's fork glyph on its 18×18 grid: one
+  `.ico` per variant per notification-area theme, each holding 16/20/24/32/40/48 px as
+  uncompressed 32-bit BGRA (the only format `LoadImage` reads from a file, which is what
+  `tray_manager` calls with `SM_CXSMICON`). Two colour sets because the taskbar follows
+  the system theme, picked by `SystemTheme.trayTheme()` — the shell's own
+  `SystemUsesLightTheme`, not the app theme. Deltas from
+  [02-ux.md](02-ux.md) ("Menu bar icon"): macOS's *one branch hollow* for `degraded` is a
+  ring of mud at 16 px, so the failing branch is **dimmed** instead; the `.symbolEffect(.pulse)`
+  of a transition is the controller alternating `on` with a 45 %-alpha `pulse` twin from
+  `AppModel.iconPulse`. A service that needs repairing shows `error` whatever the routing
+  state is.
+- **Tray menu and controller.** `TrayMenu.build(model)` returns plain `TrayMenuEntry`
+  values — the prototype's right-click menu (board 2): the checked *Wayfork is On/Off*
+  (dead while a transition is in flight), the summary as a disabled line, *Repair
+  Installation* only while the service needs it, *Open Wayfork… / Route a domain…*,
+  a *Reconnect* submenu (*All Tunnels* plus every enabled **OpenVPN** tunnel — VLESS has no
+  process to restart), *Logs*, *Settings*, *Quit Wayfork*. `TrayController` pushes icon,
+  tooltip (`Wayfork — <summary>`, trimmed to the 127 units `szTip` holds) and menu only
+  when they changed, serialised because the backend is asynchronous and the model can
+  notify mid-push; a slow tick re-reads the taskbar theme, which the model cannot know
+  about. Left click toggles the window, right click pops the menu — on Windows
+  `tray_manager` reports both and pops nothing by itself. Quick add is a jump to the
+  Dashboard's field (WM3d), not a second dialog: a Win32 menu cannot hold a text box.
+- **Window lifecycle.** `WindowController` over a `WindowBackend`: `setPreventClose(true)`
+  turns the caption's ✕ into hide-to-tray, the tray click hides a window that is in front
+  and *raises* one that is merely visible, and only Quit calls `destroy()`. Quit unwinds in
+  the order the user sees it — hide, drop the tray icon, `AppModel.shutdown()` (stop +
+  flush), watcher, window. The runner was patched twice: `main.cpp` titles the window
+  `Wayfork` (the single-instance lookup keys on it) and passes `--minimized` down as
+  `show_on_first_frame_`, so a launch-at-login start never flashes a window before Dart can
+  hide it.
+- **Single instance.** A session-local named event (`Local\Wayfork.SingleInstance`, via
+  `CreateEvent` + `ERROR_ALREADY_EXISTS` — `win32` 6.4 exports no `CreateMutex`); a second
+  launch walks `FindWindowEx(FLUTTER_RUNNER_WIN32_WINDOW, "Wayfork")` past every window
+  of its **own** process (the runner creates one before Dart `main` runs; ours is never
+  shown because we exit before the first frame), then `SW_SHOW` + `SW_RESTORE` +
+  `SetForegroundWindow` on the other instance and exits. Session-local, not `Global\`: the store,
+  the secrets and the tray icon are per user, and `Global\` needs a privilege ordinary
+  accounts do not have. A failure to create the event lets the process run — a second icon
+  beats refusing to start.
+- **Win32 backends.** `RegistryLaunchAtLogin` writes `HKCU\…\Run\Wayfork` =
+  `"<exe>" --minimized`; any value under the name counts as enabled, whatever path it
+  holds, so a stale path from an earlier install is still the user's "yes" and the next
+  toggle rewrites it. `WindowsRegistry` is the app layer's small read/write helper (the
+  core's Tcpip reader never writes). `ToastNotifier` is the `local_notifier` backing of
+  `Notifier` (new exact pin **`local_notifier 0.1.6`**, which pulls `uuid 4.6.0`): posting
+  is best effort and `setup()` failing downgrades to `SilentNotifier`, because a toast the
+  shell refuses must never take a routing decision down with it.
+- **Network changes.** `SystemNetworkWatcher` polls `SystemDns.snapshot()` every 5 s and
+  emits only when the snapshot differs. `NotifyIpInterfaceChange` / `NotifyRouteChange2`
+  were considered and rejected: neither fires when only an adapter's **resolver list**
+  changes — those live in the Tcpip registry, and a DHCP lease handing out new resolvers is
+  exactly the F12 case — and their callbacks arrive on arbitrary OS threads that an FFI
+  listener then has to marshal back. A snapshot is one `GetAdaptersAddresses` call plus two
+  registry reads, so the poll covers strictly more ground for a cost that does not show up
+  in a profile, and `AppModel.systemDNSChanged()` already ignores a tick that matches what
+  it applied.
+- **UI surfaces.** `AppScope` / `NavigationScope` are `InheritedNotifier`s over the model
+  and `AppNavigator` (page, quick-add token, preselected log source) — no state-management
+  package. `AppShell` is the `NavigationView` of the prototype with the five pages
+  (Dashboard and Tunnels land in WM3d, Rules/General/Logs in WM3e). `ServiceBanner` renders
+  `ServiceIssue` as an `InfoBar` on every page with the *Repair Installation* button, and
+  `AlertHost` draws `AppModel.alerts` as a `ContentDialog` **inline** rather than through
+  `showDialog`, so the queue stays a pure function of the model and survives a rebuild.
+  `AppActionHandler` is the one place `AppModel.actions`, the alert buttons and the tray
+  all funnel through; `revealFile` shells out to `explorer.exe /select,<path>`, the rest is
+  navigation (the real Export Diagnostics is WM3f, the MSI repair is WM4).
+- **Tests** run on both platforms (222 Dart tests). On macOS the fake tray and window
+  backends (`test/app/lifecycle_fakes.dart`) cover the menu shape per state, icon and theme
+  selection, tooltip trimming, push de-duplication, every menu command, a shell that refuses
+  the icon, hide-to-tray and toggle, the watcher's change filter, and widget tests for the
+  shell, the banner and the alert dialog. On Windows the same suite additionally exercises
+  the real Win32 halves: the `HKCU\…\Run` value round-trips under a test-only name, the
+  named event refuses its second owner and frees the name on `release()`, and the taskbar
+  theme reads. Anything that used a fixed delay to wait for the model was changed to
+  `waitFor` in `test/app/fakes.dart` — the VM is an emulated guest and two tests (one of
+  them WM3b's DNS re-apply) failed there purely on timing.
+
+**Verified in the VM (2026-08-28, `wf-win`, snapshot `s4-flutter`).** Toolchain: VS Build
+Tools 2022 17.14 (VCTools + ARM64 + Windows 11 SDK 26100) and Flutter 3.44.3 under
+`C:\wf\flutter`; `flutter doctor` green on Visual Studio. **Flutter 3.44.3 publishes no
+arm64 Windows archive** (`dart_sdk_arch: x64`) and `flutter build windows` has no
+`--target-platform`, so the app builds **x64** and runs emulated on the ARM64 guest — the
+Go service there is arm64 and the named pipe does not care. `flutter test` 222/222 and
+`flutter build windows --release` both pass. Running the release build against
+`wayfork-service --dev-apply` idling on a missing plan: the app starts, writes
+`%LOCALAPPDATA%\Wayfork\{store.json,logs}` and logs `main window shown` →
+`Wayfork 0.1.0 starting` → `service 0.1.0 connected at C:\wf\wayfork`; a **second launch
+exits with code 0** and leaves the first process alone (the single-instance guard);
+`--minimized` logs `launched into the tray` instead and no `tray icon:` warning appears in
+either run. `LoadImage(..., LR_LOADFROMFILE)` accepts all ten generated `.ico` files at
+16/24/32/48 px from the path the plugin builds under `data\flutter_assets`. **Owed to the
+maintainer:** the ssh session is session 0, which has no interactive desktop, so
+`IsWindowVisible` reads false in both modes and the notification-area icon, the flyout
+menu and the window chrome are still an eyeball check on the VM console (the Task
+Scheduler refused to launch anything into session 1 — every `/it` task stayed `Queued`).
+Also still unverified: an **unelevated** app opening the pipe (everything here ran from an
+elevated session), and `local_notifier`'s toasts, which need a real shell.
+
 ## Open items
 
 - **t1/pilot-gps user flow (not a Windows issue) — resolved 2026-08-27.** In S5 the
