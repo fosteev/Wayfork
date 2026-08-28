@@ -16,6 +16,9 @@ dependencies:
   win32: 6.4.0
   window_manager: 0.5.2
   local_notifier: 0.1.6
+  file_selector_windows: 0.9.3+6
+  file_selector_platform_interface: 2.7.0
+  desktop_drop: 0.8.2
   crypto: 3.0.7
   collection: 1.19.1
   ffi: 2.2.0
