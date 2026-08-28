@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wayfork/core/plan/system_dns.dart';
 import 'package:wayfork/core/support/ipv4_prefix.dart';
@@ -153,10 +155,20 @@ void main() {
     expect(none.router, isNull);
     expect(none.primaryService, isNull);
 
-    // Off Windows the live lookups return nothing rather than failing.
-    expect(WindowsAdapters.enumerate(), isEmpty);
+    // A registry key that cannot exist has no resolvers on either platform.
     expect(WindowsAdapters.readResolverConfig('{x}').manualServers, isEmpty);
-    expect(LocalNetwork.current(), isEmpty);
-    expect(SystemDns.snapshot().servers, isEmpty);
+    expect(WindowsAdapters.readResolverConfig('{x}').dhcpServers, isEmpty);
+    if (Platform.isWindows) {
+      // On Windows the live lookups reach Win32; a CI runner always has at
+      // least the loopback adapter, and none of them may throw.
+      expect(WindowsAdapters.enumerate(), isNotEmpty);
+      LocalNetwork.current();
+      SystemDns.snapshot();
+    } else {
+      // Elsewhere they return nothing rather than failing.
+      expect(WindowsAdapters.enumerate(), isEmpty);
+      expect(LocalNetwork.current(), isEmpty);
+      expect(SystemDns.snapshot().servers, isEmpty);
+    }
   });
 }
