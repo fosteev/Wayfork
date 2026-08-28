@@ -47,8 +47,20 @@ final class StoreRepositoryException implements Exception {
       'Store schema $found is newer than supported schema $supported';
 }
 
+/// What the app model needs from the store persistence; [StoreRepository] is
+/// the on-disk implementation, tests substitute an in-memory one.
+abstract interface class StoreStorage {
+  Future<StoreLoadResult> load();
+
+  /// Schedules a debounced write of [store].
+  void save(Store store);
+
+  /// Writes the pending store now, if any.
+  Future<void> flush();
+}
+
 /// Loads and saves `store.json` with debounced, atomic writes.
-final class StoreRepository {
+final class StoreRepository implements StoreStorage {
   StoreRepository(
     this.directory, {
     this.debounce = const Duration(milliseconds: 300),
@@ -81,6 +93,7 @@ final class StoreRepository {
         : Directory('$home/.local/share/wayfork');
   }
 
+  @override
   Future<StoreLoadResult> load() async {
     if (!await file.exists()) return StoreLoadResult(store: Store.empty);
     final bytes = await file.readAsBytes();
@@ -99,6 +112,7 @@ final class StoreRepository {
     }
   }
 
+  @override
   void save(Store store) {
     _pending = store;
     _timer?.cancel();
@@ -107,6 +121,7 @@ final class StoreRepository {
     });
   }
 
+  @override
   Future<void> flush() async {
     _timer?.cancel();
     _timer = null;
