@@ -33,7 +33,7 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: WayforkWindows/service/go.sum
-      - uses: actions/setup-dotnet@v5.0.0
+      - uses: actions/setup-dotnet@v6.0.0
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
       - run: flutter pub get
@@ -51,7 +51,7 @@ jobs:
             -not (Test-Path "build\release-windows\Wayfork-$version-$_.msi")
           }
           if ($missing) { throw "the tag says $version but $($missing -join ', ') was not built" }
-      - uses: actions/upload-artifact@v5.0.0
+      - uses: actions/upload-artifact@v7.0.1
         with:
           name: wayfork-msi
           path: |
