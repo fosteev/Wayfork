@@ -519,6 +519,67 @@ macOS except the three live lookups, which return empty off Windows):
   spawn, later ones 0 ms). The VM keeps the Dart SDK under `C:\wf\dart` and the probe
   under `C:\wf\probe` (snapshot `s3-dart`) for the next sub-steps.
 
+WM3b — the app model, the apply pipeline and the service states, still without UI
+(`app/lib/app/`, tested on macOS against the fake service of
+`test/core/ipc/fake_service.dart` plus in-memory store/secret fakes):
+
+- **`AppModel` (`app/model/app_model.dart` + `_tunnels` / `_rules` /
+  `_import_export` parts)** is the macOS `AppModel` as a `ChangeNotifier` over
+  `StoreStorage` (the new interface `StoreRepository` implements), `SecretStore`,
+  `ServiceClient`, `LogCenter`, `Notifier` and `LaunchAtLogin`: store, settings, runtime
+  status, traffic (stale after 3 s), `desiredOn`, `AppTransition`, `missingSecrets`,
+  `persistenceDisabled`, the derived `GlobalState` and `summary`, tunnels CRUD
+  (`addOpenVPN` / `replaceOpenVPNConfig` from a parsed result — the picker and the
+  missing-files loop are UI, `addVLESS`, credentials / key passphrase / DNS, rename,
+  enable, `deleteTunnel` after the UI confirms with `deleteTunnelMessage`), rules CRUD
+  (quick add, add at the end of the group, update, move before / to the end, note,
+  enable, remove, fake-IP translation from the sing-box log), default tunnel (F8),
+  `exportDocument` / `decodeImport` / `performImport`. What macOS shows from the model
+  (`NSAlert`, window opening) is state here: `alerts` (`AppAlert` with an optional
+  `AppAction` button, dismissed by the UI) and the `actions` stream (`openTunnel` with a
+  field to focus, `showLogs`, `exportDiagnostics`, `repairInstallation`, `revealFile`).
+- **Apply pipeline.** Every `update` persists (debounced by the repository), recomputes
+  the missing secrets when tunnels changed, follows the log level and — while on —
+  schedules an apply (300 ms debounce; secret writes call `secretsChanged()` too).
+  `applyNow` = `PlanSecrets.load` → `HostResolver.resolveIPv4` (injected, real DNS in
+  the app) → `SystemDns.snapshot()` (injected) → `RuntimePlanBuilder.build` with the
+  service's `installPath` as the install dir (fallback: next to the app executable) →
+  `ServiceClient.apply`; unresolved servers, gateway resolvers and skipped tunnels are
+  logged as on macOS, an `ApplyResult` error becomes an alert with the catalogue's
+  follow-up (`configInvalid` → Export Diagnostics, `startFailed` → Show Log,
+  `binaryUntrusted` → repair). Applies are serialised; a request during an apply queues
+  exactly one more run. The macOS `SystemDNS.Watcher` has no Win32 twin yet: the model
+  takes an optional `networkChanges` stream and re-applies from `systemDNSChanged()` only
+  when the effective resolvers or the gateway differ from the applied snapshot
+  (`NotifyIpInterfaceChange` / polling is a WM3c item).
+- **Service states.** The model mirrors `ServiceClient.states`: on `connected` it runs
+  `getInfo` + `getStatus`, logs a version difference, and — while `desiredOn` — re-applies
+  when the service is idle (a restarted service) or reports a `planHash` other than
+  `lastPlan`'s; a service already running the current plan is left alone. The first
+  attach after launch adopts a running service (`desiredOn = true`, "reattached"). On
+  `disconnected` / `serviceMissing` / `versionMismatch` status, info and traffic are
+  cleared; `desiredOn` survives so routing resumes when the service is back.
+  `ServiceIssue` (from the client phase) carries the message and the hint — "Repair the
+  installation" for missing / mismatch, "Reconnecting…" for a lost connection — and takes
+  over `summary` when it needs repair or the user wants routing on. Turn On waits up to
+  10 s for the connection and fails with the repair alert when the service is missing or
+  incompatible; Turn Off waits for an in-flight apply before `stop`.
+- **`LogCenter` (`app/services/log_center.dart`)** is the macOS one: a 10 000-line ring
+  (trimmed in 1000-line chunks), `minimumLevel` from the settings, the service replay
+  de-duplicated by (ts, source, message), `wayfork.log` / `runtime.log` mirrors through
+  `AppLogFile` under `%LOCALAPPDATA%\Wayfork\logs` (the runtime tail is loaded at start),
+  `prune` at launch, daily and when the retention changes. **`Notifier`** is an interface
+  with a console backend (toasts come with WM3c); the model posts for permanent tunnel
+  failures, engine failures — once per state change, opt-out via
+  `notifyOnTunnelFailure`. **`LaunchAtLogin`** is an interface with an in-memory backend;
+  the `HKCU\…\Run` implementation is WM3c. `WayforkVersion.app` pins the app version
+  (kept in step with `pubspec.yaml`) for the connect-time comparison.
+- Deltas from macOS: no helper approval flow (nothing to register — the service is
+  installed by the MSI), so `helper.*` collapses into `ServiceIssue` and the repair
+  action; `update` takes a `Store → Store` function (immutable models); the resolver
+  override log line names the mechanism (`via NRPT`); `deleteTunnel` does not confirm
+  itself.
+
 ## Open items
 
 - **t1/pilot-gps user flow (not a Windows issue) — resolved 2026-08-27.** In S5 the

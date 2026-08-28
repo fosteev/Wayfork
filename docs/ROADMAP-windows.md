@@ -315,7 +315,10 @@ tray + window lifecycle → **WM3d** Dashboard + Tunnels → **WM3e** Rules + Ge
       *(WM3a 2026-08-28: `ServiceClient` + `NamedPipeTransport` (overlapped, reader
       isolate), `core/app/` ports of GlobalState/StatusText/TrafficFormat/RuleEditing/
       ImportExport/LogFile, `LocalNetwork.current()` + `SystemDns.snapshot()` over
-      `GetAdaptersAddresses`; 141 Dart tests. `AppModel` itself is WM3b.)*
+      `GetAdaptersAddresses`; 141 Dart tests. WM3b 2026-08-28: `AppModel` over
+      `StoreStorage` / `SecretStore` / `ServiceClient` / `LogCenter` — store, settings,
+      status, traffic, derived state, tunnels/rules CRUD, service states with the
+      "repair installation" hint; 191 Dart tests, all on the fake service.)*
 - [ ] Tray: icon per state (4 variants, pulse while transitioning), menu per the prototype,
       quick add dialog.
 - [ ] Main window: sidebar, Dashboard (cards, rates, Direct row, actions), Tunnels (inline
@@ -324,15 +327,28 @@ tray + window lifecycle → **WM3d** Dashboard + Tunnels → **WM3e** Rules + Ge
       search, empty state, live apply with inline errors), General (toggles, service
       status block, About, Export Diagnostics), Logs (ring buffer, filters, search,
       follow, copy/clear).
-- [ ] Apply pipeline: store change → plan rebuild → `apply` (debounced); reconnect-only and
+- [x] Apply pipeline: store change → plan rebuild → `apply` (debounced); reconnect-only and
       hot-reload paths as in [03-routing.md](design/03-routing.md).
+      *(WM3b: debounce → `HostResolver` → `SystemDns.snapshot` → `RuntimePlanBuilder` →
+      `apply`, serialised; re-apply on reconnect when the service is idle or runs another
+      `planHash`; the reconnect-only / hot-reload split is the service's reconcile, VM-verified
+      in WM2. Still owed: a Win32 network-change source for `systemDNSChanged()`.)*
 - [ ] Service-missing / version-mismatch states with a "repair installation" hint.
+      *(WM3b: `ServiceIssue` + `summary` + the Turn On alert in the model; the General page
+      block and the tray rendering are WM3c/e.)*
 - [ ] Windows toast notifications for permanent failures and engine errors.
+      *(WM3b: `Notifier` interface + console backend, posted by the model; the toast backend
+      (`local_notifier`) is WM3c.)*
 - [ ] Import/export (`wayfork-export.json`, secrets checkbox, Replace/Merge; foreign app
       rules flagged).
 - [ ] Launch at login (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`), connect on
       launch, quit stops everything; single-instance guard.
-- [ ] Log files with rotation and retention, mirroring `runtime.log` / `wayfork.log`.
+      *(WM3b: connect on launch and `shutdown()` (stop + flush) in the model; `LaunchAtLogin`
+      is an interface with an in-memory backend — the registry backend and the
+      single-instance guard are WM3c.)*
+- [x] Log files with rotation and retention, mirroring `runtime.log` / `wayfork.log`.
+      *(WM3b: `LogCenter` over `AppLogFile` — ring, replay de-duplication, prune at launch /
+      daily / on setting change.)*
 
 ### WM4 — Installer and release
 
