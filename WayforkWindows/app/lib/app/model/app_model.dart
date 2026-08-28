@@ -575,6 +575,15 @@ final class AppModel extends ChangeNotifier {
     }
   }
 
+  /// Restarts every enabled OpenVPN tunnel (the tray's "Reconnect · All
+  /// Tunnels"); VLESS has no process of its own to restart.
+  Future<void> reconnectAll() async {
+    for (final tunnel in _store.tunnels) {
+      if (!tunnel.isEnabled || !tunnel.kind.isOpenVPN) continue;
+      await reconnect(tunnel.id);
+    }
+  }
+
   void _setTransition(AppTransition? transition) {
     _transition = transition;
     _pulseTimer?.cancel();

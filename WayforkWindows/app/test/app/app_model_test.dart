@@ -369,8 +369,10 @@ void main() {
       expect(h.service.applied, hasLength(1));
       h.dns = SystemDnsSnapshot(const ['9.9.9.9'], '192.168.1.1');
       h.networkChanges.add(null);
-      await h.settle();
-      expect(h.service.applied, hasLength(2));
+      await waitFor(
+        () => h.service.applied.length == 2,
+        what: 'the re-apply after the DNS change',
+      );
       expect(
         h.appLog,
         contains('system DNS changed: 9.9.9.9 (gateway 192.168.1.1)'),

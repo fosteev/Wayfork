@@ -201,6 +201,24 @@ final class Harness {
   }
 }
 
+/// Polls until [condition] holds. Real timers, so only for plain `test()`
+/// bodies and `WidgetTester.runAsync` — but unlike a fixed delay it does not
+/// turn into a flake on a machine that is having a slow minute.
+Future<void> waitFor(
+  bool Function() condition, {
+  Duration timeout = const Duration(seconds: 10),
+  Duration step = const Duration(milliseconds: 5),
+  String what = 'condition',
+}) async {
+  final deadline = DateTime.now().add(timeout);
+  while (!condition()) {
+    if (DateTime.now().isAfter(deadline)) {
+      throw StateError('$what did not hold within $timeout');
+    }
+    await Future<void>.delayed(step);
+  }
+}
+
 RuntimeStatus running({String? planHash, Map<String, TunnelState>? tunnels}) =>
     RuntimeStatus(
       engine: EngineState.running(since: fakeSince),
