@@ -11,13 +11,15 @@
 #   -Arch both             which packages to build (default: both).
 #   -SkipFetch             reuse WayforkWindows\bin\<arch> and drivers\<arch> as they are.
 #   -SkipFlutter           reuse the last `flutter build windows --release`.
-#   -CertificatePath       PFX to sign Wayfork's own binaries and the MSI with. Without it
+#   -CertificatePath       PFX to sign Wayfork's own binaries, the MSIs and the bundle
+#                          (through `wix burn detach`/`reattach`) with. Without it
 #                          the artefacts are unsigned: there is no certificate yet, and
 #                          SmartScreen will warn on first run (README).
 #   -TimestampUrl          RFC 3161 timestamp server (default: DigiCert's).
 #
 # Output (build\release-windows\):
 #   Wayfork-<version>-<arch>.msi (+ .sha256)
+#   Wayfork-<version>.exe (+ .sha256)   both MSIs in one bundle, -Arch both only
 #
 # Requires: Windows, the pinned Flutter and Go toolchains (WayforkWindows\versions.env),
 # the .NET SDK for the WiX tool, and network access on the first run (WiX, the pinned
@@ -150,6 +152,37 @@ function Install-WixTool {
     return $wix.Source
 }
 
+# The bundle needs the bootstrapper-application extension, versioned with WiX itself.
+function Install-WixExtension {
+    param(
+        [Parameter(Mandatory = $true)][string]$WixPath,
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$WixVersion
+    )
+
+    $listed = & $WixPath extension list --global 2>$null
+    if ($listed -and ($listed | Where-Object { $_ -match [regex]::Escape("$Name/$WixVersion") })) { return }
+    Log "Adding the WiX extension $Name/$WixVersion"
+    Invoke-Tool $WixPath @('extension', 'add', '--global', "$Name/$WixVersion")
+}
+
+# A Burn bundle cannot be signed in one go: the engine has to come out, be signed, go back
+# in, and only then is the bundle itself signed (WiX "Insignia" flow).
+function Set-BundleSignature {
+    param(
+        [Parameter(Mandatory = $true)][string]$WixPath,
+        [Parameter(Mandatory = $true)][string]$Bundle
+    )
+
+    if (-not $CertificatePath) { return }
+    $engine = "$Bundle.engine.exe"
+    Invoke-Tool $WixPath @('burn', 'detach', $Bundle, '-engine', $engine)
+    Set-Signature @($engine)
+    Invoke-Tool $WixPath @('burn', 'reattach', $Bundle, '-engine', $engine, '-out', $Bundle)
+    Set-Signature @($Bundle)
+    Remove-Item -LiteralPath $engine -Force -ErrorAction SilentlyContinue
+}
+
 try {
     $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
     $appDir = Join-Path $root 'WayforkWindows\app'
@@ -249,6 +282,32 @@ try {
         $artefacts += [pscustomobject]@{
             File = [IO.Path]::GetFileName($msi)
             Size = (Get-Item -LiteralPath $msi).Length
+            SHA256 = $hash.Substring(0, 12)
+        }
+    }
+
+    # The bundle is what the release page offers first: one download for both machines. It
+    # needs both packages, so a single-architecture build stops at the MSI.
+    if ($architectures.Count -eq 2) {
+        Install-WixExtension $wixPath 'WixToolset.BootstrapperApplications.wixext' $wixVersion
+        $bundle = Join-Path $outputDir "Wayfork-$Version.exe"
+        Remove-Item -LiteralPath $bundle -Force -ErrorAction SilentlyContinue
+        Log "Building $([IO.Path]::GetFileName($bundle))"
+        Invoke-Tool $wixPath @(
+            'build', (Join-Path $root 'WayforkWindows\installer\WayforkBundle.wxs'),
+            '-arch', 'x86',
+            '-ext', 'WixToolset.BootstrapperApplications.wixext',
+            '-d', "Version=$Version",
+            '-bindpath', "Msi=$outputDir",
+            '-bindpath', "Icon=$(Join-Path $appDir 'assets\tray\light')",
+            '-out', $bundle)
+        Set-BundleSignature $wixPath $bundle
+
+        $hash = (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant()
+        "$hash  $([IO.Path]::GetFileName($bundle))" | Set-Content -LiteralPath "$bundle.sha256" -Encoding ascii
+        $artefacts += [pscustomobject]@{
+            File = [IO.Path]::GetFileName($bundle)
+            Size = (Get-Item -LiteralPath $bundle).Length
             SHA256 = $hash.Substring(0, 12)
         }
     }

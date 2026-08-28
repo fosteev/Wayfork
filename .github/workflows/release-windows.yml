@@ -1,4 +1,5 @@
-# Builds the Windows artefacts on a tag: one MSI per architecture with its SHA-256.
+# Builds the Windows artefacts on a tag: one MSI per architecture, the bundle `.exe` that
+# carries both, and a SHA-256 next to each.
 # Everything is cross-built on the x64 runner — the app is x64 in both packages and only
 # the Go service and the bundled binaries differ (docs/design/08-windows.md, "Installer").
 name: Release (Windows)
@@ -47,15 +48,15 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ github.ref_name }}".TrimStart('v')
-          $missing = @('amd64', 'arm64') | Where-Object {
-            -not (Test-Path "build\release-windows\Wayfork-$version-$_.msi")
-          }
+          $expected = @("Wayfork-$version-amd64.msi", "Wayfork-$version-arm64.msi", "Wayfork-$version.exe")
+          $missing = $expected | Where-Object { -not (Test-Path "build\release-windows\$_") }
           if ($missing) { throw "the tag says $version but $($missing -join ', ') was not built" }
       - uses: actions/upload-artifact@v7.0.1
         with:
           name: wayfork-msi
           path: |
             build/release-windows/*.msi
+            build/release-windows/*.exe
             build/release-windows/*.sha256
           if-no-files-found: error
       - name: Attach to the release
@@ -63,4 +64,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" build/release-windows/*.msi build/release-windows/*.sha256 --clobber
+        run: |
+          gh release upload "$GITHUB_REF_NAME" \
+            build/release-windows/*.exe build/release-windows/*.msi \
+            build/release-windows/*.sha256 --clobber

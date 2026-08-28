@@ -254,6 +254,17 @@ Decided for WM4 (2026-08-28):
   `flutter build windows` has no `--target-platform`, so on ARM64 the app runs emulated
   (verified in the VM since WM3c) while everything privileged stays native. The MSI carries
   the matching `Platform`, so Windows refuses the wrong package by itself.
+- **One `.exe` on top of the two packages.** A WiX Burn bundle,
+  `WayforkWindows/installer/WayforkBundle.wxs` → `Wayfork-<version>.exe`, carries both MSIs
+  compressed and installs the one the machine needs (`NativeMachine` = `0x8664` → amd64,
+  `0xAA64` → arm64; anything else is refused with a message). It is what the release page
+  offers first — a download nobody has to pick an architecture for — while the MSIs stay
+  published for deployment tooling. The engine is built `-arch x86`: that is the one
+  architecture every supported Windows runs natively or emulates, and the engine only hands
+  the native MSI to the Windows Installer service. The MSIs are `Visible="no"` in the chain,
+  so Add/Remove Programs shows one "Wayfork" entry (the bundle). Signing a bundle needs the
+  detach/reattach dance around the engine, which `scripts/release-windows.ps1` does when a
+  certificate is given.
 - **The installer stays thin.** Everything that needs Windows plumbing is a subcommand of
   the service — `wayfork-service.exe --install-driver` (verify the package's Authenticode
   chain, then `pnputil /add-driver … /install`) and `--uninstall-cleanup` (delete the

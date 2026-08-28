@@ -430,6 +430,13 @@ there is a certificate — see [08-windows.md](design/08-windows.md) § Installe
       version, uploads the artefacts and attaches them to the release. A `workflow_dispatch`
       run on 2026-08-28 produced both packages on the x64 runner (`Wayfork-0.1.0-amd64.msi`
       31.6 MB, `-arm64.msi` 29.4 MB); the tag path itself is exercised by the first tag.)*
+- [x] One `.exe` installer over the two MSIs, so the download page asks nobody about
+      architectures.
+      *(WM4d 2026-08-28: `WayforkWindows/installer/WayforkBundle.wxs`, a WiX Burn bundle with
+      both packages embedded and `NativeMachine` picking one, built `-arch x86` so it starts
+      on every supported Windows; `scripts/release-windows.ps1` builds and (given a
+      certificate) signs it through detach/reattach, the release workflow attaches
+      `Wayfork-<version>.exe` + `.sha256` alongside the MSIs.)*
 - [x] README: Windows install, first run, SmartScreen note, troubleshooting, limitations;
       CHANGELOG entry.
       *(WM4c 2026-08-28: a Windows section under Install (which package, the SmartScreen

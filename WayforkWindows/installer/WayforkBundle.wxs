@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Wayfork bundle (docs/design/08-windows.md, "Installer"): one `.exe` that carries both
+  MSIs and installs the one matching the machine. Built by scripts/release-windows.ps1
+  after the two packages:
+
+    wix build WayforkBundle.wxs -arch x86 -ext WixToolset.BootstrapperApplications.wixext
+              -d Version=<x.y.z> -bindpath Msi=<output dir> -bindpath Icon=<tray assets>
+              -o Wayfork-<version>.exe
+
+  The icon is the tray glyph's light-theme variant (a dark mark, which is what reads on the
+  installer's chrome and in Add/Remove Programs); the Flutter runner's own `app_icon.ico`
+  is still the empty placeholder the scaffold left behind.
+
+  The engine is x86 on purpose: it is the one architecture every supported Windows runs
+  natively or emulates (an x64 engine would not start on Windows 10 ARM64), and it only
+  hands the native MSI to the Windows Installer service, which is native either way.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal">
+  <Bundle
+      Name="Wayfork"
+      Manufacturer="Wayfork"
+      Version="$(Version)"
+      UpgradeCode="4c1f8a92-6d5b-4e7a-9c31-8a0e2f4b6d75"
+      IconSourceFile="!(bindpath.Icon)\on.ico"
+      AboutUrl="https://github.com/fosteev/Wayfork"
+      Compressed="yes">
+
+    <!-- hyperlinkLicense with no LicenseUrl: one window, a Install button and no EULA
+         checkbox — the project ships no licence text to accept. -->
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication
+          Theme="hyperlinkLicense"
+          LicenseUrl=""
+          SuppressOptionsUI="yes" />
+    </BootstrapperApplication>
+
+    <!-- NativeMachine is the real processor even when the engine runs emulated:
+         0x8664 (34404) = x64, 0xAA64 (43620) = ARM64. -->
+    <bal:Condition
+        Condition="NativeMachine = 34404 OR NativeMachine = 43620"
+        Message="Wayfork needs 64-bit Windows 10 or newer, x64 or ARM64." />
+
+    <Chain>
+      <MsiPackage
+          Id="WayforkAmd64"
+          SourceFile="!(bindpath.Msi)\Wayfork-$(Version)-amd64.msi"
+          InstallCondition="NativeMachine = 34404"
+          Vital="yes"
+          Compressed="yes"
+          Visible="no" />
+      <MsiPackage
+          Id="WayforkArm64"
+          SourceFile="!(bindpath.Msi)\Wayfork-$(Version)-arm64.msi"
+          InstallCondition="NativeMachine = 43620"
+          Vital="yes"
+          Compressed="yes"
+          Visible="no" />
+    </Chain>
+  </Bundle>
+</Wix>

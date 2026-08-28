@@ -5,8 +5,8 @@ tunnels (OpenVPN `.ovpn`, VLESS `vless://`), write rules like "`*.example.com` �
 "Telegram → Home" or "`10.8.0.0/24` → Office", pick which tunnel takes everything else — or
 none. All tunnels stay up simultaneously; there is no switching.
 
-A Windows client with the same features lives in the same repository and ships as an MSI —
-see [Windows](#windows).
+A Windows client with the same features lives in the same repository and ships as an
+installer that covers both x64 and ARM64 — see [Windows](#windows).
 
 ![Popover](docs/screenshots/popover.png)
 
@@ -85,12 +85,14 @@ common reason for "routing engine failed to start".
 
 ### Windows
 
-Requires Windows 10 21H2 or Windows 11, x64 or ARM64. Pick the package that matches the
-machine — `$env:PROCESSOR_ARCHITECTURE` says `AMD64` or `ARM64`:
+Requires Windows 10 21H2 or Windows 11, x64 or ARM64.
 
-1. Download `Wayfork-<version>-amd64.msi` (or `-arm64.msi`) from the
-   [Releases](https://github.com/fosteev/Wayfork/releases) page. The `.sha256` next to it
-   matches `Get-FileHash Wayfork-<version>-<arch>.msi`.
+1. Download `Wayfork-<version>.exe` from the
+   [Releases](https://github.com/fosteev/Wayfork/releases) page — it carries both
+   architectures and installs the right one. The `.sha256` next to it matches
+   `Get-FileHash Wayfork-<version>.exe`. (Deploying with tooling that wants an MSI? Take
+   `Wayfork-<version>-amd64.msi` or `-arm64.msi` instead — `$env:PROCESSOR_ARCHITECTURE`
+   says which.)
 2. Run it. The 0.1 builds are **not signed** — there is no code-signing certificate yet —
    so SmartScreen says "Windows protected your PC": *More info* → *Run anyway*. The same
    warning appears the first time you start the app.
@@ -233,7 +235,7 @@ The Windows client is built on Windows with the toolchains pinned in
 scripts\fetch-win-bins.ps1 -Arch amd64   # pinned sing-box, OpenVPN and the ovpn-dco package
 cd WayforkWindows\app;     flutter test; dart analyze --fatal-infos
 cd WayforkWindows\service; go test ./...; go vet ./...
-scripts\release-windows.ps1              # both MSIs into build\release-windows\
+scripts\release-windows.ps1              # both MSIs and the bundle into build\release-windows\
 ```
 
 `WayforkWindows/app` is the Flutter app, `WayforkWindows/service` the Go service
@@ -266,11 +268,11 @@ the script, tag `v<version>` and attach the DMG and the checksum to the GitHub r
 
 On Windows, `scripts/release-windows.ps1` builds the app once (x64 — Flutter publishes no
 arm64 Windows toolchain), cross-builds the service for both architectures, stages the
-payload and produces `build/release-windows/Wayfork-<version>-<arch>.msi` with a
-`.sha256`. Pushing a `v<version>` tag runs the same script in CI and attaches both
-packages to the GitHub release. Artefacts are unsigned until there is an Authenticode
+payload and produces `build/release-windows/Wayfork-<version>-<arch>.msi` plus the bundle
+`Wayfork-<version>.exe` that carries both, each with a `.sha256`. Pushing a `v<version>`
+tag runs the same script in CI and attaches all of them to the GitHub release. Artefacts are unsigned until there is an Authenticode
 certificate; with one, `-CertificatePath` (and `-CertificatePassword`) signs Wayfork's own
-binaries and the MSIs with a timestamp, and the SmartScreen note in
+binaries, the MSIs and the bundle with a timestamp, and the SmartScreen note in
 [Windows](#windows) goes away.
 
 Until the project has an Apple Developer Program membership, releases are made with
