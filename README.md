@@ -71,6 +71,18 @@ registers normally; only the download check is missing. If you would rather not 
 a binary you cannot verify through Apple, build it yourself — a free Apple ID is enough,
 see [Development](#development).
 
+### First run
+
+Click the menu bar icon and flip the switch. Wayfork registers a small privileged helper;
+macOS asks you to approve it once in *System Settings › General › Login Items &
+Extensions* under *Allow in the Background*. There is no password prompt — the helper is
+what starts `sing-box` and `openvpn` for you. Once approved, Turn On brings every enabled
+tunnel and the routing engine up; Turn Off restores networking as it was.
+
+If another VPN client is running (especially one that also owns the default route or a
+system proxy), stop it first — two products fighting over the default route is the most
+common reason for "routing engine failed to start".
+
 ### Windows
 
 Requires Windows 10 21H2 or Windows 11, x64 or ARM64. Pick the package that matches the
@@ -95,18 +107,6 @@ installation: *Settings › Apps › Installed apps › Wayfork › Modify → R
 removes the service, the `Wayfork-N` adapters, the driver package Wayfork published (never
 one that belongs to an OpenVPN install), the DNS rule and `%ProgramData%\Wayfork\run`; the
 logs and your tunnels and rules under `%LOCALAPPDATA%\Wayfork` are kept.
-
-### First run
-
-Click the menu bar icon and flip the switch. Wayfork registers a small privileged helper;
-macOS asks you to approve it once in *System Settings › General › Login Items &
-Extensions* under *Allow in the Background*. There is no password prompt — the helper is
-what starts `sing-box` and `openvpn` for you. Once approved, Turn On brings every enabled
-tunnel and the routing engine up; Turn Off restores networking as it was.
-
-If another VPN client is running (especially one that also owns the default route or a
-system proxy), stop it first — two products fighting over the default route is the most
-common reason for "routing engine failed to start".
 
 ## Tunnels
 
