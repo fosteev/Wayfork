@@ -131,7 +131,11 @@ void main() {
         retentionDays: 7,
         now: now,
       );
-      expect(deleted.map((f) => f.path), [old.path]);
+      // Compare by name: `listSync` reports `\` on Windows, the test built
+      // the path with `/`.
+      expect(deleted.map((f) => f.uri.pathSegments.last), [
+        old.uri.pathSegments.last,
+      ]);
       expect(old.existsSync(), isFalse);
       expect(recent.existsSync(), isTrue);
       expect(current.existsSync(), isTrue);
