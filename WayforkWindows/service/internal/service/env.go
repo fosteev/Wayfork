@@ -44,6 +44,12 @@ func (e Environment) OpenVPNPath() string { return filepath.Join(e.BinDir(), exe
 // TapctlPath is the bundled tapctl.
 func (e Environment) TapctlPath() string { return filepath.Join(e.BinDir(), executable("tapctl")) }
 
+// DriverInfPath is the bundled ovpn-dco package the installer publishes with pnputil
+// (docs/design/08-windows.md, "Installer").
+func (e Environment) DriverInfPath() string {
+	return filepath.Join(e.InstallDir, "drivers", "ovpn-dco", core.DriverOriginalName)
+}
+
 func executable(name string) string {
 	if runtime.GOOS == "windows" {
 		return name + ".exe"

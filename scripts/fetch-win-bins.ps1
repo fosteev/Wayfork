@@ -2,14 +2,20 @@
 # package, and places them under WayforkWindows/ (git-ignored; packaged by the build).
 #
 # Usage: scripts\fetch-win-bins.ps1 [-Arch amd64] [-Clean] [-BuildDir <path>] [-ForceCabinet]
+#                                   [-Record]
 #
-#   -Arch amd64                 target architecture (default: amd64)
+#   -Arch amd64|arm64           target architecture (default: amd64)
 #   -BuildDir <path>            scratch directory (default: build\win-bins)
 #   WAYFORK_BUILD_DIR=<path>    overrides the default scratch directory
 #   -Clean                      wipe the scratch directory first
 #   -ForceCabinet               take the driver package from the MSI's embedded cabinet
 #                               even when the administrative image has it (tests the
 #                               fallback used when msiexec /a leaves the drivers out)
+#   -Record                     do not fail on a pin that is missing from versions.env:
+#                               compute it and print the KEY=hash lines at the end. How a
+#                               new architecture or a version bump gets its pins; the
+#                               downloads are then unverified, so read the lines before
+#                               pasting them in and re-run without -Record to prove them.
 #
 # Requirements: Windows PowerShell 5.1 or PowerShell 7, internet access, and the stock
 # Windows tools msiexec.exe, expand.exe, and the WindowsInstaller.Installer COM object.
@@ -19,7 +25,8 @@ param(
     [string]$Arch = 'amd64',
     [switch]$Clean,
     [string]$BuildDir,
-    [switch]$ForceCabinet
+    [switch]$ForceCabinet,
+    [switch]$Record
 )
 
 $ErrorActionPreference = 'Stop'
@@ -107,6 +114,47 @@ function Assert-Sha256 {
     }
 }
 
+# Recorded pins, printed at the end of a -Record run.
+$script:Recorded = [ordered]@{}
+
+function Get-PinnedValue {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Values,
+        [Parameter(Mandatory = $true)][string]$Key
+    )
+
+    if ($Values.ContainsKey($Key) -and -not [string]::IsNullOrWhiteSpace([string]$Values[$Key])) {
+        return [string]($Values[$Key])
+    }
+    if (-not $Record) {
+        Fail "missing required key $Key in scripts/versions.env"
+    }
+    return ''
+}
+
+# Confirm-Pin verifies a file against its pin, or records the pin when -Record is on and
+# versions.env does not have it yet.
+function Confirm-Pin {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Values,
+        [Parameter(Mandatory = $true)][string]$Key,
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+
+    if ($script:Recorded.Contains($Key)) {
+        # The pin was recorded from the source file; the copy must match it.
+        Assert-Sha256 $Path $script:Recorded[$Key]
+        return
+    }
+    $expected = Get-PinnedValue $Values $Key
+    if ([string]::IsNullOrWhiteSpace($expected)) {
+        $script:Recorded[$Key] = Get-Sha256 $Path
+        Log "Recorded $Key"
+        return
+    }
+    Assert-Sha256 $Path $expected
+}
+
 function Get-Download {
     param(
         [Parameter(Mandatory = $true)][string]$File,
@@ -114,9 +162,10 @@ function Get-Download {
         [Parameter(Mandatory = $true)][string]$Url
     )
 
+    $unpinned = [string]::IsNullOrWhiteSpace($Sha256)
     $path = Join-Path $script:DownloadsDir $File
     if (Test-Path -LiteralPath $path -PathType Leaf) {
-        if ((Get-Sha256 $path) -ieq $Sha256) {
+        if ($unpinned -or (Get-Sha256 $path) -ieq $Sha256) {
             return $path
         }
         Log "Cached checksum is invalid for $File; downloading it again"
@@ -127,7 +176,9 @@ function Get-Download {
     Log "Downloading $File"
     try {
         Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $temporaryPath
-        Assert-Sha256 $temporaryPath $Sha256
+        if (-not $unpinned) {
+            Assert-Sha256 $temporaryPath $Sha256
+        }
         Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
         Move-Item -LiteralPath $temporaryPath -Destination $path
     } catch {
@@ -361,11 +412,10 @@ function Get-DriverPackage {
     foreach ($name in $names) {
         $extension = ([IO.Path]::GetExtension($name)).TrimStart('.').ToUpperInvariant()
         $hashKey = "OVPN_DCO_WIN11_${ArchKey}_SHA256_$extension"
-        $expected = Get-RequiredValue $Versions $hashKey
-        Assert-Sha256 $sources[$name] $expected
+        Confirm-Pin $Versions $hashKey $sources[$name]
         $destination = Join-Path $OutputDir $name
         Copy-Item -LiteralPath $sources[$name] -Destination $destination -Force
-        Assert-Sha256 $destination $expected
+        Confirm-Pin $Versions $hashKey $destination
     }
 }
 
@@ -377,8 +427,8 @@ try {
     $Arch = $Arch.Trim().ToLowerInvariant()
     $archKey = $Arch.ToUpperInvariant()
     $architectureHashKey = "SING_BOX_SHA256_WINDOWS_$archKey"
-    if (-not $versions.ContainsKey($architectureHashKey)) {
-        Fail "no hashes pinned for $Arch in scripts/versions.env"
+    if (-not $Record -and -not $versions.ContainsKey($architectureHashKey)) {
+        Fail "no hashes pinned for $Arch in scripts/versions.env (run with -Record to add them)"
     }
 
     if ([string]::IsNullOrWhiteSpace($BuildDir)) {
@@ -409,8 +459,8 @@ try {
     $outputFiles = @()
 
     $singBoxVersion = Get-RequiredValue $versions 'SING_BOX_VERSION'
-    $singBoxArchiveHash = Get-RequiredValue $versions $architectureHashKey
-    $singBoxExeHash = Get-RequiredValue $versions "SING_BOX_WIN_${archKey}_SHA256_SING_BOX_EXE"
+    $singBoxArchiveHash = Get-PinnedValue $versions $architectureHashKey
+    $singBoxExeKey = "SING_BOX_WIN_${archKey}_SHA256_SING_BOX_EXE"
     $singBoxArchiveName = "sing-box-$singBoxVersion-windows-$Arch.zip"
     $singBoxUrl = "https://github.com/SagerNet/sing-box/releases/download/v$singBoxVersion/$singBoxArchiveName"
     $singBoxArchive = Get-Download $singBoxArchiveName $singBoxArchiveHash $singBoxUrl
@@ -418,19 +468,22 @@ try {
     Remove-Item -LiteralPath $singBoxExtractDir -Recurse -Force -ErrorAction SilentlyContinue
     Expand-Archive -LiteralPath $singBoxArchive -DestinationPath $singBoxExtractDir -Force
     $singBoxSource = Join-Path $singBoxExtractDir "$($singBoxArchiveName.Substring(0, $singBoxArchiveName.Length - 4))\sing-box.exe"
-    Assert-Sha256 $singBoxSource $singBoxExeHash
+    Confirm-Pin $versions $architectureHashKey $singBoxArchive
+    Confirm-Pin $versions $singBoxExeKey $singBoxSource
     $singBoxOutput = Join-Path $binOutputDir 'sing-box.exe'
     Copy-Item -LiteralPath $singBoxSource -Destination $singBoxOutput -Force
-    Assert-Sha256 $singBoxOutput $singBoxExeHash
+    Confirm-Pin $versions $singBoxExeKey $singBoxOutput
     $outputFiles += $singBoxOutput
     Log "sing-box $singBoxVersion -> $singBoxOutput"
 
     $openVpnVersion = Get-RequiredValue $versions 'OPENVPN_VERSION'
     $openVpnMsiBuild = Get-RequiredValue $versions 'OPENVPN_MSI_BUILD'
-    $openVpnMsiHash = Get-RequiredValue $versions "OPENVPN_MSI_SHA256_$archKey"
+    $openVpnMsiKey = "OPENVPN_MSI_SHA256_$archKey"
+    $openVpnMsiHash = Get-PinnedValue $versions $openVpnMsiKey
     $openVpnMsiName = "OpenVPN-$openVpnVersion-$openVpnMsiBuild-$Arch.msi"
     $openVpnMsiUrl = "https://swupdate.openvpn.org/community/releases/$openVpnMsiName"
     $openVpnMsi = Get-Download $openVpnMsiName $openVpnMsiHash $openVpnMsiUrl
+    Confirm-Pin $versions $openVpnMsiKey $openVpnMsi
     $adminImageDir = Join-Path $BuildDir "openvpn-msi-$Arch"
     $msiLogPath = Join-Path $BuildDir "openvpn-msi-$Arch.log"
     Expand-MsiAdminImage $openVpnMsi $adminImageDir $msiLogPath
@@ -453,17 +506,27 @@ try {
             Hash = [string]($versions[$key])
         }
     }
+    $openVpnSourceDir = Join-Path $adminImageDir 'OpenVPN\bin'
     if ($openVpnEntries.Count -eq 0) {
-        Fail "no hashes pinned for $Arch in scripts/versions.env"
+        if (-not $Record) {
+            Fail "no hashes pinned for $Arch in scripts/versions.env (run with -Record to add them)"
+        }
+        # What the app needs from the MSI: the two executables and the DLLs they import.
+        foreach ($file in (Get-ChildItem -LiteralPath $openVpnSourceDir -File |
+                Where-Object { $_.Name -imatch '^(openvpn|tapctl)\.exe$|\.dll$' })) {
+            $openVpnEntries += [pscustomobject]@{ FileName = $file.Name; Hash = '' }
+        }
     }
 
-    $openVpnSourceDir = Join-Path $adminImageDir 'OpenVPN\bin'
     foreach ($entry in ($openVpnEntries | Sort-Object FileName)) {
         $source = Join-Path $openVpnSourceDir $entry.FileName
-        Assert-Sha256 $source $entry.Hash
+        $entryKey = $openVpnHashPrefix +
+            ([IO.Path]::GetFileNameWithoutExtension($entry.FileName).Replace('-', '_') + '_' +
+             ([IO.Path]::GetExtension($entry.FileName)).TrimStart('.')).ToUpperInvariant()
+        Confirm-Pin $versions $entryKey $source
         $destination = Join-Path $binOutputDir $entry.FileName
         Copy-Item -LiteralPath $source -Destination $destination -Force
-        Assert-Sha256 $destination $entry.Hash
+        Confirm-Pin $versions $entryKey $destination
         $outputFiles += $destination
     }
     Log "OpenVPN $openVpnVersion -> $binOutputDir"
@@ -488,6 +551,12 @@ try {
         }
     }
     $summary | Format-Table -AutoSize | Out-Host
+    if ($script:Recorded.Count -gt 0) {
+        Log "Pins to paste into scripts/versions.env (then re-run without -Record)"
+        foreach ($pin in $script:Recorded.GetEnumerator()) {
+            Write-Host "$($pin.Key)=$($pin.Value)"
+        }
+    }
     Write-Host 'Done.'
 } catch {
     [Console]::Error.WriteLine("error: $($_.Exception.Message)")

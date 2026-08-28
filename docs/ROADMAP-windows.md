@@ -399,6 +399,13 @@ left. Deltas in
 
 ### WM4 — Installer and release
 
+Sub-steps agreed 2026-08-28: **WM4a** the payload both architectures need (arm64 pins,
+`--install-driver` / `--uninstall-cleanup` in the service) → **WM4b** WiX authoring +
+`scripts/release-windows.ps1` → **WM4c** the release workflow, README and CHANGELOG →
+install / upgrade / uninstall run in the VM. Decisions: two MSIs (x64 and arm64, the app
+x64 in both), a thin installer over service subcommands, and unsigned artefacts until
+there is a certificate — see [08-windows.md](design/08-windows.md) § Installer.
+
 - [ ] WiX authoring: files, `bin\`, service install/start/stop, driver install
       (`pnputil`) if the spike says so, upgrade (stop service → replace → start),
       uninstall (stop, restore DNS, delete adapters, remove `%ProgramData%\Wayfork\run`,

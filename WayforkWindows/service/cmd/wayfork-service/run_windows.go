@@ -35,10 +35,16 @@ func run(args []string) error {
 	if inService {
 		return svc.Run(ServiceName, &handler{})
 	}
-	if len(args) == 2 && args[0] == "--dev-apply" {
+	switch {
+	case len(args) == 2 && args[0] == "--dev-apply":
 		return devApply(args[1])
+	case len(args) == 1 && args[0] == "--install-driver":
+		return installDriver()
+	case len(args) == 1 && args[0] == "--uninstall-cleanup":
+		return uninstallCleanup()
 	}
-	return errors.New("usage: wayfork-service --dev-apply <plan.json> (otherwise runs as the Wayfork service)")
+	return errors.New("usage: wayfork-service [--dev-apply <plan.json> | --install-driver | " +
+		"--uninstall-cleanup] (without arguments it runs as the Wayfork service)")
 }
 
 // runtime is everything the service host wires together.
@@ -51,20 +57,31 @@ type runtime struct {
 	listener   *ipc.PipeListener
 }
 
-func buildRuntime(devMode bool, mirror func(core.LogLine)) (*runtime, error) {
+// installerEnvironment is the path half of the environment: where the payload sits and
+// where the service keeps its runtime files. The installer subcommands need nothing else.
+func installerEnvironment() (service.Environment, error) {
 	executable, err := os.Executable()
 	if err != nil {
-		return nil, err
+		return service.Environment{}, err
 	}
 	executable, _ = filepath.EvalSymlinks(executable)
 	programData := os.Getenv("ProgramData")
 	if programData == "" {
 		programData = `C:\ProgramData`
 	}
-	env := service.Environment{
-		ExecutablePath: executable, InstallDir: filepath.Dir(executable), Version: service.Version,
-		BuildID: buildID(executable), Layout: core.DefaultLayout(programData), DevMode: devMode,
+	return service.Environment{
+		ExecutablePath: executable, InstallDir: filepath.Dir(executable),
+		Version: service.Version, Layout: core.DefaultLayout(programData),
+	}, nil
+}
+
+func buildRuntime(devMode bool, mirror func(core.LogLine)) (*runtime, error) {
+	env, err := installerEnvironment()
+	if err != nil {
+		return nil, err
 	}
+	env.BuildID = buildID(env.ExecutablePath)
+	env.DevMode = devMode
 	if err := env.PrepareDirectories(); err != nil {
 		return nil, fmt.Errorf("preparing %s: %w", env.Layout.Dir, err)
 	}

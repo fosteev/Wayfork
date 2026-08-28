@@ -39,7 +39,7 @@ func TestRunLayout(t *testing.T) {
 			t.Errorf("%s must be transient", name)
 		}
 	}
-	for _, name := range []string{CacheFile, ResolverOverrideRecordFile} {
+	for _, name := range []string{CacheFile, ResolverOverrideRecordFile, DriverRecordFile} {
 		if IsTransient(name) {
 			t.Errorf("%s must survive stop", name)
 		}

@@ -47,7 +47,7 @@ func IPRuleSet(id string) string { return "rules-t-" + id + "-ip.json" }
 
 // IsTransient reports whether a runtime file is wiped during cleanup.
 func IsTransient(name string) bool {
-	return name != CacheFile && name != ResolverOverrideRecordFile
+	return name != CacheFile && name != ResolverOverrideRecordFile && name != DriverRecordFile
 }
 
 // IsRuleSet reports whether name has the per-tunnel rule-set file shape.

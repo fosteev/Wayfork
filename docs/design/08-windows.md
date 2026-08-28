@@ -239,6 +239,54 @@ WiX (MSI). Contents: `%ProgramFiles%\Wayfork\` payload, the service registered v
   reboot (spike gotcha) — so the installer never re-publishes the driver on a normal upgrade,
   only on a version bump, and the version bump path schedules a reboot.
 
+Decided for WM4 (2026-08-28):
+
+- **Two packages, `Wayfork-<version>-x64.msi` and `Wayfork-<version>-arm64.msi`.** The
+  service, sing-box, openvpn/tapctl and the `ovpn-dco` package are native in each — a
+  kernel driver and wintun's embedded one must match the OS, emulation does not help. The
+  Flutter app is **x64 in both**: Flutter publishes no arm64 Windows archive and
+  `flutter build windows` has no `--target-platform`, so on ARM64 the app runs emulated
+  (verified in the VM since WM3c) while everything privileged stays native. The MSI carries
+  the matching `Platform`, so Windows refuses the wrong package by itself.
+- **The installer stays thin.** Everything that needs Windows plumbing is a subcommand of
+  the service — `wayfork-service.exe --install-driver` (verify the package's Authenticode
+  chain, then `pnputil /add-driver … /install`) and `--uninstall-cleanup` (delete the
+  `Wayfork-N` adapters, then the published driver, then the NRPT rule and any resolver
+  override) — invoked from two deferred custom actions. The logic is Go with tests instead
+  of custom-action C++ or PowerShell inside the MSI, and the parsers are locale-agnostic:
+  `pnputil` labels are localised, so a driver record is matched by its *values*
+  (`ovpn-dco.inf`, `oemNN.inf`), never by the label text.
+WM4a landed the payload both packages need:
+
+- **arm64 pins.** `scripts/versions.env` now carries the arm64 twins of every Windows
+  pin — the sing-box archive and its `sing-box.exe`, the OpenVPN MSI and the six files
+  taken out of it (the OpenSSL DLLs are `libcrypto-3-arm64.dll` / `libssl-3-arm64.dll`
+  there), and the `ovpn-dco` package. `scripts/fetch-win-bins.ps1` gained **`-Record`**:
+  a pin that versions.env does not have yet is computed and printed as `KEY=hash` instead
+  of failing the run, and in that mode the download itself is unverified — which is how a
+  new architecture or a version bump gets its pins, always followed by a plain run that
+  proves them. Both architectures were fetched and verified in the VM on 2026-08-28; the
+  arm64 archive and MSI hashes match what the spike recorded in S0. The record pass also
+  offered `libopenvpn_plap.dll` and `openvpnservmsg.dll` (the credential provider and the
+  OpenVPN service's message table); neither is pinned, so the payload stays the same seven
+  files on both architectures.
+- **`--install-driver` / `--uninstall-cleanup`.** Install verifies every `*.cat` in
+  `drivers\ovpn-dco\` with `WinVerifyTrust`, publishes the package with
+  `pnputil /add-driver … /install` (exit 3010 counts as success) and then diffs the driver
+  store: only a package that *appeared* is recorded in `run\driver.json`, which survives
+  the runtime cleanup like the cache and the resolver record. Uninstall deletes the
+  `Wayfork-N` adapters, then the recorded package, then the NRPT rule and its record — and
+  always exits 0, because an uninstall that stops halfway is worse than a stray adapter.
+  Without a record nothing in the driver store is touched: on a machine that already had
+  OpenVPN, the `ovpn-dco` package belongs to it.
+
+- **Unsigned for now.** There is no Authenticode certificate yet, so
+  `scripts/release-windows.ps1` signs only when one is handed to it and otherwise produces
+  unsigned binaries and MSIs; the README carries the SmartScreen note. Consequence to keep
+  in mind: the service's `WinVerifyTrust` check on the pipe client then has nothing to pin
+  to, and the client is accepted on the `%ProgramFiles%\Wayfork` path check alone
+  (publisher pinning is still owed with the signing setup).
+
 ## Repository layout (WM0)
 
 `WayforkWindows/app` (Flutter, `fluent_ui`, `lib/core` mirrors WayforkCore file by file),
