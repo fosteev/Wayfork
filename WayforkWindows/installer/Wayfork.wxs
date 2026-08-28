@@ -78,8 +78,11 @@
           ErrorControl="normal"
           Account="LocalSystem"
           Vital="yes">
-        <!-- Delayed start: nothing routes until the user turns Wayfork on anyway. -->
-        <ServiceConfig DelayedAutoStart="yes" OnInstall="yes" OnReinstall="yes" />
+        <!-- Plain auto-start, not delayed: the service idles until the app sends a plan,
+             but the app starts at login and wants the pipe right then. Delayed-auto put
+             it ~2 minutes behind the app after every boot, which the app could only
+             report as "the service is not running" (measured on the ARM64 VM). -->
+        <ServiceConfig DelayedAutoStart="no" OnInstall="yes" OnReinstall="yes" />
       </ServiceInstall>
       <ServiceControl
           Id="WayforkServiceControl"

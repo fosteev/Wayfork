@@ -192,6 +192,38 @@ void main() {
     });
 
     test(
+      'a pipe missing right after launch reads as starting, not broken',
+      () async {
+        h = Harness(serviceStartupGrace: const Duration(minutes: 3));
+        h.service.available = false;
+        await h.start();
+        expect(h.model.serviceIssue?.kind, ServiceIssueKind.starting);
+        expect(h.model.serviceIssue?.needsRepair, isFalse);
+        expect(
+          h.model.serviceIssue?.hint,
+          contains('Waiting for the Wayfork service'),
+        );
+
+        // The service comes up late, as an auto-start service does at boot.
+        h.service.available = true;
+        h.client.retryNow();
+        await h.settle();
+        expect(h.model.serviceIssue, isNull);
+      },
+    );
+
+    test('the same connection problem is logged once, not per retry', () async {
+      h = Harness();
+      h.service.available = false;
+      await h.start();
+      await h.settle(const Duration(milliseconds: 200));
+      expect(
+        h.appLog.where((line) => line.contains(r'\\.\pipe\wayfork')).length,
+        1,
+      );
+    });
+
+    test(
       'turn on fails with a repair hint when the service is missing',
       () async {
         h = Harness();

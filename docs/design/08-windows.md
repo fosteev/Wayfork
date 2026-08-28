@@ -17,8 +17,8 @@ reconcile logic, unit-tested) under a thin `svc` host, and a Dart `core` layer u
 UI; the plan and status types are the shared contract ([ROADMAP-windows.md](../ROADMAP-windows.md) WM0).
 
 - The service runs as `LocalSystem` (needs to create adapters, write routes and NRPT).
-  It starts at boot **idle** (`SERVICE_AUTO_START`, or delayed-auto) and does nothing until
-  the app connects and sends a plan.
+  It starts at boot **idle** (`SERVICE_AUTO_START`, not delayed — see "Installer") and does
+  nothing until the app connects and sends a plan.
 - Children (`sing-box.exe`, `openvpn.exe`) are spawned by the service **detached** and
   placed in a **job object** with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` so they die with the
   service no matter how it exits (S8; the Windows replacement for pid files). Detached start
@@ -220,7 +220,7 @@ de-duplicates. Diagnostics zip adds Windows-only items: `Get-NetRoute`/`Get-NetA
 ## Installer
 
 WiX (MSI). Contents: `%ProgramFiles%\Wayfork\` payload, the service registered via a WiX
-`ServiceInstall`/`ServiceControl` (start delayed-auto), the app + Start-menu shortcut, and the
+`ServiceInstall`/`ServiceControl` (start auto), the app + Start-menu shortcut, and the
 **bundled `ovpn-dco` driver**.
 
 - **Driver install without the OpenVPN MSI.** `msiexec /a` of the OpenVPN MSI yields **no**
@@ -241,6 +241,14 @@ WiX (MSI). Contents: `%ProgramFiles%\Wayfork\` payload, the service registered v
   `Wayfork` service; it keeps user data under `%LOCALAPPDATA%`.
 - **Upgrade** stops the service (`ServiceControl` stop) so the binaries are unlocked, replaces
   the payload, and restarts it; the driver is re-published only if the pinned version changed.
+- **Auto-start, not delayed (2026-08-28).** Delayed-auto looked free — nothing routes until
+  the user turns Wayfork on — but the app starts at login and wants the pipe right then. On
+  the ARM64 VM the app was up 33 s after boot and the service only at 2 min 10 s, so for
+  ~100 s the app could say nothing but "the Wayfork service is not running — repair the
+  installation" and filled its log with `\\.\pipe\wayfork does not exist` every 5 s. The
+  service now starts with the rest of boot, and the app treats a missing pipe in its first
+  `serviceStartupGrace` (45 s) as "the service is starting", logging one line per problem
+  rather than one per retry.
 - After a `pnputil` driver re-install OpenVPN reports `ovpn-dco-win driver is missing` until a
   reboot (spike gotcha) — so the installer never re-publishes the driver on a normal upgrade,
   only on a version bump, and the version bump path schedules a reboot.

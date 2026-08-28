@@ -140,6 +140,11 @@ final class AppAlert {
 }
 
 enum ServiceIssueKind {
+  /// The pipe does not exist yet, but the app has only just started: the
+  /// service comes up on its own schedule at boot, so this is "wait", not
+  /// "repair" (docs/design/08-windows.md, "Installer").
+  starting,
+
   /// The pipe does not exist: the service is not installed or not running.
   missing,
 
@@ -160,16 +165,30 @@ final class ServiceIssue {
   final String message;
 
   /// `missing` and `versionMismatch` are fixed by the installer's repair; a
-  /// lost connection fixes itself.
-  bool get needsRepair => kind != ServiceIssueKind.disconnected;
+  /// lost connection and a service still coming up fix themselves.
+  bool get needsRepair =>
+      kind == ServiceIssueKind.missing ||
+      kind == ServiceIssueKind.versionMismatch;
 
-  String get hint => needsRepair
-      ? 'Repair the installation'
-      : 'Reconnecting to the Wayfork service…';
+  String get hint => switch (kind) {
+    ServiceIssueKind.missing ||
+    ServiceIssueKind.versionMismatch => 'Repair the installation',
+    ServiceIssueKind.starting => 'Waiting for the Wayfork service…',
+    ServiceIssueKind.disconnected => 'Reconnecting to the Wayfork service…',
+  };
 
+  /// [startingUp] is the app's own grace period: the service is auto-start, so
+  /// right after a boot the app can be up first and the pipe simply is not
+  /// there yet. Until the period is over that reads as "starting", not as a
+  /// broken installation.
   static ServiceIssue? fromState(
-    ServiceClientState state,
-  ) => switch (state.phase) {
+    ServiceClientState state, {
+    bool startingUp = false,
+  }) => switch (state.phase) {
+    ServiceClientPhase.serviceMissing when startingUp => const ServiceIssue(
+      ServiceIssueKind.starting,
+      message: 'The Wayfork service is starting',
+    ),
     ServiceClientPhase.serviceMissing => ServiceIssue(
       ServiceIssueKind.missing,
       message: 'The Wayfork service is not running',

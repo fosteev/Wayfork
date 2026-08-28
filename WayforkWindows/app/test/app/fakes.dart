@@ -108,6 +108,10 @@ final class Harness {
     this._seedSecrets = true,
     Duration trafficStaleAfter = const Duration(milliseconds: 60),
 
+    /// Zero by default so a test that makes the service unavailable sees the
+    /// steady "not running" state; the grace period has its own tests.
+    Duration serviceStartupGrace = Duration.zero,
+
     /// Where the log centre writes its files; null keeps it in memory.
     Directory? logDirectory,
   }) : sample = SampleStore(),
@@ -144,6 +148,7 @@ final class Harness {
       trafficStaleAfter: trafficStaleAfter,
       pulseInterval: const Duration(hours: 1),
       connectTimeout: const Duration(seconds: 2),
+      serviceStartupGrace: serviceStartupGrace,
     );
   }
 

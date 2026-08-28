@@ -70,11 +70,13 @@ final class AppModel extends ChangeNotifier {
     this.trafficStaleAfter = TrafficFormat.staleAfter,
     this.pulseInterval = const Duration(milliseconds: 600),
     this.connectTimeout = const Duration(seconds: 10),
+    this.serviceStartupGrace = const Duration(seconds: 45),
     this._now = DateTime.now,
   }) : _client = client,
        _launchAtLogin = launchAtLogin ?? InMemoryLaunchAtLogin(),
        _installDirFallback =
            installDir ?? File(Platform.resolvedExecutable).parent.path {
+    _startedAt = _now();
     _serviceState = client.state;
     _subscriptions.addAll([
       client.states.listen(_onClientState),
@@ -100,6 +102,10 @@ final class AppModel extends ChangeNotifier {
 
   /// How long Turn On waits for the service connection.
   final Duration connectTimeout;
+
+  /// How long after launch a missing pipe is reported as "the service is
+  /// starting" instead of a broken installation.
+  final Duration serviceStartupGrace;
 
   /// Which name got which fake IP, from sing-box's log (`FakeIP`,
   /// docs/design/02-ux.md).
@@ -127,6 +133,9 @@ final class AppModel extends ChangeNotifier {
   ServiceClientState _serviceState = const ServiceClientState(
     ServiceClientPhase.disconnected,
   );
+  late final DateTime _startedAt;
+  bool _everConnected = false;
+  String? _lastServiceProblem;
   DaemonInfo? _serviceInfo;
   TrafficSnapshot? _traffic;
   Set<String> _missingSecrets = const {};
@@ -196,7 +205,14 @@ final class AppModel extends ChangeNotifier {
     now: _now(),
   );
 
-  ServiceIssue? get serviceIssue => ServiceIssue.fromState(_serviceState);
+  ServiceIssue? get serviceIssue =>
+      ServiceIssue.fromState(_serviceState, startingUp: _startingUp);
+
+  /// True while a missing pipe still reads as "the service is coming up": the
+  /// app has never reached it and it launched only moments ago — at login the
+  /// app regularly wins the race against an auto-start service.
+  bool get _startingUp =>
+      !_everConnected && _now().difference(_startedAt) < serviceStartupGrace;
 
   /// The summary line of the tray flyout: the service problem when there is
   /// one that matters, else the routing summary.
@@ -619,6 +635,8 @@ final class AppModel extends ChangeNotifier {
     _serviceState = state;
     switch (state.phase) {
       case ServiceClientPhase.connected:
+        _everConnected = true;
+        _lastServiceProblem = null;
         _attachAsync();
       case ServiceClientPhase.connecting:
         break;
@@ -626,12 +644,11 @@ final class AppModel extends ChangeNotifier {
       case ServiceClientPhase.versionMismatch:
       case ServiceClientPhase.disconnected:
         if (wasAttached && !_shuttingDown) {
-          logs.app(
-            LogLevel.warning,
+          _logServiceProblem(
             'service connection lost: ${state.message ?? state.phase.name}',
           );
         } else if (state.phase != ServiceClientPhase.disconnected) {
-          logs.app(LogLevel.warning, state.message ?? state.phase.name);
+          _logServiceProblem(state.message ?? state.phase.name);
         }
         _serviceInfo = null;
         _status = null;
@@ -639,6 +656,16 @@ final class AppModel extends ChangeNotifier {
         _settleFirst();
     }
     notifyListeners();
+  }
+
+  /// The client re-dials every few seconds, so the same "pipe is not there"
+  /// would fill the log while the service is still coming up. One line per
+  /// problem is enough; the next different one, or the reconnect, starts a new
+  /// streak.
+  void _logServiceProblem(String message) {
+    if (message == _lastServiceProblem) return;
+    _lastServiceProblem = message;
+    logs.app(LogLevel.warning, message);
   }
 
   void _attachAsync() {
