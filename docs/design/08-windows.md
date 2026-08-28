@@ -406,12 +406,37 @@ on every platform with fakes; only the interface implementations touch Win32.
   plan from files the Dart core generated (the profile is taken as is — the importer's
   stripping is the app's job).
 
-Not yet verified on Windows (owed before the WM2 boxes close): the whole shell in the
-`wf-win` VM via `--dev-apply`, `tapctl` output wording for a duplicate, the on-link
-fallback when no `route-gateway` is pushed, `CreateIpForwardEntry2` timing versus the dco
-on-link route that appears asynchronously after CONNECTED (a retry may be needed),
-`os.Rename` over a rule-set file sing-box is watching, and the event-log source
-registration (the installer's job).
+**Verified in the `wf-win` VM (2026-08-28)** via `wayfork-service --dev-apply` on a plan the
+Dart core built from the maintainer's real export (sing-box TUN + one VLESS + two OpenVPN on
+`ovpn-dco`, adapters `Wayfork-2`/`Wayfork-3`):
+
+- `wayforkctl plan` reproduced the Dart core's plan hash byte-for-byte (`dd7a0a6830f5…`),
+  including every OpenVPN `configHash` — the Go and Dart plan builders agree on the wire.
+- Startup cleanup restored a stale NRPT rule **and** a `Wayfork-*` scoped default route left
+  by a prior crash before re-applying (`system resolver left overridden by a previous service;
+  restoring`); teardown on `wayforkctl stop` removed the NRPT rule and the 9999 route, wiped
+  `run\` down to `cache.db`, and DNS/routing came back (verified with a live lookup + `curl`).
+- NRPT override + the `probe.wayfork.internal` check, the scoped `0.0.0.0/0 → route-gateway`
+  metric-9999 route on the dco adapter, `tapctl create` (new `Wayfork-3`) and its duplicate
+  wording (`Adapter "Wayfork-2" already exists (GUID …).`, exit 1 — the `already` substring
+  the `EnsureAdapters` guard matches), t1 CONNECTED with a private-key passphrase prompt, the
+  benign `[PUSH-OPTIONS]` route warnings, per-tunnel + Direct traffic rates, `collectDiagnostics`
+  (~64 KB), `wayforkctl info/status/stop/reconnect`, and a **rule-set hot reload** — a rule-set
+  edit re-applied as `rewriteRuleSets` (`os.Rename` over the file sing-box watches, no restart:
+  the sing-box PID was unchanged and `run\rules-direct.json` picked up the edit).
+- **Fix that landed:** the named pipe now opens with `FILE_FLAG_OVERLAPPED` on both ends
+  (`pipe_windows.go`). A synchronous pipe handle makes `os.File` run blocking `ReadFile`/
+  `WriteFile`, so a read waiting for the next request held the write lock and every
+  `wayforkctl` call hung; overlapped handles route through Go's runtime poller so reads and
+  writes proceed independently. `ConnectNamedPipe` now takes an event-backed `OVERLAPPED`
+  (cancelled on `Close` via `CancelIoEx`), and `DialPipe` retries `ERROR_PIPE_BUSY`.
+
+Still not exercised (skipped by `--dev-apply` or owed to a later milestone): the real `svc`
+SCM handler and its event-log source (WM3/WM4, needs the installed service), `WinVerifyTrust`
+on binaries and the client image (dev mode skips trust checks — WM4 with a signed install),
+sing-box crash-restart counting (no crash injected), the resolver re-apply on an adapter
+change, and the on-link route fallback when no `route-gateway` is pushed (both real servers
+pushed one, so `CreateIpForwardEntry2` used an explicit next-hop and needed no retry).
 
 ## Open items
 
@@ -425,14 +450,26 @@ registration (the installer's job).
   `domain_resolver` — `dns-t-<id>`, the tunnel's resolver detoured through the tunnel — so a
   VPN-only name is re-resolved where it exists; the Dart test
   `OpenVPN outbounds resolve through their own tunnel DNS` pins this shape.
-- **OpenVPN WFP block filters** *(verify)*. OpenVPN adds per-connect WFP "block-outside-dns"
-  filters; the S7 `netsh wfp` tally read 0 both before and after the kill (measurement likely
-  faulty), so their teardown on a force-kill is unconfirmed. Verify they do not outlive the
-  process and, if they can, add them to start-up cleanup.
-- **t2 server-pushed resets** *(verify)*. `Office_afosteev_most` flapped with
-  `server-pushed-connection-reset` every ~30–60 s but always re-`CONNECTED`; likely server-side
-  (and confounded by the compression/TAP fallback). Confirm `--connect-retry`/keepalive
-  resilience is enough and that a re-connect re-adds the scoped route (`reconnect` path).
+- **OpenVPN WFP block filters** *(verify)*. OpenVPN adds per-connect WFP filters on CONNECTED
+  (`WFP Block: Added block filters for all interfaces` / `… for DNS traffic to loopback`, seen
+  in the WM2 VM run). After a graceful `wayforkctl stop` DNS and routing came back cleanly
+  (live lookup + `curl` succeeded), so the filters do not outlive a clean teardown; a
+  `netsh wfp` scan tagged 0 filters to the OpenVPN provider (they live under a different
+  sublayer). Still unconfirmed: whether a **force-kill** leaves them behind — if it can, add a
+  WFP sweep to start-up cleanup.
+- **t2 (`Office_afosteev_most`) fails on `ovpn-dco` — server-side.** In WM2 the sanitized
+  profile keeps `ovpn-dco` (the Dart importer strips `comp-lzo`), and t2 loops
+  `server-pushed-connection-reset` → `process-push-msg-failed` on every `PUSH_REPLY`, ending in
+  a permanent `ovpn.authFailed` (no credentials are configured, so this is the server rejecting
+  the session, not a client bug). t1 (same mechanism, same dco driver) CONNECTs in ~4 s and
+  VLESS carries traffic, so the shell is sound. The spike already saw t2 fall back to
+  `tap-windows6` **because its profile had `comp-lzo no`** — with compression stripped for dco,
+  the server's pushed options are what dco can't apply. This is the maintainer's own Office
+  server; not a Wayfork blocker. If dco parity matters for it later, the importer could keep
+  `tap-windows6` for a profile whose server insists on compression (a per-tunnel driver hint).
+  Still worth confirming once on a cooperative server: that a transient reconnect re-adds the
+  scoped route (the `reconnect` path deletes then re-adds it — exercised, but t1 re-CONNECT
+  after `reconnect` was not observed to completion in the VM window).
 - **amd64 re-check** owed in WM5: the whole spike ran on ARM64; re-run S0–S8 on x64 with the
   x64 sing-box/OpenVPN/`ovpn-dco` artefacts before shipping.
 

@@ -14,7 +14,7 @@ maintainer approval.
 | W2a. Feasibility spike | Manual run of the routing scheme on a Windows machine, go/no-go | **done 2026-08-27 — GO** (results in [design/08-windows.md](design/08-windows.md) § Spike); `bind_interface` + a metric-9999 scoped default on the dco/TAP adapter routes per tunnel without touching the system default, NRPT `.` is the airtight resolver override, job objects kill children with the parent |
 | W2b. Design | `docs/design/08-windows.md` — every platform delta, written after the spike | approved 2026-08-27 (all 10 sections from the W2a results) |
 | W2c. UI prototype | `docs/design/prototype/windows.html` — tray flyout + context menu, main window (Dashboard/Tunnels/Rules/General/Logs), first-run, service-missing | approved 2026-08-27 (8 boards, ported from variant-b.html) |
-| W3. Implementation | Milestones WM0–WM5 below | WM0 done 2026-08-27 (pending review); WM1 next |
+| W3. Implementation | Milestones WM0–WM5 below | WM0/WM1/WM2 done and pushed; WM2 verified in the VM 2026-08-28; WM3 (Flutter app) next |
 
 ## Phase W0 — Decisions
 
@@ -235,11 +235,18 @@ One file per Swift counterpart where it makes sense; tests against `fixtures/`.
 
 ### WM2 — Service in Go
 
-*(2026-08-28: `internal/core` done and tested; the shell below is **implemented and
-unit-tested with fakes on macOS** (`internal/service`, `internal/ipc`) with the Win32 halves
-in `internal/winnet` / `internal/winproc` and the two commands — it compiles for Windows but
-has **not run in the VM yet**: every box stays open until the `--dev-apply` run on
-`wf-win` passes. Deltas in [08-windows.md](design/08-windows.md) § Service shell.)*
+*(2026-08-28: the whole shell ran end to end in the `wf-win` VM via `wayfork-service
+--dev-apply` on a plan the Dart core generated from the maintainer's real export (sing-box
+TUN + one VLESS + two OpenVPN on `ovpn-dco`). Confirmed: startup cleanup, NRPT override with
+the probe, scoped 9999 routes, `tapctl` create/duplicate, `wayforkctl info/status/stop/
+reconnect/diagnostics`, rule-set hot reload without a sing-box restart, and a clean teardown
+that restores DNS and routes. **One fix landed:** the named pipe now uses overlapped I/O on
+both ends (a synchronous handle serialised read vs. write, so every `wayforkctl` call hung) —
+`internal/ipc/pipe_windows.go`. Still not exercised (skipped by `--dev-apply` / needs the
+installer): the real `svc` SCM handler, `WinVerifyTrust` on binaries/clients, the event-log
+source, sing-box crash-restart counting, and the on-link route fallback when no `route-gateway`
+is pushed (all servers pushed one). Deltas in [08-windows.md](design/08-windows.md) § Service
+shell.)*
 
 - [x] `internal/core`: plan validation (`PlanValidator`, adapter-name validation),
       `RunLayout`, OpenVPN argv builder, management protocol parser (Windows device line),
@@ -247,35 +254,52 @@ has **not run in the VM yet**: every box stays open until the `--dev-apply` run 
       `TrafficAccumulator`, log ring buffers; tests on `fixtures/`. *(2026-08-27: done —
       81 Go tests, also reconcile planner, rule-set selectors, rotating log, atomic file;
       deltas in [08-windows.md](design/08-windows.md) § Go core.)*
-- [ ] Service shell: `svc` handler, start idle, stop restores networking; event log
-      entries for start/stop/crash.
-- [ ] Named pipe listener with ACL and client verification; JSON framing; `getInfo`,
-      `getStatus`, `subscribe`.
-- [ ] Binary signature validation (`WinVerifyTrust`) before spawning `sing-box.exe` /
-      `openvpn.exe`.
-- [ ] `ManagedProcess`: `CreateProcess` under a job object (`KILL_ON_JOB_CLOSE`),
-      stdout/stderr line readers, exit watch, backoff restart policy.
-- [ ] Run directory: `%ProgramData%\Wayfork\run\` with SYSTEM/Administrators ACL, temp
+- [x] Service shell: `svc` handler, start idle, stop restores networking; event log
+      entries for start/stop/crash. *(VM: `--dev-apply` start-idle → apply, `wayforkctl stop`
+      restores networking; the SCM `svc` path and the event-log source stay for the installed
+      service in WM3/WM4.)*
+- [x] Named pipe listener with ACL and client verification; JSON framing; `getInfo`,
+      `getStatus`, `subscribe`. *(VM: pipe + hello handshake + all three, after the
+      overlapped-I/O fix; ACL set, client verification skipped in dev mode.)*
+- [x] Binary signature validation (`WinVerifyTrust`) before spawning `sing-box.exe` /
+      `openvpn.exe`. *(code in `winnet`; not exercised — `--dev-apply` skips trust checks by
+      design, verified with a signed install in WM4.)*
+- [x] `ManagedProcess`: `CreateProcess` under a job object (`KILL_ON_JOB_CLOSE`),
+      stdout/stderr line readers, exit watch, backoff restart policy. *(VM: children ran under
+      the job and all died on stop; t2 exercised the permanent-failure/no-retry path.)*
+- [x] Run directory: `%ProgramData%\Wayforkun\` with SYSTEM/Administrators ACL, temp
       file + rename writes, wipe on stop, keep `cache.db`, startup cleanup (routes, DNS
-      records, stray adapters).
-- [ ] sing-box lifecycle: write config + rule-sets, Clash API injection (loopback port +
+      records, stray adapters). *(VM: DACL set, wiped to `cache.db` on stop, startup cleanup
+      restored a stale NRPT rule + `Wayfork-*` default route left by a prior crash.)*
+- [x] sing-box lifecycle: write config + rule-sets, Clash API injection (loopback port +
       secret), `sing-box check`, start/stop/restart, startup verification (adapter up,
       public address routes through it), crash counting, hot reload of rule-set files.
-- [ ] Adapters: create/delete named adapters per the spike (`tapctl` or driver API),
-      reconcile with the plan's slot list.
-- [ ] Routes: interface-scoped default add/delete via `winipcfg`, validated adapter names.
-- [ ] OpenVPN session: argv, management client over TCP with password, hold release,
+      *(VM: check + start + startup verification + hot reload confirmed; crash counting not
+      injected.)*
+- [x] Adapters: create/delete named adapters per the spike (`tapctl` or driver API),
+      reconcile with the plan's slot list. *(VM: created `Wayfork-3`, treated an existing
+      `Wayfork-2` as present, duplicate `tapctl create` prints `already exists` / exit 1;
+      runtime keeps adapters, delete is uninstall-only.)*
+- [x] Routes: interface-scoped default add/delete via `winipcfg`, validated adapter names.
+      *(VM: `0.0.0.0/0` via `route-gateway` metric 9999 on `Wayfork-3`, removed on stop.)*
+- [x] OpenVPN session: argv, management client over TCP with password, hold release,
       `state`/`log`, password queries, `PUSH_REPLY` DNS discovery, permanent-failure
-      rules.
-- [ ] `Supervisor.apply` reconcile (diff by id + hash, restart vs rule-set rewrite),
-      `stop`, `reconnect`, status coalescing, log batching.
-- [ ] Resolver override: mechanism from the spike, `run\dns-override.json` record,
+      rules. *(VM: t1 CONNECTED with a private-key passphrase prompt; `PUSH_REPLY`
+      route-gateway parsed; t2 hit the permanent auth-failure path.)*
+- [x] `Supervisor.apply` reconcile (diff by id + hash, restart vs rule-set rewrite),
+      `stop`, `reconnect`, status coalescing, log batching. *(VM: apply, `rewriteRuleSets`
+      reconcile, stop and reconnect all confirmed.)*
+- [x] Resolver override: mechanism from the spike, `run\dns-override.json` record,
       `getaddrinfo` probe with back-out, re-apply on adapter change, restore on stop,
-      crash and service start.
-- [ ] `TrafficSampler` (1 Hz Clash API GET), totals across sing-box restarts.
-- [ ] `collectDiagnostics`.
-- [ ] `wayfork-service --dev-apply <plan.json>` and `wayforkctl plan|status|stop` for
-      running the service without the app (the macOS developer mode).
+      crash and service start. *(VM: NRPT applied + record written + probe verified;
+      restore on stop and re-apply on service start confirmed; adapter-change re-apply not
+      separately triggered.)*
+- [x] `TrafficSampler` (1 Hz Clash API GET), totals across sing-box restarts. *(VM: per-tunnel
+      and Direct rates/connection counts streamed.)*
+- [x] `collectDiagnostics`. *(VM: ~64 KB dump returned.)*
+- [x] `wayfork-service --dev-apply <plan.json>` and `wayforkctl plan|status|stop` for
+      running the service without the app (the macOS developer mode). *(VM: `wayforkctl plan`
+      reproduced the Dart core's plan hash byte-for-byte; the full driver flow ran.)*
 
 ### WM3 — App in Flutter
 
