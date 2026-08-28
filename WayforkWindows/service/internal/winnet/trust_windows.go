@@ -25,15 +25,13 @@ type Validator struct {
 
 var _ service.BinaryValidator = (*Validator)(nil)
 
-// Validate implements service.BinaryValidator.
-func (v *Validator) Validate(path string) *core.DaemonError {
-	if !insideDirectory(path, v.InstallDir) {
-		return core.ErrBinaryUntrusted(path)
-	}
-	if err := VerifyAuthenticode(path); err != nil {
-		return core.ErrBinaryUntrusted(path)
-	}
-	return nil
+// Validate implements service.BinaryValidator. sing-box ships unsigned upstream, so a
+// bundled binary gets the same rule as the client below: no signature at all is accepted
+// inside the install directory — its bytes are pinned by SHA-256 at fetch time and only an
+// administrator can write there — and reported as the returned warning, while a signature
+// that exists and does not verify stays a refusal.
+func (v *Validator) Validate(path string) (string, *core.DaemonError) {
+	return v.validateImage(path, "binary")
 }
 
 // trustNoSignature is TRUST_E_NOSIGNATURE: the file carries no signature at all, as
@@ -47,6 +45,13 @@ const trustNoSignature = 0x800B0100
 // a tampered or expired one is a refusal, never a downgrade to the path check. The first
 // return value is the warning to log when an unsigned client was accepted.
 func (v *Validator) ValidateClient(path string) (string, *core.DaemonError) {
+	return v.validateImage(path, "client")
+}
+
+// validateImage is the rule both admission checks share: an image inside the install
+// directory, either signed and valid or not signed at all. `kind` only names it in the
+// warning.
+func (v *Validator) validateImage(path, kind string) (string, *core.DaemonError) {
 	if !insideDirectory(path, v.InstallDir) {
 		return "", core.ErrBinaryUntrusted(path)
 	}
@@ -55,7 +60,7 @@ func (v *Validator) ValidateClient(path string) (string, *core.DaemonError) {
 	case err == nil:
 		return "", nil
 	case isUnsigned(err):
-		return "unsigned client " + path + " accepted: it is inside " + v.InstallDir, nil
+		return "unsigned " + kind + " " + path + " accepted: it is inside " + v.InstallDir, nil
 	default:
 		return "", core.ErrBinaryUntrusted(path)
 	}

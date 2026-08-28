@@ -80,7 +80,8 @@ func (s *OpenVPNSession) log(level core.LogLevel, message string) {
 // attempt. It fails only for problems no retry would fix.
 func (s *OpenVPNSession) Start() *core.DaemonError {
 	if !s.env.DevMode && s.deps.Binaries != nil {
-		if err := s.deps.Binaries.Validate(s.env.OpenVPNPath()); err != nil {
+		// The warning for an unsigned binary is logged once per apply by the supervisor.
+		if _, err := s.deps.Binaries.Validate(s.env.OpenVPNPath()); err != nil {
 			return err
 		}
 	}

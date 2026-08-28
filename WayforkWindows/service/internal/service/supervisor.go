@@ -138,7 +138,7 @@ func (s *Supervisor) GetInfo(ctx context.Context) core.DaemonInfo {
 
 func (s *Supervisor) binaryVersion(ctx context.Context, path string, args []string) string {
 	if !s.env.DevMode && s.deps.Binaries != nil {
-		if err := s.deps.Binaries.Validate(path); err != nil {
+		if _, err := s.deps.Binaries.Validate(path); err != nil {
 			return "untrusted"
 		}
 	}
@@ -231,9 +231,13 @@ func (s *Supervisor) validateBinaries() *core.DaemonError {
 		return nil
 	}
 	for _, path := range []string{s.env.SingBoxPath(), s.env.OpenVPNPath()} {
-		if err := s.deps.Binaries.Validate(path); err != nil {
+		warning, err := s.deps.Binaries.Validate(path)
+		if err != nil {
 			s.hub.Log(core.LogLevelError, "refusing to run untrusted binary "+path)
 			return err
+		}
+		if warning != "" {
+			s.hub.Log(core.LogLevelWarning, warning)
 		}
 	}
 	return nil

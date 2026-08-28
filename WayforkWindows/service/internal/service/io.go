@@ -95,8 +95,9 @@ type Resolver interface {
 // BinaryValidator checks a bundled binary's Authenticode signature before every spawn
 // (docs/design/08-windows.md, "Components and trust boundary").
 type BinaryValidator interface {
-	// Validate returns a binaryUntrusted DaemonError when the file must not run.
-	Validate(path string) *core.DaemonError
+	// Validate returns a binaryUntrusted DaemonError when the file must not run, and a
+	// warning to log when it was accepted without a signature.
+	Validate(path string) (string, *core.DaemonError)
 }
 
 // Clock lets tests drive time.

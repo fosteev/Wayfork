@@ -220,7 +220,9 @@ func (e *SingBoxEngine) validateBinary() *core.DaemonError {
 	if e.env.DevMode || e.deps.Binaries == nil {
 		return nil
 	}
-	return e.deps.Binaries.Validate(e.env.SingBoxPath())
+	// The warning for an unsigned binary is logged once per apply by the supervisor.
+	_, err := e.deps.Binaries.Validate(e.env.SingBoxPath())
+	return err
 }
 
 // Start spawns sing-box for the config installed by Check and verifies it came up: the

@@ -33,7 +33,10 @@ UI; the plan and status types are the shared contract ([ROADMAP-windows.md](../R
   that exists and does not verify is always a refusal. Pinning the publisher comes with
   the signing setup. It executes only the two binaries shipped next to itself, path derived from its own
   module path, never from the client; each binary's Authenticode signature is validated
-  before every spawn. Config *contents* (not paths) cross the pipe and the service writes
+  before every spawn, under the same rule as the client — sing-box ships unsigned upstream,
+  so a bundled binary with no signature is accepted inside the install directory (its bytes
+  are pinned by SHA-256 at fetch time) and logged as a warning once per apply, while a
+  signature that exists and does not verify stays a refusal. Config *contents* (not paths) cross the pipe and the service writes
   them into a root-only directory. `openvpn` runs with `--script-security 1`; dangerous
   directives are stripped at import (as on macOS, [04-tunnels.md](04-tunnels.md)). Secrets
   (OpenVPN bodies, credentials, key passphrases, VLESS UUIDs) live in **DPAPI-protected**
