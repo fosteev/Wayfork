@@ -14,7 +14,7 @@ maintainer approval.
 | W2a. Feasibility spike | Manual run of the routing scheme on a Windows machine, go/no-go | **done 2026-08-27 — GO** (results in [design/08-windows.md](design/08-windows.md) § Spike); `bind_interface` + a metric-9999 scoped default on the dco/TAP adapter routes per tunnel without touching the system default, NRPT `.` is the airtight resolver override, job objects kill children with the parent |
 | W2b. Design | `docs/design/08-windows.md` — every platform delta, written after the spike | approved 2026-08-27 (all 10 sections from the W2a results) |
 | W2c. UI prototype | `docs/design/prototype/windows.html` — tray flyout + context menu, main window (Dashboard/Tunnels/Rules/General/Logs), first-run, service-missing | approved 2026-08-27 (8 boards, ported from variant-b.html) |
-| W3. Implementation | Milestones WM0–WM5 below | WM0/WM1/WM2 done and pushed, WM2 verified in the VM 2026-08-28; WM3 (Flutter app) in progress — WM3a-WM3e done (WM3a-WM3c VM-verified), import/export + diagnostics (WM3f) next |
+| W3. Implementation | Milestones WM0–WM5 below | WM0/WM1/WM2 done and pushed, WM2 verified in the VM 2026-08-28; WM3 (Flutter app) in progress — WM3a-WM3f done (WM3a-WM3c VM-verified), full VM run of the UI left |
 
 ## Phase W0 — Decisions
 
@@ -307,8 +307,9 @@ un\` with SYSTEM/Administrators ACL, temp
 Sub-steps agreed 2026-08-28: **WM3a** pure app core (`core/app/`) + `ServiceClient` +
 Win32 halves → **WM3b** `AppModel` + apply pipeline + service states (no UI) → **WM3c**
 tray + window lifecycle → **WM3d** Dashboard + Tunnels → **WM3e** Rules + General + Logs →
-**WM3f** import/export + diagnostics + full VM run. WM3a-WM3e are done; import/export,
-diagnostics and the full VM run are what is left. Deltas in
+**WM3f** import/export + diagnostics + full VM run. WM3a-WM3f are done; the full VM run —
+all five pages, the dialogs, import/export and diagnostics on the console — is what is
+left. Deltas in
 [08-windows.md](design/08-windows.md) § Flutter app.
 
 - [x] `AppModel`: store, settings, runtime status, derived global state; `ServiceClient`
@@ -373,8 +374,16 @@ diagnostics and the full VM run are what is left. Deltas in
       *(WM3b: `Notifier` interface + console backend, posted by the model. WM3c:
       `ToastNotifier` over the new pin `local_notifier 0.1.6`; a shell that refuses the
       setup downgrades to `SilentNotifier`.)*
-- [ ] Import/export (`wayfork-export.json`, secrets checkbox, Replace/Merge; foreign app
+- [x] Import/export (`wayfork-export.json`, secrets checkbox, Replace/Merge; foreign app
       rules flagged).
+      *(WM3f 2026-08-28: the Backup block on General — the export sheet with its secrets
+      checkbox over `FilePicker.saveFile`, the import sheet over `StoreImporter.preview`
+      with *Replace all* behind a confirmation, and the count of app rules made on another
+      platform, which are imported but flagged. Export Diagnostics writes the macOS bundle
+      through a zip writer of our own (`core/diagnostics/zip_writer.dart`) instead of
+      `ditto`/PowerShell, with `ipconfig` / `route print` / `netsh` in `system.txt`;
+      298 Dart tests, no new dependencies. Deltas in
+      [08-windows.md](design/08-windows.md).)*
 - [x] Launch at login (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`), connect on
       launch, quit stops everything; single-instance guard.
       *(WM3b: connect on launch and `shutdown()` (stop + flush) in the model. WM3c:

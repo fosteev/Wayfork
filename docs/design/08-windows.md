@@ -796,8 +796,7 @@ WM3e — the remaining three pages (boards 5-7 of the prototype), no new depende
   has no counterpart: on Windows the service belongs to the installer, so *Repair…* explains
   the Installed apps → Wayfork → Modify → Repair route and opens
   `ms-settings:appsfeatures` through `explorer.exe`. Running the MSI repair from the app is
-  WM4; *Export Diagnostics…* emits `AppAction.exportDiagnostics()` and the export behind it
-  is WM3f, as is the Backup (export/import) block.
+  WM4; *Export Diagnostics…* and the Backup (export/import) block arrived with WM3f.
 - **Logs.** The `LogCenter` ring with a source picker, a level floor, search, follow,
   *Copy* and *Clear*, rendered as a `ListView.builder` of monospaced rows (time, source,
   level, message; the message is selectable). The sources are the real ones — `app`,
@@ -816,6 +815,67 @@ WM3e — the remaining three pages (boards 5-7 of the prototype), no new depende
   service, *Repair…* → Installed apps and *Export Diagnostics…*; and for Logs the row
   layout, both filters, search, clear, the preselected tunnel source and what *Copy* puts
   on the clipboard.
+
+WM3f — backup and diagnostics (`core/diagnostics/{zip_writer,diagnostics_report}.dart`,
+`app/services/diagnostics_exporter.dart`, `app/ui/backup_dialogs.dart`), no new dependencies:
+
+- **The zip container is written here.** macOS shells out to `/usr/bin/ditto -c -k`; Windows
+  has nothing equivalent that is both always present and callable without PowerShell
+  (`Compress-Archive` and `System.IO.Compression` both depend on `powershell.exe`, on the
+  execution policy and on Constrained Language Mode, and neither can be exercised from the
+  macOS test run). `ZipWriter` writes the container itself — local headers, central
+  directory, end-of-directory record, CRC-32 from a table — and leaves the compression to
+  dart:io's zlib (`ZLibCodec(raw: true)`), storing an entry whenever deflate does not make
+  it smaller. No zip64 and no directory entries: the bundle is a handful of small files.
+  Duplicate and non-file names are refused rather than written. The output was checked
+  against `unzip -t` and Python's `zipfile` besides the round-trip test. The alternative,
+  pinning `archive`, would drag `posix` (a dart:ffi binding to libc, useless on Windows)
+  into the lock for one encoder.
+- **What goes in.** `DiagnosticsReport` is pure and mirrors the macOS `DiagnosticsExporter`
+  file for file under `wayfork-diagnostics/`: `system.txt`, the sanitized `store.json`, the
+  sanitized `sing-box.json` with its rule-set files, the tails of `runtime.log` and
+  `wayfork.log` (5 MB each, cut at a line break so the copy never starts mid-line) and
+  `daemon/` from `collectDiagnostics` (`daemon.log`, one log per child, `run-listing.txt`,
+  `routes.txt`). Rule-set and child-log names come from the plan and from the service, so
+  they are flattened before they become file names. A document that no longer parses as
+  JSON is replaced by a one-line note instead of failing the export. Logs are copied
+  verbatim, as on macOS — the sheet says they may mention hostnames.
+- **`system.txt`.** The header is the macOS one with *helper* renamed to *service*
+  (app version, `Platform.operatingSystemVersion`, service phase, the versions the service
+  reports, the generation stamp), followed by one section per command. The macOS
+  `ifconfig -a` / `route -n get` / `scutil --dns` block becomes `ipconfig /all`,
+  `route print -4` and `netsh interface ipv4 show dnsservers`, each run through
+  `cmd.exe /c chcp 65001>nul & <command>` and decoded as UTF-8: without the code-page
+  switch a localised `ipconfig` lands in the bundle as mojibake. A command that cannot run
+  contributes its error text, not an exception.
+- **Save dialogs.** `file_selector_windows` does expose `getSaveLocation`, so `FilePicker`
+  grows a `saveFile`. The plugin never calls `IFileSaveDialog::SetDefaultExtension`, so a
+  name typed without one comes back bare: `withExtension` puts `.json` / `.zip` back on.
+- **Backup block.** General gains *Tunnels and rules* with *Export…* / *Import…*. Export is
+  the macOS sheet (a checkbox for secrets, the red warning while it is ticked) and writes
+  the document the model builds. There is no cheap `chmod 0600` on Windows: the file
+  inherits the ACL of the folder the user picked, which the warning now says. Import reads
+  the file through the model (which owns the "not a Wayfork export" alerts), shows
+  `StoreImporter.preview` and offers *Replace all* — behind the destructive confirmation —
+  or *Merge*.
+- **Foreign app rules.** `ImportPreview` counts app rules whose pattern does not normalise
+  on this platform (a macOS export names `/Applications/Foo.app`), and the import sheet
+  says how many will never match here. They are still imported: a round trip through
+  another machine must not lose rules. On the Rules page they show up as `not found`
+  anyway.
+- **Where the sheet opens from.** The tray and the failed-card action reach General through
+  `AppNavigator.exportDiagnostics()`, which sets the page and bumps a token the page
+  watches, the same shape as the Dashboard's quick add. The page opens the sheet in a
+  post-frame callback and refuses to open a second one while an export is running.
+- **Tests** (298 Dart tests, +25). Core: the zip round trip through a hand-written reader,
+  deflate-versus-store, the MS-DOS stamp, the UTF-8 name flag, the refusals; the bundle's
+  file list, the sanitizer's reach, the log tail, the suggested name and `system.txt`;
+  the foreign-app-rule count both ways. App: the exporter writing a real archive over the
+  fake service (with and without server addresses, with the service down, and a path that
+  cannot be written reporting instead of throwing), and the three page flows — Export with
+  the secrets checkbox, Import → Merge, Replace all through its confirmation, Export
+  Diagnostics down to the revealed file, and the navigator token opening the sheet. The
+  UI flows do real file I/O, so they pump through `runAsync` like the rest of the harness.
 
 ## Open items
 
