@@ -752,6 +752,71 @@ with three new exact pins: **`file_selector_windows 0.9.3+6`**,
   anything touching real files or `turnOn()` has to start inside `runAsync` or it never
   completes.
 
+WM3e — the remaining three pages (boards 5-7 of the prototype), no new dependencies:
+
+- **Rules.** The Direct group of exceptions (F8) on top, then one group per tunnel in store
+  order, each a `GroupCard` with its glyph, type badge, rule count and a `+ ▾`
+  (*Domain* / *Application…*). A row is the enabled checkbox, the pattern, its match, the
+  chips `RuleValidator` produces (`paused`, `shadowed`, `duplicate`, `warning` for a covered
+  tunnel server or LAN, `no tunnel`, and the plain "tunnel disabled — goes direct" line) and
+  a free-form note that commits on blur. Search filters pattern, note and app name, and the
+  header says how many of the group's rules survived it. The Direct header carries
+  `AppModel.directGroupHint` and the group ends with the built-in local suffixes, as on
+  macOS.
+- **Editing and reorder.** Editing is one row at a time: a double click or the context
+  menu's *Edit* swaps the pattern cell for a `RuleEditor` (Enter commits, Esc discards,
+  `*` and an address retype the match live, a pasted fake IP becomes the wildcard rule of
+  the name behind it), and the group's `+ → Domain` opens the same editor as an empty row
+  at the end. What `addRule`/`updateRule` refuses is drawn **under the row being edited**;
+  a match changed straight from a committed row reports under the group instead.
+  A row is a `Draggable`, every row and every group header a `DragTarget`, so a rule is
+  dragged inside its group or onto another group's header (`moveRule`). Deltas from macOS:
+  there is **no list selection and no Delete key** — delete, *Move to ▸* and *Edit* live in
+  the right-click menu, which is what Windows users reach for and what keeps a `Delete`
+  press inside the search box harmless; the *Move to* submenu opens on **press**, not the
+  default hover, so it is reachable from the keyboard and from a test.
+- **App rules (F10) on Windows.** *Application…* opens the shared `FilePicker` filtered to
+  `.exe` and hands the path to the same `addRule`, so an unusable path comes back with the
+  model's own message. The row shows the file name without `.exe` plus the full path as its
+  tooltip — **no icon**: extracting one from a PE file needs `ExtractIconEx` + a HICON→
+  bitmap round trip through Win32, which is a lot of interop for a 16 px decoration. A
+  missing executable is a `not found` chip; the check is `File.existsSync` cached for five
+  seconds, because rows rebuild on every model notification.
+- **General.** The macOS pane retitled: *Start Wayfork at sign-in*, *Connect on launch*,
+  the two reliability toggles, the DNS block (F12's system-resolver switch plus the
+  System/Custom resolver pair — the prototype's board 6 does not draw it, but the setting
+  exists and would otherwise be unreachable), the log level with its debug warning, a
+  `NumberBox` for the retention and *Open Logs Folder*, then the service block and About.
+  Two things the tests pinned down: the resolver **mode lives in the page**, not derived
+  from `settings.directDNS` (picking *Custom* has to enable the field before there are any
+  servers to store), and the field's blur commit is guarded on that mode, or switching back
+  to *System* would immediately be undone by the blur it causes.
+- **The service block.** Glyph + state + `· v<version> · LocalSystem` from `DaemonInfo`,
+  About with the versions the service reports, and *Repair…*. The macOS "Reinstall helper"
+  has no counterpart: on Windows the service belongs to the installer, so *Repair…* explains
+  the Installed apps → Wayfork → Modify → Repair route and opens
+  `ms-settings:appsfeatures` through `explorer.exe`. Running the MSI repair from the app is
+  WM4; *Export Diagnostics…* emits `AppAction.exportDiagnostics()` and the export behind it
+  is WM3f, as is the Backup (export/import) block.
+- **Logs.** The `LogCenter` ring with a source picker, a level floor, search, follow,
+  *Copy* and *Clear*, rendered as a `ListView.builder` of monospaced rows (time, source,
+  level, message; the message is selectable). The sources are the real ones — `app`,
+  `daemon`, `sing-box`, `openvpn:<id>` — not the prototype's `service`, and an
+  `openvpn:<id>` reads as `openvpn:<tunnel name>` everywhere. The level here is a **view**
+  filter on top of `LogCenter.minimumLevel` (which is the settings' floor and decides what
+  is stored at all). "Show Log" on a failed card lands through
+  `AppNavigator.takeLogSource()`, which returns the preselected source and forgets it, so a
+  later visit keeps whatever filter the user picked.
+- **Tests** (273 Dart tests). The three pages add 28: group order and counts, `+ Domain`
+  with a refusal that keeps the editor, the live match inference, double-click editing,
+  search, the chips, an app rule with its missing `.exe`, move and delete through the
+  context menu, a drag onto the Direct header, *Show in Explorer*, the empty state; the
+  General toggles down to the registry half, the level reaching `LogCenter`, retention,
+  the resolver validation both ways, *Open Logs Folder*, the service row with and without a
+  service, *Repair…* → Installed apps and *Export Diagnostics…*; and for Logs the row
+  layout, both filters, search, clear, the preselected tunnel source and what *Copy* puts
+  on the clipboard.
+
 ## Open items
 
 - **t1/pilot-gps user flow (not a Windows issue) — resolved 2026-08-27.** In S5 the

@@ -14,7 +14,7 @@ maintainer approval.
 | W2a. Feasibility spike | Manual run of the routing scheme on a Windows machine, go/no-go | **done 2026-08-27 — GO** (results in [design/08-windows.md](design/08-windows.md) § Spike); `bind_interface` + a metric-9999 scoped default on the dco/TAP adapter routes per tunnel without touching the system default, NRPT `.` is the airtight resolver override, job objects kill children with the parent |
 | W2b. Design | `docs/design/08-windows.md` — every platform delta, written after the spike | approved 2026-08-27 (all 10 sections from the W2a results) |
 | W2c. UI prototype | `docs/design/prototype/windows.html` — tray flyout + context menu, main window (Dashboard/Tunnels/Rules/General/Logs), first-run, service-missing | approved 2026-08-27 (8 boards, ported from variant-b.html) |
-| W3. Implementation | Milestones WM0–WM5 below | WM0/WM1/WM2 done and pushed, WM2 verified in the VM 2026-08-28; WM3 (Flutter app) in progress — WM3a-WM3d done (WM3a-WM3c VM-verified), Rules/General/Logs (WM3e) next |
+| W3. Implementation | Milestones WM0–WM5 below | WM0/WM1/WM2 done and pushed, WM2 verified in the VM 2026-08-28; WM3 (Flutter app) in progress — WM3a-WM3e done (WM3a-WM3c VM-verified), import/export + diagnostics (WM3f) next |
 
 ## Phase W0 — Decisions
 
@@ -307,8 +307,8 @@ un\` with SYSTEM/Administrators ACL, temp
 Sub-steps agreed 2026-08-28: **WM3a** pure app core (`core/app/`) + `ServiceClient` +
 Win32 halves → **WM3b** `AppModel` + apply pipeline + service states (no UI) → **WM3c**
 tray + window lifecycle → **WM3d** Dashboard + Tunnels → **WM3e** Rules + General + Logs →
-**WM3f** import/export + diagnostics + full VM run. WM3a-WM3d are done; Rules, General and
-Logs are what is left. Deltas in
+**WM3f** import/export + diagnostics + full VM run. WM3a-WM3e are done; import/export,
+diagnostics and the full VM run are what is left. Deltas in
 [08-windows.md](design/08-windows.md) § Flutter app.
 
 - [x] `AppModel`: store, settings, runtime status, derived global state; `ServiceClient`
@@ -333,7 +333,7 @@ Logs are what is left. Deltas in
       `flutter build windows --release` on the VM toolchain; `LoadImage` reads every
       generated `.ico` at 16-48 px. The icon in the notification area itself is an eyeball
       check — an ssh session has no interactive desktop.)*
-- [ ] Main window: sidebar, Dashboard (cards, rates, Direct row, actions), Tunnels (inline
+- [x] Main window: sidebar, Dashboard (cards, rates, Direct row, actions), Tunnels (inline
       expansion, OpenVPN/VLESS forms, `.ovpn` import via picker and drop, Add VLESS with
       live preview, delete with rules), Rules (groups, inline editing, reorder, chips,
       search, empty state, live apply with inline errors), General (toggles, service
@@ -345,8 +345,16 @@ Logs are what is left. Deltas in
       panes, F8 default, delete with its rules, `.ovpn` import through the picker and
       through a drop anywhere in the window, Add VLESS with live preview) — new pins
       `file_selector_windows 0.9.3+6`, `file_selector_platform_interface 2.7.0`,
-      `desktop_drop 0.8.2`; 245 Dart tests. Rules, General and Logs stay open for WM3e; the
-      pages are not eyeballed on the VM console yet.)*
+      `desktop_drop 0.8.2`; 245 Dart tests. WM3e 2026-08-28: Rules (groups with the Direct
+      exceptions on top, inline editing with live match inference, drag to reorder or move
+      between groups, the `RuleValidator` chips, search, `.exe` app rules through the
+      picker), General (the toggles, the DNS block, log level and retention, the service
+      block with *Repair…* pointing at the installer, About with the versions the service
+      reports) and Logs (source and level filters, search, follow, copy/clear, the
+      preselected source of "Show Log") — no new dependencies, 273 Dart tests. Deltas:
+      rules are deleted and moved from the right-click menu instead of a list selection
+      plus the Delete key, app rules show no executable icon, and the MSI repair itself
+      stays WM4. The five pages are not eyeballed on the VM console yet.)*
 - [x] Apply pipeline: store change → plan rebuild → `apply` (debounced); reconnect-only and
       hot-reload paths as in [03-routing.md](design/03-routing.md).
       *(WM3b: debounce → `HostResolver` → `SystemDns.snapshot` → `RuntimePlanBuilder` →
@@ -358,8 +366,9 @@ Logs are what is left. Deltas in
 - [x] Service-missing / version-mismatch states with a "repair installation" hint.
       *(WM3b: `ServiceIssue` + `summary` + the Turn On alert in the model. WM3c: the
       `ServiceBanner` on every page and the tray's "Repair Installation" entry, both
-      through `AppActionHandler`; the General page block is WM3e and the MSI repair
-      itself is WM4.)*
+      through `AppActionHandler`. WM3e: the General service block with *Repair…*, which
+      explains the Installed apps → Modify → Repair route and opens
+      `ms-settings:appsfeatures`; running the MSI repair from the app is WM4.)*
 - [x] Windows toast notifications for permanent failures and engine errors.
       *(WM3b: `Notifier` interface + console backend, posted by the model. WM3c:
       `ToastNotifier` over the new pin `local_notifier 0.1.6`; a shell that refuses the
