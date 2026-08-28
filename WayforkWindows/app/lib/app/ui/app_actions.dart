@@ -44,8 +44,8 @@ final class AppActionHandler {
         navigator.showLogs(source: source);
         await window.showAndFocus();
       case AppActionExportDiagnostics():
-        // The export itself arrives with the General page (WM3f).
-        navigator.go(AppPage.general);
+        // General opens its own sheet when the token changes.
+        navigator.exportDiagnostics();
         await window.showAndFocus();
       case AppActionRepairInstallation():
         // The service block of General carries the instructions; running the

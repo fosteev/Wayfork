@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wayfork/app/services/window_controller.dart';
+import 'package:wayfork/app/model/app_alert.dart';
 import 'package:wayfork/app/ui/app_actions.dart';
 import 'package:wayfork/app/ui/app_navigation.dart';
 import 'package:wayfork/core/ipc/payloads.dart';
@@ -35,5 +36,23 @@ void main() {
     for (final page in AppPage.values) {
       expect(find.text(page.title), findsWidgets, reason: page.title);
     }
+  });
+
+  test('the diagnostics action sends General to its sheet', () async {
+    final app = Harness();
+    await app.start();
+    addTearDown(app.dispose);
+    final navigator = AppNavigator();
+    final actions = AppActionHandler(
+      model: app.model,
+      navigator: navigator,
+      window: WindowController(FakeWindowBackend()),
+      reveal: (_) async {},
+    );
+    addTearDown(actions.dispose);
+
+    await actions.handle(const AppAction.exportDiagnostics());
+    expect(navigator.page, AppPage.general);
+    expect(navigator.diagnosticsToken, 1);
   });
 }

@@ -20,6 +20,7 @@ enum AppPage {
 final class AppNavigator extends ChangeNotifier {
   AppPage _page = AppPage.dashboard;
   int _quickAddToken = 0;
+  int _diagnosticsToken = 0;
   String? _logSource;
 
   AppPage get page => _page;
@@ -27,6 +28,10 @@ final class AppNavigator extends ChangeNotifier {
   /// Bumped every time the quick-add field is asked for, so a repeated
   /// request re-focuses it instead of being swallowed as "no change".
   int get quickAddToken => _quickAddToken;
+
+  /// Bumped when General should open its Export Diagnostics sheet — the
+  /// alert button and the ✎ of a card that failed on a bad configuration.
+  int get diagnosticsToken => _diagnosticsToken;
 
   /// Source to preselect on the Logs page, if any.
   String? get logSource => _logSource;
@@ -51,6 +56,13 @@ final class AppNavigator extends ChangeNotifier {
   void quickAdd() {
     _page = AppPage.dashboard;
     _quickAddToken++;
+    notifyListeners();
+  }
+
+  /// General with the Export Diagnostics sheet open.
+  void exportDiagnostics() {
+    _page = AppPage.general;
+    _diagnosticsToken++;
     notifyListeners();
   }
 

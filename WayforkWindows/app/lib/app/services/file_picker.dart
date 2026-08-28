@@ -12,6 +12,25 @@ abstract interface class FilePicker {
   });
 
   Future<String?> chooseDirectory({String? confirmButtonText});
+
+  /// Absolute path to write to, or null when the dialog was cancelled. The
+  /// caller may assume the extension of [suggestedName] is on it.
+  Future<String?> saveFile({
+    required String label,
+    required List<String> extensions,
+    required String suggestedName,
+    String? confirmButtonText,
+  });
+}
+
+/// `IFileSaveDialog` returns exactly what was typed: the plugin never calls
+/// `SetDefaultExtension`, so a name typed without one comes back bare. Every
+/// caller wants the extension, and Explorer needs it to pick an icon.
+String withExtension(String path, String extension) {
+  final suffix = extension.startsWith('.') ? extension : '.$extension';
+  return path.toLowerCase().endsWith(suffix.toLowerCase())
+      ? path
+      : '$path$suffix';
 }
 
 /// `IFileOpenDialog` through `file_selector_windows`. The endorsed
@@ -42,4 +61,23 @@ final class WindowsFilePicker implements FilePicker {
       _platform.getDirectoryPathWithOptions(
         FileDialogOptions(confirmButtonText: confirmButtonText),
       );
+
+  @override
+  Future<String?> saveFile({
+    required String label,
+    required List<String> extensions,
+    required String suggestedName,
+    String? confirmButtonText,
+  }) async {
+    final location = await _platform.getSaveLocation(
+      acceptedTypeGroups: [XTypeGroup(label: label, extensions: extensions)],
+      options: SaveDialogOptions(
+        suggestedName: suggestedName,
+        confirmButtonText: confirmButtonText,
+      ),
+    );
+    final path = location?.path;
+    if (path == null || extensions.isEmpty) return path;
+    return withExtension(path, extensions.first);
+  }
 }

@@ -2,12 +2,15 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:fluent_ui/fluent_ui.dart';
-import 'package:wayfork/app/model/app_alert.dart';
 import 'package:wayfork/app/model/app_model.dart';
+import 'package:wayfork/app/services/diagnostics_exporter.dart';
+import 'package:wayfork/app/services/file_picker.dart';
 import 'package:wayfork/app/services/log_center.dart';
 import 'package:wayfork/app/ui/app_actions.dart';
 import 'package:wayfork/app/ui/app_scope.dart';
+import 'package:wayfork/app/ui/backup_dialogs.dart';
 import 'package:wayfork/app/ui/widgets/components.dart';
+import 'package:wayfork/core/app/import_export.dart';
 import 'package:wayfork/core/app/status_text.dart';
 import 'package:wayfork/core/ipc/payloads.dart';
 import 'package:wayfork/core/model/settings.dart';
@@ -18,17 +21,25 @@ import 'package:wayfork/core/model/settings.dart';
 /// runs as LocalSystem and is repaired by the installer, not by the app).
 class GeneralPage extends StatefulWidget {
   const GeneralPage({
-    required this.onAction,
+    required this.picker,
+    this.diagnostics = const DiagnosticsExporter(),
     this.openFolder = openFolderInExplorer,
     this.openSettings = openInstalledApps,
+    this.reveal = revealInExplorer,
     super.key,
   });
 
-  final void Function(AppAction action) onAction;
+  /// The save and open dialogs of Backup and Export Diagnostics.
+  final FilePicker picker;
 
-  /// Seams for the tests: both shell out to Explorer on Windows.
+  /// Builds the diagnostics bundle; injected in the tests, which have no
+  /// `ipconfig` to run.
+  final DiagnosticsExporter diagnostics;
+
+  /// Seams for the tests: all three shell out to Explorer on Windows.
   final Future<void> Function(String path) openFolder;
   final Future<void> Function() openSettings;
+  final Future<void> Function(String path) reveal;
 
   @override
   State<GeneralPage> createState() => _GeneralPageState();
@@ -45,9 +56,23 @@ class _GeneralPageState extends State<GeneralPage> {
   /// are any servers to store.
   bool _customDNS = false;
 
+  /// The last `AppNavigator.diagnosticsToken` this page acted on: the tray and
+  /// the alert button land here and expect the sheet to be open.
+  int _diagnosticsToken = 0;
+  bool _exporting = false;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final token = NavigationScope.of(context).diagnosticsToken;
+    if (token != _diagnosticsToken) {
+      _diagnosticsToken = token;
+      if (token != 0) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => unawaited(_exportDiagnostics()),
+        );
+      }
+    }
     if (_loaded) return;
     _loaded = true;
     final directDNS = AppScope.of(context).settings.directDNS;
@@ -111,6 +136,70 @@ class _GeneralPageState extends State<GeneralPage> {
           (settings) => settings.copyWith(directDNS: const DirectDNSSystem()),
         ),
       );
+    }
+  }
+
+  /// Backup › Export…: the options sheet, the save dialog, the write.
+  Future<void> _exportStore() async {
+    final model = _model;
+    final includeSecrets = await showExportDialog(
+      context,
+      tunnels: model.store.tunnels.length,
+      rules: model.store.rules.length,
+    );
+    if (includeSecrets == null) return;
+    final path = await widget.picker.saveFile(
+      label: 'Wayfork export',
+      extensions: const ['json'],
+      suggestedName: AppModelImportExport.exportFileName,
+      confirmButtonText: 'Export',
+    );
+    if (path == null) return;
+    await model.exportStoreTo(path, includeSecrets: includeSecrets);
+  }
+
+  /// Backup › Import…: the open dialog, the summary, Replace all / Merge.
+  Future<void> _importStore() async {
+    final model = _model;
+    final path = await widget.picker.openFile(
+      label: 'Wayfork export',
+      extensions: const ['json'],
+      confirmButtonText: 'Import',
+    );
+    if (path == null) return;
+    final document = await model.readImport(path);
+    if (document == null || !mounted) return;
+    final mode = await showImportDialog(
+      context,
+      StoreImporter.preview(document),
+    );
+    if (mode == null) return;
+    await model.performImport(document, mode);
+  }
+
+  /// "Export Diagnostics…", from the button and from the failed-card action.
+  Future<void> _exportDiagnostics() async {
+    if (_exporting || !mounted) return;
+    _exporting = true;
+    try {
+      final model = _model;
+      final includeServers = await showDiagnosticsDialog(context);
+      if (includeServers == null) return;
+      final path = await widget.picker.saveFile(
+        label: 'Diagnostics archive',
+        extensions: const ['zip'],
+        suggestedName: widget.diagnostics.suggestedFileName(),
+        confirmButtonText: 'Export',
+      );
+      if (path == null) return;
+      final written = await widget.diagnostics.export(
+        model,
+        path: path,
+        includeServerAddresses: includeServers,
+      );
+      if (written) await widget.reveal(path);
+    } finally {
+      _exporting = false;
     }
   }
 
@@ -338,10 +427,32 @@ class _GeneralPageState extends State<GeneralPage> {
                         label: 'Wayfork ${model.appVersion}',
                         hint: _binaryVersions(model.serviceInfo),
                         child: Button(
-                          onPressed: () => widget.onAction(
-                            const AppAction.exportDiagnostics(),
-                          ),
+                          onPressed: () => unawaited(_exportDiagnostics()),
                           child: const Text('Export Diagnostics…'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  _Section(
+                    title: 'Backup',
+                    children: [
+                      _SettingRow(
+                        label: 'Tunnels and rules',
+                        hint:
+                            'wayfork-export.json carries tunnels, rules and '
+                            'settings between machines.',
+                        child: Row(
+                          children: [
+                            Button(
+                              onPressed: () => unawaited(_exportStore()),
+                              child: const Text('Export…'),
+                            ),
+                            const SizedBox(width: 8),
+                            Button(
+                              onPressed: () => unawaited(_importStore()),
+                              child: const Text('Import…'),
+                            ),
+                          ],
                         ),
                       ),
                     ],

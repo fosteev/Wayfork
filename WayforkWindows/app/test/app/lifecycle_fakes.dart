@@ -139,8 +139,13 @@ final class FakeFilePicker implements FilePicker {
   /// What [openFile] returns; null is a cancelled dialog.
   String? file;
   String? directory;
+
+  /// What [saveFile] returns; null is a cancelled dialog.
+  String? savePath;
+  String? suggestedName;
   int openCalls = 0;
   int directoryCalls = 0;
+  int saveCalls = 0;
 
   @override
   Future<String?> openFile({
@@ -156,5 +161,17 @@ final class FakeFilePicker implements FilePicker {
   Future<String?> chooseDirectory({String? confirmButtonText}) async {
     directoryCalls += 1;
     return directory;
+  }
+
+  @override
+  Future<String?> saveFile({
+    required String label,
+    required List<String> extensions,
+    required String suggestedName,
+    String? confirmButtonText,
+  }) async {
+    saveCalls += 1;
+    this.suggestedName = suggestedName;
+    return savePath;
   }
 }

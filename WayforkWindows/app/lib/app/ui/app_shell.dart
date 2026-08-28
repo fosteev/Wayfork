@@ -112,7 +112,7 @@ class _PageBody extends StatelessWidget {
             AppPage.dashboard => const DashboardPage(),
             AppPage.tunnels => TunnelsPage(importer: importer),
             AppPage.rules => RulesPage(picker: picker, onAction: onAction),
-            AppPage.general => GeneralPage(onAction: onAction),
+            AppPage.general => GeneralPage(picker: picker),
             AppPage.logs => const LogsPage(),
           },
         ),

@@ -2,7 +2,9 @@ import 'package:wayfork/core/json_text.dart';
 import 'package:wayfork/core/model/export_document.dart';
 import 'package:wayfork/core/model/rule.dart';
 import 'package:wayfork/core/model/store.dart';
+import 'package:wayfork/core/platform.dart';
 import 'package:wayfork/core/model/tunnel.dart';
+import 'package:wayfork/core/rules/rule_pattern_error.dart';
 import 'package:wayfork/core/secrets/secret_store.dart';
 
 enum ImportMode { replace, merge }
@@ -13,6 +15,7 @@ final class ImportPreview {
     required this.rules,
     required this.includesSecrets,
     required this.tunnelsWithSecrets,
+    this.foreignAppRules = 0,
   });
 
   final int tunnels;
@@ -20,17 +23,29 @@ final class ImportPreview {
   final bool includesSecrets;
   final int tunnelsWithSecrets;
 
+  /// App rules whose path belongs to another platform — a macOS export names
+  /// `/Applications/Foo.app`, which no process on Windows will ever match.
+  /// They are imported all the same (a round trip must not lose them) but the
+  /// import sheet says how many there are.
+  final int foreignAppRules;
+
   @override
   bool operator ==(Object other) =>
       other is ImportPreview &&
       tunnels == other.tunnels &&
       rules == other.rules &&
       includesSecrets == other.includesSecrets &&
-      tunnelsWithSecrets == other.tunnelsWithSecrets;
+      tunnelsWithSecrets == other.tunnelsWithSecrets &&
+      foreignAppRules == other.foreignAppRules;
 
   @override
-  int get hashCode =>
-      Object.hash(tunnels, rules, includesSecrets, tunnelsWithSecrets);
+  int get hashCode => Object.hash(
+    tunnels,
+    rules,
+    includesSecrets,
+    tunnelsWithSecrets,
+    foreignAppRules,
+  );
 }
 
 final class ImportOutcome {
@@ -59,14 +74,29 @@ final class ImportOutcome {
 
 /// Applies a `wayfork-export.json` to the store (docs/design/02-ux.md, F7).
 abstract final class StoreImporter {
-  static ImportPreview preview(ExportDocument document) => ImportPreview(
+  static ImportPreview preview(
+    ExportDocument document, {
+    WayforkPlatform platform = WayforkPlatform.windows,
+  }) => ImportPreview(
     tunnels: document.tunnels.length,
     rules: document.rules.length,
     includesSecrets: document.includesSecrets,
     tunnelsWithSecrets: document.tunnels
         .where((tunnel) => !tunnel.secrets.isEmpty)
         .length,
+    foreignAppRules: document.rules
+        .where((rule) => rule.match.isApp && !_belongsHere(rule, platform))
+        .length,
   );
+
+  static bool _belongsHere(Rule rule, WayforkPlatform platform) {
+    try {
+      platform.normalizeAppPath(rule.pattern);
+      return true;
+    } on RulePatternException {
+      return false;
+    }
+  }
 
   static ImportOutcome apply(
     ExportDocument document, {

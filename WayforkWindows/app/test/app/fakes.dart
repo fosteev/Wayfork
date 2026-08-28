@@ -107,7 +107,11 @@ final class Harness {
     Settings? settings,
     this._seedSecrets = true,
     Duration trafficStaleAfter = const Duration(milliseconds: 60),
-  }) : sample = SampleStore() {
+
+    /// Where the log centre writes its files; null keeps it in memory.
+    Directory? logDirectory,
+  }) : sample = SampleStore(),
+       logs = LogCenter(directory: logDirectory, echoToConsole: false) {
     final base = store ?? sample.store;
     storage = FakeStoreStorage(
       store: settings == null ? base : base.copyWith(settings: settings),
@@ -149,7 +153,7 @@ final class Harness {
   final secrets = FlakySecretStore(InMemorySecretStore());
   final notifier = RecordingNotifier();
   final launchAtLogin = InMemoryLaunchAtLogin();
-  final logs = LogCenter(echoToConsole: false);
+  final LogCenter logs;
   final networkChanges = StreamController<void>.broadcast();
   final resolvable = <String>{'vpn.example.com'};
   SystemDnsSnapshot dns = SystemDnsSnapshot(

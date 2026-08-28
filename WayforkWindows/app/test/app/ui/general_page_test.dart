@@ -1,38 +1,64 @@
+import 'dart:io';
+
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wayfork/app/model/app_alert.dart';
+import 'package:wayfork/app/model/app_model.dart';
+import 'package:wayfork/app/services/diagnostics_exporter.dart';
 import 'package:wayfork/app/ui/app_navigation.dart';
 import 'package:wayfork/app/ui/pages/general_page.dart';
+import 'package:wayfork/core/model/rule.dart';
 import 'package:wayfork/core/model/settings.dart';
 
 import '../fakes.dart';
+import '../lifecycle_fakes.dart';
 import 'ui_harness.dart';
 
-/// The page with both Explorer calls recorded instead of shelled out.
+/// The page with the Explorer calls recorded instead of shelled out and the
+/// diagnostics bundle built from a shell that runs nothing.
 ({
   Widget widget,
   List<String> folders,
   List<int> settings,
-  List<AppAction> performed,
+  List<String> revealed,
+  FakeFilePicker picker,
+  AppNavigator navigator,
 })
-page(Harness app) {
+page(Harness app, {AppNavigator? navigator}) {
   final folders = <String>[];
   final settings = <int>[];
-  final performed = <AppAction>[];
+  final revealed = <String>[];
+  final picker = FakeFilePicker();
+  final pageNavigator = navigator ?? AppNavigator();
   return (
     widget: scoped(
       app.model,
-      AppNavigator(),
+      pageNavigator,
       GeneralPage(
-        onAction: performed.add,
+        picker: picker,
+        diagnostics: DiagnosticsExporter(
+          shell: (command) async => 'output of $command',
+          now: () => DateTime(2026, 8, 28, 15, 30, 45),
+        ),
         openFolder: (path) async => folders.add(path),
         openSettings: () async => settings.add(1),
+        reveal: (path) async => revealed.add(path),
       ),
     ),
     folders: folders,
     settings: settings,
-    performed: performed,
+    revealed: revealed,
+    picker: picker,
+    navigator: pageNavigator,
   );
+}
+
+/// A directory that goes away with the test.
+Future<Directory> temporaryDirectory(WidgetTester tester) async {
+  final directory = (await tester.runAsync(
+    () async => Directory.systemTemp.createTemp('wayfork-backup'),
+  ))!;
+  addTearDown(() => tester.runAsync(() => directory.delete(recursive: true)));
+  return directory;
 }
 
 /// The control on the right-hand side of the row labelled [label].
@@ -175,9 +201,128 @@ void main() {
     expect(find.text('service not connected'), findsOneWidget);
   });
 
-  testWidgets('Export Diagnostics… emits the action', (tester) async {
+  testWidgets('Export… writes the file the save dialog named', (tester) async {
     final app = await boot(tester);
     final view = page(app);
+    final directory = await temporaryDirectory(tester);
+    final path = '${directory.path}${Platform.pathSeparator}export.json';
+    view.picker.savePath = path;
+
+    await tester.pumpWidget(view.widget);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Export…'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Export…'));
+    await tester.pumpAndSettle();
+    expect(find.text('Export tunnels and rules'), findsOneWidget);
+    expect(find.textContaining('3 tunnels, 6 rules'), findsOneWidget);
+
+    // The checkbox is what puts the secrets in the file.
+    await tester.tap(find.text('Include secrets (keys, passwords, UUIDs)'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('plain text'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Export…'));
+    await pumpUntil(
+      tester,
+      () => File(path).existsSync(),
+      what: 'the export file',
+    );
+    await tester.pumpAndSettle();
+
+    expect(view.picker.suggestedName, 'wayfork-export.json');
+    final written = File(path).readAsStringSync();
+    expect(written, contains('"format" : "wayfork-export"'));
+    expect(written, contains('"Work"'));
+    expect(written, contains('"includesSecrets" : true'));
+  });
+
+  testWidgets('Import… merges what the file holds', (tester) async {
+    final app = await boot(tester);
+    final view = page(app);
+    final directory = await temporaryDirectory(tester);
+    final path = '${directory.path}${Platform.pathSeparator}import.json';
+    await tester.runAsync(() async {
+      final document = await app.model.exportDocument(includeSecrets: false);
+      await File(path).writeAsString(document.encode());
+      await app.model.rename(app.sample.work.id, 'Renamed');
+    });
+    view.picker.file = path;
+
+    await tester.pumpWidget(view.widget);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Import…'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import…'));
+    await pumpUntil(
+      tester,
+      () => find.text('Import tunnels and rules').evaluate().isNotEmpty,
+      what: 'the import sheet',
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('secrets not included'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Merge'));
+    await pumpUntil(
+      tester,
+      () => app.model.store.tunnel(app.sample.work.id)?.name == 'Work',
+      what: 'the merged tunnel name',
+    );
+    await tester.pumpAndSettle();
+    expect(app.model.store.tunnels, hasLength(3));
+  });
+
+  testWidgets('Replace all asks before it discards anything', (tester) async {
+    final app = await boot(tester);
+    final view = page(app);
+    final directory = await temporaryDirectory(tester);
+    final path = '${directory.path}${Platform.pathSeparator}import.json';
+    await tester.runAsync(() async {
+      final document = await app.model.exportDocument(includeSecrets: false);
+      await File(path).writeAsString(document.encode());
+      await app.model.addRule(
+        pattern: 'later.example.com',
+        match: RuleMatch.suffix,
+        target: const RuleTargetDirect(),
+      );
+    });
+    view.picker.file = path;
+
+    await tester.pumpWidget(view.widget);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Import…'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import…'));
+    await pumpUntil(
+      tester,
+      () => find.text('Import tunnels and rules').evaluate().isNotEmpty,
+      what: 'the import sheet',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Replace all'));
+    await tester.pumpAndSettle();
+    expect(find.text('Replace everything?'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Replace'));
+    await pumpUntil(
+      tester,
+      () => app.model.store.rules.length == 6,
+      what: 'the replaced rules',
+    );
+    await tester.pumpAndSettle();
+    expect(
+      app.model.store.rules.map((rule) => rule.pattern),
+      isNot(contains('later.example.com')),
+    );
+  });
+
+  testWidgets('Export Diagnostics… writes a bundle and shows it', (
+    tester,
+  ) async {
+    final app = await boot(tester);
+    final view = page(app);
+    final directory = await temporaryDirectory(tester);
+    final path = '${directory.path}${Platform.pathSeparator}bundle.zip';
+    view.picker.savePath = path;
 
     await tester.pumpWidget(view.widget);
     await tester.pumpAndSettle();
@@ -185,6 +330,47 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Export Diagnostics…'));
     await tester.pumpAndSettle();
-    expect(view.performed, [const AppAction.exportDiagnostics()]);
+    expect(find.text('Export Diagnostics'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Export…'));
+    await pumpUntil(
+      tester,
+      () => view.revealed.isNotEmpty,
+      what: 'the diagnostics bundle',
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      view.picker.suggestedName,
+      'wayfork-diagnostics-20260828-153045.zip',
+    );
+    expect(view.revealed, [path]);
+    final bytes = File(path).readAsBytesSync();
+    expect(bytes.sublist(0, 4), [0x50, 0x4b, 0x03, 0x04]);
+    expect(
+      String.fromCharCodes(bytes),
+      allOf(
+        contains('wayfork-diagnostics/system.txt'),
+        contains('wayfork-diagnostics/store.json'),
+      ),
+    );
+  });
+
+  testWidgets('the navigator opens the diagnostics sheet on arrival', (
+    tester,
+  ) async {
+    final app = await boot(tester);
+    final navigator = AppNavigator();
+    final view = page(app, navigator: navigator);
+
+    await tester.pumpWidget(view.widget);
+    await tester.pumpAndSettle();
+    expect(find.text('Export Diagnostics'), findsNothing);
+
+    navigator.exportDiagnostics();
+    await tester.pumpAndSettle();
+    expect(find.text('Export Diagnostics'), findsOneWidget);
+    await tester.tap(find.widgetWithText(Button, 'Cancel'));
+    await tester.pumpAndSettle();
+    expect(view.picker.saveCalls, 0);
   });
 }

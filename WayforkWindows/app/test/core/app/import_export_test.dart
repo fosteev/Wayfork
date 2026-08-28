@@ -6,6 +6,7 @@ import 'package:wayfork/core/model/rule.dart';
 import 'package:wayfork/core/model/settings.dart';
 import 'package:wayfork/core/model/store.dart';
 import 'package:wayfork/core/model/tunnel.dart';
+import 'package:wayfork/core/platform.dart';
 import 'package:wayfork/core/secrets/secret_store.dart';
 import 'package:wayfork/core/support/uuid.dart';
 
@@ -90,6 +91,34 @@ void main() {
         includesSecrets: true,
         tunnelsWithSecrets: 1,
       ),
+    );
+  });
+
+  test('the preview counts app rules made on another platform', () {
+    final export = document(
+      tunnels: const [],
+      rules: [
+        Rule(
+          pattern: r'C:\\Program Files\\Firefox\\firefox.exe',
+          match: RuleMatch.app,
+          target: const RuleTargetDirect(),
+        ),
+        Rule(
+          pattern: '/Applications/Firefox.app',
+          match: RuleMatch.app,
+          target: const RuleTargetDirect(),
+        ),
+        Rule(pattern: 'example.com', target: const RuleTargetDirect()),
+      ],
+    );
+    expect(StoreImporter.preview(export).foreignAppRules, 1);
+    expect(
+      StoreImporter.preview(
+        export,
+        platform: WayforkPlatform.macOS,
+      ).foreignAppRules,
+      1,
+      reason: 'the Windows path is the foreign one there',
     );
   });
 

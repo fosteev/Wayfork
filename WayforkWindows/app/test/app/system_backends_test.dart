@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wayfork/app/services/file_picker.dart';
 import 'package:wayfork/app/services/launch_at_login_registry.dart';
 import 'package:wayfork/app/services/network_watcher.dart';
 import 'package:wayfork/app/services/single_instance.dart';
@@ -126,6 +127,25 @@ void main() {
     expect(
       WindowsRegistry.readDword(SystemTheme.personalizeKey, 'WayforkNoSuch'),
       isNull,
+    );
+  });
+
+  test('the save dialog gets the extension the caller wanted', () {
+    expect(
+      withExtension(r'C:\Users\dev\backup', 'json'),
+      r'C:\Users\dev\backup.json',
+    );
+    expect(
+      withExtension(r'C:\Users\dev\backup.json', 'json'),
+      r'C:\Users\dev\backup.json',
+    );
+    expect(
+      withExtension(r'C:\Users\dev\BACKUP.JSON', '.json'),
+      r'C:\Users\dev\BACKUP.JSON',
+    );
+    expect(
+      withExtension(r'C:\Users\dev\notes.txt', 'zip'),
+      r'C:\Users\dev\notes.txt.zip',
     );
   });
 }

@@ -1,8 +1,8 @@
 part of 'app_model.dart';
 
 // Import / export of `wayfork-export.json` (F7, docs/design/01-data-model.md).
-// The file dialogs and the on-disk write arrive with WM3f; the model builds
-// and applies documents.
+// The file dialogs live in the General page; the model builds, writes and
+// applies documents.
 
 extension AppModelImportExport on AppModel {
   static const exportFileName = 'wayfork-export.json';
@@ -20,6 +20,38 @@ extension AppModelImportExport on AppModel {
       'rules${includeSecrets ? ' with secrets' : ''}',
     );
     return document;
+  }
+
+  /// Writes the export to [path]. Windows has no cheap `chmod 0600`: the file
+  /// inherits the ACL of the folder the user picked, which the export sheet
+  /// warns about when secrets are included.
+  Future<bool> exportStoreTo(
+    String path, {
+    required bool includeSecrets,
+  }) async {
+    try {
+      final document = await exportDocument(includeSecrets: includeSecrets);
+      await File(path).writeAsString(document.encode(), flush: true);
+      logs.app(LogLevel.info, 'export written to $path');
+      return true;
+    } on Object catch (error) {
+      logs.app(LogLevel.error, 'export failed: $error');
+      _alert(AppAlert(title: 'Export failed', message: '$error'));
+      return false;
+    }
+  }
+
+  /// Reads a picked file and decodes it; null when it cannot be read or is not
+  /// a Wayfork export (an alert was queued).
+  Future<ExportDocument?> readImport(String path) async {
+    final String text;
+    try {
+      text = await File(path).readAsString();
+    } on Object catch (error) {
+      _alert(AppAlert(title: 'Cannot read file', message: '$error'));
+      return null;
+    }
+    return decodeImport(text);
   }
 
   /// Decodes a picked file; null when it is not a Wayfork export (an alert

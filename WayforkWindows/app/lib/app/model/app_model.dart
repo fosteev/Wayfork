@@ -35,6 +35,7 @@ import 'package:wayfork/core/support/local_networks.dart';
 import 'package:wayfork/core/version.dart';
 import 'package:wayfork/core/vless/vless_uri_parser.dart';
 
+part 'app_model_diagnostics.dart';
 part 'app_model_import_export.dart';
 part 'app_model_rules.dart';
 part 'app_model_tunnels.dart';
