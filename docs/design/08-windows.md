@@ -25,10 +25,13 @@ UI; the plan and status types are the shared contract ([ROADMAP-windows.md](../R
   is mandatory: a child that inherits the console dies with the launching session (learned
   repeatedly in the spike — `Start-Process` from an SSH session, `PsExec -d` is the fix).
 - **Trust boundary.** The named pipe is the app→service channel (see IPC). The service
-  accepts a client only after `GetNamedPipeClientProcessId` → the client image path →
-  Authenticode signature check against our publisher + the path being inside
-  `%ProgramFiles%\Wayfork\` (the counterpart of the macOS `setCodeSigningRequirement` Team-ID
-  check). It executes only the two binaries shipped next to itself, path derived from its own
+  accepts a client only after `GetNamedPipeClientProcessId` → the client image path → the
+  path being inside `%ProgramFiles%\Wayfork\` plus an Authenticode check (the counterpart
+  of the macOS `setCodeSigningRequirement` Team-ID check). Until Wayfork has a certificate
+  the app is unsigned, so `TRUST_E_NOSIGNATURE` inside the install directory is accepted
+  with a warning in the log — only an administrator can write there — while a signature
+  that exists and does not verify is always a refusal. Pinning the publisher comes with
+  the signing setup. It executes only the two binaries shipped next to itself, path derived from its own
   module path, never from the client; each binary's Authenticode signature is validated
   before every spawn. Config *contents* (not paths) cross the pipe and the service writes
   them into a root-only directory. `openvpn` runs with `--script-security 1`; dangerous
@@ -284,8 +287,8 @@ WM4a landed the payload both packages need:
   `scripts/release-windows.ps1` signs only when one is handed to it and otherwise produces
   unsigned binaries and MSIs; the README carries the SmartScreen note. Consequence to keep
   in mind: the service's `WinVerifyTrust` check on the pipe client then has nothing to pin
-  to, and the client is accepted on the `%ProgramFiles%\Wayfork` path check alone
-  (publisher pinning is still owed with the signing setup).
+  to, so an unsigned client inside `%ProgramFiles%\Wayfork` is accepted with a warning
+  (see "Trust boundary"); publisher pinning is still owed with the signing setup.
 
 WM4b landed the package itself (`WayforkWindows/installer/Wayfork.wxs`,
 `scripts/release-windows.ps1`), verified end to end on the arm64 VM on 2026-08-28:
@@ -318,6 +321,10 @@ WM4b landed the package itself (`WayforkWindows/installer/Wayfork.wxs`,
   writes `Wayfork-<version>-<arch>.msi` with a `.sha256` under `build\release-windows\`.
   The version is read from `version.dart` and cross-checked against `pubspec.yaml`; a
   `-Version` that disagrees is refused, the same guard the macOS script has.
+- **Same-version upgrades are allowed.** Every `wix build` mints a fresh product code, so
+  without `AllowSameVersionUpgrades` a rebuilt 0.1.0 installs *beside* the copy already on
+  the machine — two entries in Installed apps over one install directory, which is how it
+  was first found in the VM.
 - **The event-log source is part of the package.** The service opens `Wayfork` as an
   event-log source and mirrors its warnings and errors there. `RegisterEventSource`
   succeeds for a source nobody registered, so the events *were* written — but the
@@ -331,7 +338,10 @@ WM4b landed the package itself (`WayforkWindows/installer/Wayfork.wxs`,
   delayed auto-start, comes up on its own and logs `service 0.1.0 ready (C:\Program
   Files\Wayfork)` — out of developer mode, so the trust checks are live — and the pipe is
   there; the SCM handler and the event-log source, owed since WM2, are exercised by that
-  start (`Wayfork service 0.1.0 starting` in the Application log). The driver step found ovpn-dco 2.8.4.0 already published as `oem10.inf` (the
+  start (`Wayfork service 0.1.0 starting` in the Application log). The installed app
+  connects to it: the service logs `unsigned client C:\Program Files\Wayfork\wayfork.exe
+  accepted: it is inside C:\Program Files\Wayfork` and then `client pid … connected`.
+  Installing a rebuild of the same version replaces the install instead of doubling it. The driver step found ovpn-dco 2.8.4.0 already published as `oem10.inf` (the
   spike's OpenVPN install), skipped the publish and wrote no record, which is what keeps a
   foreign driver safe. Uninstall: exit 0, service and files gone, the `Wayfork-N` adapters
   deleted, `%ProgramData%\Wayfork\run` removed, the logs next to it kept,

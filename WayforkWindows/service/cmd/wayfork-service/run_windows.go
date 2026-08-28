@@ -157,8 +157,9 @@ func (r *runtime) serve(ctx context.Context) error {
 	}
 }
 
-// verifyClient is the counterpart of the macOS code-signing requirement: the client
-// must be an Authenticode-signed executable inside the install directory.
+// verifyClient is the counterpart of the macOS code-signing requirement: the client must
+// be an executable inside the install directory, and signed once Wayfork has a
+// certificate (docs/design/08-windows.md, "Installer").
 func (r *runtime) verifyClient(pid uint32) string {
 	if r.env.DevMode {
 		return ""
@@ -167,8 +168,12 @@ func (r *runtime) verifyClient(pid uint32) string {
 	if err != nil {
 		return "cannot resolve the client image: " + err.Error()
 	}
-	if err := r.validator.Validate(path); err != nil {
+	warning, failure := r.validator.ValidateClient(path)
+	if failure != nil {
 		return "untrusted client " + path
+	}
+	if warning != "" {
+		r.hub.Log(core.LogLevelWarning, warning)
 	}
 	return ""
 }

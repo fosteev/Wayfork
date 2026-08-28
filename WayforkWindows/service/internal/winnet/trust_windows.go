@@ -3,8 +3,10 @@
 package winnet
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -32,6 +34,36 @@ func (v *Validator) Validate(path string) *core.DaemonError {
 		return core.ErrBinaryUntrusted(path)
 	}
 	return nil
+}
+
+// trustNoSignature is TRUST_E_NOSIGNATURE: the file carries no signature at all, as
+// opposed to one that is broken, expired or from a publisher nobody trusts.
+const trustNoSignature = 0x800B0100
+
+// ValidateClient is the pipe's admission check. Until Wayfork has a code-signing
+// certificate its own app is unsigned, so an image inside the install directory is let in
+// without one — only an administrator can write there, which is the same boundary the
+// service already trusts for its own binaries. A signature that *is* there must be valid:
+// a tampered or expired one is a refusal, never a downgrade to the path check. The first
+// return value is the warning to log when an unsigned client was accepted.
+func (v *Validator) ValidateClient(path string) (string, *core.DaemonError) {
+	if !insideDirectory(path, v.InstallDir) {
+		return "", core.ErrBinaryUntrusted(path)
+	}
+	err := VerifyAuthenticode(path)
+	switch {
+	case err == nil:
+		return "", nil
+	case isUnsigned(err):
+		return "unsigned client " + path + " accepted: it is inside " + v.InstallDir, nil
+	default:
+		return "", core.ErrBinaryUntrusted(path)
+	}
+}
+
+func isUnsigned(err error) bool {
+	var errno syscall.Errno
+	return errors.As(err, &errno) && uint32(errno) == trustNoSignature
 }
 
 func insideDirectory(path, directory string) bool {

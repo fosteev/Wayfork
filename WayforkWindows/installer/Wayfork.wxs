@@ -28,9 +28,12 @@
 
     <!-- Upgrades replace the payload with the service stopped; the old version's uninstall
          runs first and must not take the driver and the adapters with it (see the
-         condition on CleanUp below). -->
+         condition on CleanUp below). Same-version upgrades are allowed on purpose: every
+         build gets a fresh product code, so without this a rebuilt 0.1.0 installs *beside*
+         the one already there instead of replacing it. -->
     <MajorUpgrade
         Schedule="afterInstallInitialize"
+        AllowSameVersionUpgrades="yes"
         DowngradeErrorMessage="A newer version of Wayfork is already installed." />
 
     <Launch
