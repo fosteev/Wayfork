@@ -14,7 +14,7 @@ import (
 )
 
 // Version is the service version reported in DaemonInfo; set by the build.
-var Version = "0.1.0"
+var Version = "0.2.0"
 
 // Environment is where the service lives and what it may execute. Every path derives
 // from the service's own executable; nothing comes from the client

@@ -6,6 +6,8 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-08-28
+
 ### Added
 
 - **Windows client** (preview): the same features on Windows 10/11, x64 and ARM64 — a
@@ -16,6 +18,15 @@ All notable changes to Wayfork are recorded here. The format follows
   configuration between the two, minus the application rules, which name a path per
   platform. Shipped as `Wayfork-<version>-<arch>.msi`, unsigned until the project has an
   Authenticode certificate.
+
+### Known limitations
+
+- The Windows packages carry no Authenticode signature, so SmartScreen warns on the
+  installer and on the first run ("More info" → "Run anyway"); the bundled sing-box is
+  unsigned upstream and is trusted by its install location instead.
+- The macOS build in this release is still signed with an Apple Development certificate,
+  with the same quarantine step as 0.1.0 (README, "Install"); every 0.1.0 limitation below
+  still stands on both platforms.
 
 ## [0.1.0] — 2026-08-26
 
@@ -75,4 +86,5 @@ First release: per-domain split tunneling across several VPNs at once from the m
   matched as the proxy. IP rules are IPv4, destination-address only.
 - No rule lists / subscriptions, no WireGuard, Shadowsocks or XHTTP transports yet.
 
+[0.2.0]: https://github.com/fosteev/Wayfork/releases/tag/v0.2.0
 [0.1.0]: https://github.com/fosteev/Wayfork/releases/tag/v0.1.0

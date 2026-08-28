@@ -1,7 +1,7 @@
 name: wayfork
 description: "Wayfork for Windows: per-domain split tunneling across several VPNs at once."
 publish_to: 'none'
-version: 0.1.0+1
+version: 0.2.0+1
 
 environment:
   # Exact pins (CLAUDE.md); see ../versions.env for the Flutter/Dart toolchain.
