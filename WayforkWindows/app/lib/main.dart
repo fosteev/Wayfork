@@ -4,9 +4,11 @@ import 'dart:io';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:wayfork/app/model/app_alert.dart';
 import 'package:wayfork/app/model/app_model.dart';
+import 'package:wayfork/app/services/file_picker.dart';
 import 'package:wayfork/app/services/launch_at_login_registry.dart';
 import 'package:wayfork/app/services/log_center.dart';
 import 'package:wayfork/app/services/network_watcher.dart';
+import 'package:wayfork/app/services/notifier.dart';
 import 'package:wayfork/app/services/single_instance.dart';
 import 'package:wayfork/app/services/toast_notifier.dart';
 import 'package:wayfork/app/services/tray_backend.dart';
@@ -46,6 +48,7 @@ Future<void> main(List<String> arguments) async {
   final logs = LogCenter(directory: LogCenter.defaultDirectory());
   final watcher = SystemNetworkWatcher();
   final navigator = AppNavigator();
+  final notifier = await ToastNotifier.start();
   final model = AppModel(
     repository: StoreRepository(directory),
     secrets: DpapiSecretStore(
@@ -54,7 +57,7 @@ Future<void> main(List<String> arguments) async {
     ),
     client: ServiceClient(connect: NamedPipeTransport.connect),
     logs: logs,
-    notifier: await ToastNotifier.start(),
+    notifier: notifier,
     launchAtLogin: RegistryLaunchAtLogin(),
     networkChanges: watcher.changes,
   );
@@ -78,6 +81,7 @@ Future<void> main(List<String> arguments) async {
       window: window,
       watcher: watcher,
       actions: actions,
+      notifier: notifier,
     ),
   );
 
@@ -104,12 +108,15 @@ Future<void> _quit({
   required WindowController window,
   required SystemNetworkWatcher watcher,
   required AppActionHandler actions,
+  required Notifier notifier,
 }) async {
   await window.hide();
   await tray.dispose();
   await model.shutdown();
   await watcher.dispose();
   await actions.dispose();
+  // Toasts this session posted must not outlive it.
+  if (notifier is ToastNotifier) await notifier.dispose();
   SingleInstance.release();
   await window.quit();
 }
@@ -139,6 +146,7 @@ class WayforkApp extends StatelessWidget {
         child: NavigationScope(
           navigator: navigator,
           child: AppShell(
+            picker: WindowsFilePicker(),
             onAction: (AppAction action) => unawaited(actions.handle(action)),
           ),
         ),

@@ -346,10 +346,15 @@ final class AppModel extends ChangeNotifier {
     if (_alerts.remove(alert)) notifyListeners();
   }
 
-  void _alert(AppAlert alert) {
+  /// Queues an alert for [AlertHost]. Public because the flows that live in
+  /// the UI — the file pickers of the tunnel import — report their failures
+  /// through the same queue as the model's own.
+  void showAlert(AppAlert alert) {
     _alerts.add(alert);
     notifyListeners();
   }
+
+  void _alert(AppAlert alert) => showAlert(alert);
 
   /// [notifyListeners] for the extensions in the part files.
   void _changed() => notifyListeners();

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:wayfork/app/services/file_picker.dart';
 import 'package:wayfork/app/services/tray_backend.dart';
 import 'package:wayfork/app/services/tray_menu.dart';
 import 'package:wayfork/app/services/window_backend.dart';
@@ -129,4 +130,31 @@ final class FakeWindowBackend implements WindowBackend {
 
   @override
   Future<void> dispose() async => disposals += 1;
+}
+
+/// Answers the two file dialogs of the `.ovpn` import with canned paths.
+final class FakeFilePicker implements FilePicker {
+  FakeFilePicker({this.file, this.directory});
+
+  /// What [openFile] returns; null is a cancelled dialog.
+  String? file;
+  String? directory;
+  int openCalls = 0;
+  int directoryCalls = 0;
+
+  @override
+  Future<String?> openFile({
+    required String label,
+    required List<String> extensions,
+    String? confirmButtonText,
+  }) async {
+    openCalls += 1;
+    return file;
+  }
+
+  @override
+  Future<String?> chooseDirectory({String? confirmButtonText}) async {
+    directoryCalls += 1;
+    return directory;
+  }
 }

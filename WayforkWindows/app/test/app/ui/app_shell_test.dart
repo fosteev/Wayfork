@@ -3,51 +3,11 @@ import 'dart:io';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wayfork/app/model/app_alert.dart';
-import 'package:wayfork/app/model/app_model.dart';
 import 'package:wayfork/app/ui/app_navigation.dart';
-import 'package:wayfork/app/ui/app_scope.dart';
-import 'package:wayfork/app/ui/app_shell.dart';
+import 'package:wayfork/app/ui/pages/dashboard_page.dart';
 import 'package:wayfork/core/ipc/payloads.dart';
 
-import '../fakes.dart';
-
-Widget shell(
-  AppModel model,
-  AppNavigator navigator,
-  List<AppAction> performed,
-) => FluentApp(
-  debugShowCheckedModeBanner: false,
-  home: AppScope(
-    model: model,
-    child: NavigationScope(
-      navigator: navigator,
-      child: AppShell(onAction: performed.add),
-    ),
-  ),
-);
-
-/// The model runs on real timers (service client, debounces), so its setup has
-/// to happen outside the widget tester's fake clock.
-Future<Harness> boot(
-  WidgetTester tester, {
-  bool serviceAvailable = true,
-  RuntimeStatus? status,
-  File? corruptBackup,
-  bool Function(Harness app)? until,
-}) async {
-  final app = Harness();
-  await tester.runAsync(() async {
-    app.service.available = serviceAvailable;
-    if (status != null) app.service.status = status;
-    app.storage.corruptBackup = corruptBackup;
-    await app.start();
-    if (until != null) {
-      await waitFor(() => until(app), what: 'the state the test needs');
-    }
-  });
-  addTearDown(() => tester.runAsync(app.dispose));
-  return app;
-}
+import 'ui_harness.dart';
 
 void main() {
   testWidgets('the shell shows the five pages and follows the navigator', (
@@ -65,7 +25,7 @@ void main() {
     for (final page in AppPage.values) {
       expect(find.text(page.title), findsWidgets, reason: page.title);
     }
-    expect(find.textContaining('Dashboard —'), findsOneWidget);
+    expect(find.byType(DashboardPage), findsOneWidget);
 
     navigator.showLogs();
     await tester.pumpAndSettle();

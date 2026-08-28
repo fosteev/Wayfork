@@ -102,8 +102,12 @@ const sampleVLESSUUID = '00000000-0000-4000-8000-0000000000aa';
 /// An [AppModel] over the fakes with short timings. `sample` is the
 /// three-tunnel store; Work and Home get their secrets, Lab stays without.
 final class Harness {
-  Harness({Store? store, Settings? settings, this._seedSecrets = true})
-    : sample = SampleStore() {
+  Harness({
+    Store? store,
+    Settings? settings,
+    this._seedSecrets = true,
+    Duration trafficStaleAfter = const Duration(milliseconds: 60),
+  }) : sample = SampleStore() {
     final base = store ?? sample.store;
     storage = FakeStoreStorage(
       store: settings == null ? base : base.copyWith(settings: settings),
@@ -133,7 +137,7 @@ final class Harness {
       installDir: r'C:\Fallback\Wayfork',
       applyDebounce: const Duration(milliseconds: 20),
       startingTimeout: const Duration(milliseconds: 300),
-      trafficStaleAfter: const Duration(milliseconds: 60),
+      trafficStaleAfter: trafficStaleAfter,
       pulseInterval: const Duration(hours: 1),
       connectTimeout: const Duration(seconds: 2),
     );

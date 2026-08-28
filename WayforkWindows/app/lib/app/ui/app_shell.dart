@@ -1,41 +1,75 @@
+import 'dart:async';
+
+import 'package:desktop_drop/desktop_drop.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:wayfork/app/model/app_alert.dart';
+import 'package:wayfork/app/services/file_picker.dart';
 import 'package:wayfork/app/ui/alert_host.dart';
 import 'package:wayfork/app/ui/app_navigation.dart';
 import 'package:wayfork/app/ui/app_scope.dart';
+import 'package:wayfork/app/ui/pages/dashboard_page.dart';
+import 'package:wayfork/app/ui/pages/tunnels_page.dart';
 import 'package:wayfork/app/ui/service_banner.dart';
+import 'package:wayfork/app/ui/tunnel_import.dart';
+import 'package:wayfork/app/ui/widgets/components.dart';
 
 /// The main window of docs/design/prototype/windows.html: a left
 /// `NavigationView` over the five pages, the service banner above whatever
-/// page is open and the alert queue on top of everything.
+/// page is open and the alert queue on top of everything. A `.ovpn` dropped
+/// anywhere in the window is imported (board 4).
 ///
-/// The pages themselves arrive with WM3d (Dashboard, Tunnels) and WM3e (Rules,
-/// General, Logs); the shell, the navigation and the two cross-page surfaces
-/// are WM3c.
+/// Rules, General and Logs arrive with WM3e.
 class AppShell extends StatelessWidget {
-  const AppShell({required this.onAction, super.key});
+  const AppShell({required this.onAction, required this.picker, super.key});
 
   final void Function(AppAction action) onAction;
+
+  /// The common dialogs of the `.ovpn` import.
+  final FilePicker picker;
 
   @override
   Widget build(BuildContext context) {
     final navigator = NavigationScope.of(context);
-    return AlertHost(
-      onAction: onAction,
-      child: NavigationView(
-        pane: NavigationPane(
-          selected: navigator.page.index,
-          onChanged: (index) => navigator.go(AppPage.values[index]),
-          displayMode: PaneDisplayMode.expanded,
-          items: [
-            for (final page in AppPage.values)
-              PaneItem(
-                key: ValueKey(page),
-                icon: Icon(_icons[page]),
-                title: Text(page.title),
-                body: _PageBody(page: page, onAction: onAction),
-              ),
-          ],
+    final importer = TunnelImporter(
+      model: AppScope.of(context),
+      picker: picker,
+      confirmFolder: (missing) => showQuestionDialog(
+        context,
+        title: 'Referenced files not found',
+        message:
+            '${missing.join(', ')} referenced but not found next to the '
+            '.ovpn. Choose the folder that contains them.',
+        confirm: 'Choose Folder…',
+      ),
+    );
+    return DropTarget(
+      onDragDone: (details) {
+        navigator.go(AppPage.tunnels);
+        unawaited(
+          importer.importDropped(details.files.map((file) => file.path)),
+        );
+      },
+      child: AlertHost(
+        onAction: onAction,
+        child: NavigationView(
+          pane: NavigationPane(
+            selected: navigator.page.index,
+            onChanged: (index) => navigator.go(AppPage.values[index]),
+            displayMode: PaneDisplayMode.expanded,
+            items: [
+              for (final page in AppPage.values)
+                PaneItem(
+                  key: ValueKey(page),
+                  icon: Icon(_icons[page]),
+                  title: Text(page.title),
+                  body: _PageBody(
+                    page: page,
+                    onAction: onAction,
+                    importer: importer,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -51,10 +85,15 @@ class AppShell extends StatelessWidget {
 }
 
 class _PageBody extends StatelessWidget {
-  const _PageBody({required this.page, required this.onAction});
+  const _PageBody({
+    required this.page,
+    required this.onAction,
+    required this.importer,
+  });
 
   final AppPage page;
   final void Function(AppAction action) onAction;
+  final TunnelImporter importer;
 
   @override
   Widget build(BuildContext context) {
@@ -65,12 +104,16 @@ class _PageBody extends StatelessWidget {
           onRepair: () => onAction(const AppAction.repairInstallation()),
         ),
         Expanded(
-          child: Center(
-            child: Text(
-              '${page.title} — coming in WM3d/WM3e',
-              style: FluentTheme.of(context).typography.body,
+          child: switch (page) {
+            AppPage.dashboard => const DashboardPage(),
+            AppPage.tunnels => TunnelsPage(importer: importer),
+            AppPage.rules || AppPage.general || AppPage.logs => Center(
+              child: Text(
+                '${page.title} — coming in WM3e',
+                style: FluentTheme.of(context).typography.body,
+              ),
             ),
-          ),
+          },
         ),
       ],
     );
