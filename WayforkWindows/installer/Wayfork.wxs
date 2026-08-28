@@ -85,6 +85,16 @@
           Stop="both"
           Remove="uninstall"
           Wait="yes" />
+      <!-- The event-log source the service opens for its warnings and errors. Without
+           it the Application log renders them as "the description cannot be found";
+           EventCreate.exe is the stock message file for plain-string events. -->
+      <RegistryKey Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\EventLog\Application\Wayfork">
+        <RegistryValue
+            Type="expandable"
+            Name="EventMessageFile"
+            Value="%SystemRoot%\System32\EventCreate.exe" />
+        <RegistryValue Type="integer" Name="TypesSupported" Value="7" />
+      </RegistryKey>
     </Component>
 
     <Component Id="StartMenuShortcut" Directory="ProgramMenuFolder" Guid="4c1d9f18-3b57-4a6e-9c1b-0d5f8e2a7b34">

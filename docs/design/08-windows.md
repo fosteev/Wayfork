@@ -318,11 +318,20 @@ WM4b landed the package itself (`WayforkWindows/installer/Wayfork.wxs`,
   writes `Wayfork-<version>-<arch>.msi` with a `.sha256` under `build\release-windows\`.
   The version is read from `version.dart` and cross-checked against `pubspec.yaml`; a
   `-Version` that disagrees is refused, the same guard the macOS script has.
+- **The event-log source is part of the package.** The service opens `Wayfork` as an
+  event-log source and mirrors its warnings and errors there. `RegisterEventSource`
+  succeeds for a source nobody registered, so the events *were* written — but the
+  Application log could not resolve the provider and rendered them as "the description
+  cannot be found". The service component now writes
+  `EventLog\Application\Wayfork` with `EventMessageFile` = `EventCreate.exe` (the stock
+  message file for plain-string events) and `TypesSupported` = 7, which also makes the
+  older events readable.
 - **Verified in the VM (arm64, 2026-08-28).** Install: exit 0, the payload lands with
   `bin\`, `data\` and `drivers\` intact, the service is registered as LocalSystem with
   delayed auto-start, comes up on its own and logs `service 0.1.0 ready (C:\Program
   Files\Wayfork)` — out of developer mode, so the trust checks are live — and the pipe is
-  there. The driver step found ovpn-dco 2.8.4.0 already published as `oem10.inf` (the
+  there; the SCM handler and the event-log source, owed since WM2, are exercised by that
+  start (`Wayfork service 0.1.0 starting` in the Application log). The driver step found ovpn-dco 2.8.4.0 already published as `oem10.inf` (the
   spike's OpenVPN install), skipped the publish and wrote no record, which is what keeps a
   foreign driver safe. Uninstall: exit 0, service and files gone, the `Wayfork-N` adapters
   deleted, `%ProgramData%\Wayfork\run` removed, the logs next to it kept,
@@ -526,10 +535,10 @@ Dart core built from the maintainer's real export (sing-box TUN + one VLESS + tw
   writes proceed independently. `ConnectNamedPipe` now takes an event-backed `OVERLAPPED`
   (cancelled on `Close` via `CancelIoEx`), and `DialPipe` retries `ERROR_PIPE_BUSY`.
 
-Still not exercised (skipped by `--dev-apply` or owed to a later milestone): the real `svc`
-SCM handler and its event-log source (WM3/WM4, needs the installed service), `WinVerifyTrust`
-on binaries and the client image (dev mode skips trust checks — WM4 with a signed install),
-sing-box crash-restart counting (no crash injected), the resolver re-apply on an adapter
+Still not exercised (skipped by `--dev-apply` or owed to a later milestone): `WinVerifyTrust`
+on binaries and the client image (dev mode skips trust checks; the MSI install runs with them
+on, but no client has connected to that service yet, and an unsigned build has no publisher
+to pin), sing-box crash-restart counting (no crash injected), the resolver re-apply on an adapter
 change, and the on-link route fallback when no `route-gateway` is pushed (both real servers
 pushed one, so `CreateIpForwardEntry2` used an explicit next-hop and needed no retry).
 
