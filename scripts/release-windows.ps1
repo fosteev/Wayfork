@@ -288,7 +288,9 @@ try {
 
     # The bundle is what the release page offers first: one download for both machines. It
     # needs both packages, so a single-architecture build stops at the MSI.
-    if ($architectures.Count -eq 2) {
+    # `$architectures` comes out of an `if` statement, so a single-architecture build has
+    # been unrolled to a bare string by then — `.Count` on one throws under strict mode.
+    if (@($architectures).Count -eq 2) {
         Install-WixExtension $wixPath 'WixToolset.BootstrapperApplications.wixext' $wixVersion
         $bundle = Join-Path $outputDir "Wayfork-$Version.exe"
         Remove-Item -LiteralPath $bundle -Force -ErrorAction SilentlyContinue
