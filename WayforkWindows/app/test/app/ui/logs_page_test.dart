@@ -169,4 +169,36 @@ void main() {
     expect(copied.single, contains('daemon  INFO  service ready'));
     expect(copied.single, contains('sing-box  ERROR  started at Wayfork'));
   });
+
+  testWidgets('Follow renders the tail, not the whole ring', (tester) async {
+    final app = await boot(tester);
+    const total = LogsPage.followWindow * 3;
+    app.logs.receive([
+      for (var index = 0; index < total; index++) line('daemon', 'line $index'),
+    ]);
+
+    await tester.pumpWidget(
+      scoped(app.model, AppNavigator(), const LogsPage()),
+    );
+    await tester.pumpAndSettle();
+
+    // Following the whole ring makes every batch walk thousands of rows to
+    // reach the end of the list, which is what used to freeze the window.
+    ListView list() => tester.widget<ListView>(find.byType(ListView));
+    expect(list().semanticChildCount, LogsPage.followWindow);
+    expect(find.text('line ${total - 1}'), findsOneWidget);
+    expect(find.text('line 0'), findsNothing);
+
+    // Scrolling back stops the follow, so the whole ring is reachable.
+    await tester.drag(find.byType(ListView), const Offset(0, 300));
+    await tester.pumpAndSettle();
+
+    expect(list().semanticChildCount, greaterThanOrEqualTo(total));
+    expect(
+      tester
+          .widget<ToggleButton>(find.widgetWithText(ToggleButton, 'Follow'))
+          .checked,
+      isFalse,
+    );
+  });
 }

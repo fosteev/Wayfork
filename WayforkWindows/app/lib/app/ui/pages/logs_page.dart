@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:wayfork/app/model/app_model.dart';
 import 'package:wayfork/app/services/log_center.dart';
@@ -15,6 +16,12 @@ import 'package:wayfork/core/model/settings.dart';
 /// Log" on a failed tunnel arrives through `AppNavigator.logSource`.
 class LogsPage extends StatefulWidget {
   const LogsPage({super.key});
+
+  /// How many lines Follow keeps on screen. Scrolling a lazy list to its end
+  /// walks every row it holds, so following the whole ring rebuilt thousands
+  /// of rows on every batch and froze the window; the tail is what Follow is
+  /// for anyway, and switching it off brings the full ring back.
+  static const followWindow = 400;
 
   @override
   State<LogsPage> createState() => _LogsPageState();
@@ -46,6 +53,9 @@ class _LogsPageState extends State<LogsPage> {
       listenable: model.logs,
       builder: (context, _) {
         final lines = _visible(model);
+        final shown = _follow && lines.length > LogsPage.followWindow
+            ? lines.sublist(lines.length - LogsPage.followWindow)
+            : lines;
         if (_follow) {
           WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToEnd());
         }
@@ -58,7 +68,7 @@ class _LogsPageState extends State<LogsPage> {
               const SizedBox(height: 10),
               _filters(context, model),
               const SizedBox(height: 10),
-              Expanded(child: _lines(context, model, lines)),
+              Expanded(child: _lines(context, model, shown)),
             ],
           ),
         );
@@ -171,13 +181,28 @@ class _LogsPageState extends State<LogsPage> {
                 ),
               ),
             )
-          : ListView.builder(
-              controller: _scroll,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              itemCount: lines.length,
-              itemBuilder: (context, index) => _LogRow(
-                line: lines[index],
-                source: _displayName(model, lines[index].source),
+          // Scrolling back is what the scrollback is for, so reaching for it
+          // stops the follow that would otherwise yank the view to the end
+          // again — and brings the lines before the window back.
+          : NotificationListener<UserScrollNotification>(
+              onNotification: (notification) {
+                if (_follow &&
+                    notification.direction == ScrollDirection.forward) {
+                  setState(() => _follow = false);
+                }
+                return false;
+              },
+              child: ListView.builder(
+                controller: _scroll,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                itemCount: lines.length,
+                itemBuilder: (context, index) => _LogRow(
+                  line: lines[index],
+                  source: _displayName(model, lines[index].source),
+                ),
               ),
             ),
     );
