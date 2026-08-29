@@ -5,12 +5,11 @@
   after the two packages:
 
     wix build WayforkBundle.wxs -arch x86 -ext WixToolset.BootstrapperApplications.wixext
-              -d Version=<x.y.z> -bindpath Msi=<output dir> -bindpath Icon=<tray assets>
+              -d Version=<x.y.z> -bindpath Msi=<output dir> -bindpath Icon=<runner resources>
               -o Wayfork-<version>.exe
 
-  The icon is the tray glyph's light-theme variant (a dark mark, which is what reads on the
-  installer's chrome and in Add/Remove Programs); the Flutter runner's own `app_icon.ico`
-  is still the empty placeholder the scaffold left behind.
+  The icon is the app's own (scripts/make-win-app-icon.py), the same one `wayfork.exe`
+  carries, so the installer, the Start menu and Add/Remove Programs all show one mark.
 
   The engine is x86 on purpose: it is the one architecture every supported Windows runs
   natively or emulates (an x64 engine would not start on Windows 10 ARM64), and it only
@@ -23,7 +22,7 @@
       Manufacturer="Wayfork"
       Version="$(Version)"
       UpgradeCode="4c1f8a92-6d5b-4e7a-9c31-8a0e2f4b6d75"
-      IconSourceFile="!(bindpath.Icon)\on.ico"
+      IconSourceFile="!(bindpath.Icon)\app_icon.ico"
       AboutUrl="https://github.com/fosteev/Wayfork"
       Compressed="yes">
 

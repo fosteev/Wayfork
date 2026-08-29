@@ -53,3 +53,6 @@ local/
 
 # IDEs
 .idea/
+
+# Python bytecode from the icon scripts
+__pycache__/

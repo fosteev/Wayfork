@@ -299,7 +299,7 @@ try {
             '-ext', 'WixToolset.BootstrapperApplications.wixext',
             '-d', "Version=$Version",
             '-bindpath', "Msi=$outputDir",
-            '-bindpath', "Icon=$(Join-Path $appDir 'assets\tray\light')",
+            '-bindpath', "Icon=$(Join-Path $appDir 'windows\runner\resources')",
             '-out', $bundle)
         Set-BundleSignature $wixPath $bundle
 

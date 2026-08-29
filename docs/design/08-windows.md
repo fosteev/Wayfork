@@ -736,6 +736,14 @@ WM3c — the tray, the window lifecycle and the Win32 backends the model was wai
   of a transition is the controller alternating `on` with a 45 %-alpha `pulse` twin from
   `AppModel.iconPulse`. A service that needs repairing shows `error` whatever the routing
   state is.
+- **Application icon.** `windows/runner/resources/app_icon.ico`, rendered by
+  `scripts/make-win-app-icon.py` from the same glyph and rasteriser: white on the
+  prototype's accent blue (`#0A60FF`) inside a rounded square, 16-256 px, 32-bit BGRA.
+  Unlike the tray it cannot be monochrome — the Start menu and the taskbar exist in both
+  themes, and one ink would vanish in one of them. `Runner.rc` embeds it in `wayfork.exe`,
+  which is where the taskbar, the Start-menu shortcut, `ARPPRODUCTICON` and the bundle's
+  own icon all read it from. (Until 2026-08-29 the file was the scaffold's **empty**
+  placeholder, so the app had no icon anywhere.)
 - **Tray menu and controller.** `TrayMenu.build(model)` returns plain `TrayMenuEntry`
   values — the prototype's right-click menu (board 2): the checked *Wayfork is On/Off*
   (dead while a transition is in flight), the summary as a disabled line, *Repair
