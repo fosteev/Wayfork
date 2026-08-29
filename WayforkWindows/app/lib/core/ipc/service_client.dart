@@ -120,7 +120,7 @@ final class ServiceClient {
   Future<void> stop() async {
     if (!_running) return;
     _running = false;
-    _wakeup?.complete();
+    _wake();
     final connection = _connection;
     _connection = null;
     await connection?.close();
@@ -130,7 +130,14 @@ final class ServiceClient {
   }
 
   /// Skips the current backoff wait and dials right away.
-  void retryNow() => _wakeup?.complete();
+  void retryNow() => _wake();
+
+  /// The wait's timer can have completed the wakeup already — `_wait` only
+  /// clears it a microtask later — and completing it twice throws.
+  void _wake() {
+    final wakeup = _wakeup;
+    if (wakeup != null && !wakeup.isCompleted) wakeup.complete();
+  }
 
   // Calls
 
