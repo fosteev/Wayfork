@@ -6,6 +6,8 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-08-29
+
 ### Added
 
 - **Windows: pick an application rule from what is running.** *Rules → + → Application…*
@@ -98,5 +100,6 @@ First release: per-domain split tunneling across several VPNs at once from the m
   matched as the proxy. IP rules are IPv4, destination-address only.
 - No rule lists / subscriptions, no WireGuard, Shadowsocks or XHTTP transports yet.
 
+[0.3.0]: https://github.com/fosteev/Wayfork/releases/tag/v0.3.0
 [0.2.0]: https://github.com/fosteev/Wayfork/releases/tag/v0.2.0
 [0.1.0]: https://github.com/fosteev/Wayfork/releases/tag/v0.1.0
