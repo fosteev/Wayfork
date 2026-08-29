@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wayfork/app/model/app_alert.dart';
 import 'package:wayfork/app/ui/app_navigation.dart';
 import 'package:wayfork/app/ui/pages/rules_page.dart';
+import 'package:wayfork/core/app/running_app.dart';
 import 'package:wayfork/core/model/rule.dart';
 import 'package:wayfork/core/model/store.dart';
 
@@ -12,20 +13,26 @@ import '../fakes.dart';
 import '../lifecycle_fakes.dart';
 import 'ui_harness.dart';
 
-/// The page with the picker its "Application…" uses and the actions it emits.
-({Widget widget, FakeFilePicker picker, List<AppAction> performed}) page(
-  Harness app,
-  AppNavigator navigator,
-) {
+/// The page with the two halves of its "Application…" — the running apps it
+/// lists and the file dialog behind *Browse…* — and the actions it emits.
+({
+  Widget widget,
+  FakeFilePicker picker,
+  FakeRunningApps apps,
+  List<AppAction> performed,
+})
+page(Harness app, AppNavigator navigator, {FakeRunningApps? apps}) {
   final picker = FakeFilePicker();
+  final running = apps ?? FakeRunningApps();
   final performed = <AppAction>[];
   return (
     widget: scoped(
       app.model,
       navigator,
-      RulesPage(picker: picker, onAction: performed.add),
+      RulesPage(picker: picker, runningApps: running, onAction: performed.add),
     ),
     picker: picker,
+    apps: running,
     performed: performed,
   );
 }
@@ -179,17 +186,34 @@ void main() {
     expect(find.text('tunnel disabled — goes direct'), findsOneWidget);
   });
 
-  testWidgets('Application… adds an app rule and flags a missing .exe', (
+  testWidgets('Application… adds the app picked from the running ones', (
     tester,
   ) async {
     final app = await boot(tester);
-    final view = page(app, AppNavigator());
-    view.picker.file = r'C:\Program Files\Example\example.exe';
+    final view = page(
+      app,
+      AppNavigator(),
+      apps: FakeRunningApps(
+        apps: const [
+          RunningApp(
+            path: r'C:\Program Files\Example\example.exe',
+            name: 'Example',
+            windowTitle: 'Example — Untitled',
+            hasWindow: true,
+          ),
+        ],
+      ),
+    );
 
     await tester.pumpWidget(view.widget);
     await tester.pumpAndSettle();
     await openGroupMenu(tester, 0, 'Application…');
+    await tester.tap(find.text('Example'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add Rule'));
+    await tester.pumpAndSettle();
 
+    expect(view.picker.openCalls, 0, reason: 'no file dialog on this path');
     final rule = app.model.store.exceptions.single;
     expect(rule.match, RuleMatch.app);
     expect(rule.pattern, r'C:\Program Files\Example\example.exe');

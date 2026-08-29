@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wayfork/app/model/app_alert.dart';
 import 'package:wayfork/app/model/app_model.dart';
 import 'package:wayfork/app/services/file_picker.dart';
+import 'package:wayfork/app/services/running_apps.dart';
 import 'package:wayfork/app/ui/app_navigation.dart';
 import 'package:wayfork/app/ui/app_scope.dart';
 import 'package:wayfork/app/ui/app_shell.dart';
@@ -22,10 +23,15 @@ Widget shell(
   AppNavigator navigator,
   List<AppAction> performed, {
   FilePicker? picker,
+  RunningAppSource? runningApps,
 }) => scoped(
   model,
   navigator,
-  AppShell(onAction: performed.add, picker: picker ?? FakeFilePicker()),
+  AppShell(
+    onAction: performed.add,
+    picker: picker ?? FakeFilePicker(),
+    runningApps: runningApps ?? FakeRunningApps(),
+  ),
 );
 
 /// One page under the two scopes it reads, without the navigation view around

@@ -62,9 +62,12 @@ back. Application rules (F10) carry platform paths and are imported as *not foun
 
 **F9. Traffic rates** — same (Clash API), shown on the Dashboard cards.
 
-**F10. Rules: application → tunnel** — an application is an `.exe`, picked in a file
-dialog; the rule covers that executable only (there is no bundle to enclose helpers).
-Display name and icon come from the file's version info.
+**F10. Rules: application → tunnel** — an application is an `.exe`; the rule covers that
+executable only (there is no bundle to enclose helpers). *Application…* opens a picker that
+lists what is **running right now** — one entry per executable, named by the version info's
+`FileDescription` — with *Browse…* falling back to the file dialog for an app that is not
+started. Display name comes from the file's version info; there is no icon (see
+[08-windows.md](design/08-windows.md) § Flutter app).
 
 **F11. Rules by IP address / subnet** — same; the "covers your LAN" warning reads the
 adapters through `GetAdaptersAddresses`.
@@ -452,10 +455,27 @@ Manual, on a clean Windows 11 user account; results recorded in `08-windows.md`.
       and DNS.
 - [ ] F8: unmatched through the default tunnel, exception direct, default down → blocked.
 - [ ] F9: rates on both cards, Direct row moves for an exception.
-- [ ] F10: an `.exe` rule routes its traffic; removed exe leaves the rule flagged.
+- [ ] F10: the picker lists running apps (a store app and an elevated one included), the
+      chosen `.exe` routes its traffic; removed exe leaves the rule flagged.
 - [ ] F11: public IP through a tunnel, office subnet through OpenVPN, LAN untouched.
 - [ ] F12: `Get-DnsClientServerAddress` shows the override while On and the original
       after Off; Wi-Fi ↔ Ethernet keeps it; service kill → restored at next start.
 - [ ] Reboot with connect-on-launch; MSI upgrade over a running install; uninstall leaves
       no adapters, routes or DNS override behind.
 - [ ] Mac export → Windows import → same routing (minus app rules).
+
+### WM6 — Application picker (F10)
+
+Delta agreed 2026-08-29: *Application…* stopped at a file dialog, which asks the user to
+know where an app is installed. Design in [08-windows.md](design/08-windows.md) § Flutter
+app, "App rules (F10) on Windows".
+
+- [ ] `RunningApps` Win32 half: visible top-level windows → PID → full `.exe` path
+      (`EnumWindows` + `QueryFullProcessImageNameW`), store apps resolved through the
+      `ApplicationFrameHost` child `CoreWindow`, background processes behind a toggle
+      (`EnumProcesses`), display name from `FileDescription`.
+- [ ] `core/app/running_app.dart`: dedupe by path, windowed before background, search —
+      pure and unit-tested; the Win32 half stays behind the interface for the fakes.
+- [ ] Picker dialog on *Application…*: search, list, *Show background processes*,
+      *Browse…* into the existing `FilePicker`, chosen path into the same `addRule`.
+- [ ] VM run: the list matches Task Manager's *Apps*, a rule added from it routes.

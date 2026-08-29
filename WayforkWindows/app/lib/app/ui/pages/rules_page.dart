@@ -6,8 +6,10 @@ import 'package:flutter/services.dart';
 import 'package:wayfork/app/model/app_alert.dart';
 import 'package:wayfork/app/model/app_model.dart';
 import 'package:wayfork/app/services/file_picker.dart';
+import 'package:wayfork/app/services/running_apps.dart';
 import 'package:wayfork/app/ui/app_navigation.dart';
 import 'package:wayfork/app/ui/app_scope.dart';
+import 'package:wayfork/app/ui/pick_application_dialog.dart';
 import 'package:wayfork/app/ui/widgets/components.dart';
 import 'package:wayfork/core/app/status_text.dart';
 import 'package:wayfork/core/model/rule.dart';
@@ -23,10 +25,18 @@ import 'package:wayfork/core/singbox/rule_set_generator.dart';
 /// Every edit goes straight into the model, which re-applies on its debounce —
 /// what the model refuses is shown next to the row that caused it.
 class RulesPage extends StatefulWidget {
-  const RulesPage({required this.picker, required this.onAction, super.key});
+  const RulesPage({
+    required this.picker,
+    required this.runningApps,
+    required this.onAction,
+    super.key,
+  });
 
-  /// The common dialog behind "Application…" (F10).
+  /// The common dialog behind the picker's "Browse…" (F10).
   final FilePicker picker;
+
+  /// What the "Application…" picker lists (F10).
+  final RunningAppSource runningApps;
 
   final void Function(AppAction action) onAction;
 
@@ -77,18 +87,19 @@ class _RulesPageState extends State<RulesPage> {
     }
   });
 
-  /// F10 on Windows: an `.exe`, not a bundle. The picked path goes through
-  /// the same `addRule` as a typed pattern, so an unusable path is refused
-  /// with the model's own message.
+  /// F10 on Windows: an `.exe`, not a bundle. The picker lists what is running
+  /// and falls back to the file dialog; either way the path goes through the
+  /// same `addRule` as a typed pattern, so an unusable one is refused with the
+  /// model's own message.
   Future<void> _chooseApplication(RuleTarget target) async {
     final model = AppScope.of(context);
     _finishEditing();
-    final path = await widget.picker.openFile(
-      label: 'Applications',
-      extensions: const ['exe'],
-      confirmButtonText: 'Add Rule',
+    final path = await showPickApplicationDialog(
+      context,
+      apps: widget.runningApps,
+      picker: widget.picker,
     );
-    if (path == null) return;
+    if (path == null || !mounted) return;
     final error = await model.addRule(
       pattern: path,
       match: RuleMatch.app,

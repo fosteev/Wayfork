@@ -917,13 +917,35 @@ WM3e — the remaining three pages (boards 5-7 of the prototype), no new depende
   the right-click menu, which is what Windows users reach for and what keeps a `Delete`
   press inside the search box harmless; the *Move to* submenu opens on **press**, not the
   default hover, so it is reachable from the keyboard and from a test.
-- **App rules (F10) on Windows.** *Application…* opens the shared `FilePicker` filtered to
-  `.exe` and hands the path to the same `addRule`, so an unusable path comes back with the
-  model's own message. The row shows the file name without `.exe` plus the full path as its
-  tooltip — **no icon**: extracting one from a PE file needs `ExtractIconEx` + a HICON→
-  bitmap round trip through Win32, which is a lot of interop for a 16 px decoration. A
-  missing executable is a `not found` chip; the check is `File.existsSync` cached for five
-  seconds, because rows rebuild on every model notification.
+- **App rules (F10) on Windows.** *Application…* opens a picker over the apps that are
+  **running now**, because that is how a user knows an app — not by its install path. The
+  list is `EnumWindows` filtered to real windows (visible, no owner, no `WS_EX_TOOLWINDOW`,
+  not DWM-cloaked, non-empty title) → `GetWindowThreadProcessId` →
+  `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` → `QueryFullProcessImageNameW`, which is
+  Task Manager's *Apps* section. Three things the naive version gets wrong: a store app's
+  window belongs to `ApplicationFrameHost.exe`, so the PID is re-read from the child
+  `Windows.UI.Core.CoreWindow` (and the entry dropped when there is none); Chrome and every
+  Electron app are dozens of PIDs behind one `.exe`, so entries are **deduped by path**; and
+  a process whose path cannot be read (protected, another user) is skipped rather than shown
+  unusable. *Show background processes* switches the source to `EnumProcesses` — a game
+  launcher or an updater has no window — and *Browse…* keeps the old `FilePicker` for an app
+  that is not started. Whatever is chosen goes through the same `addRule`, so an unusable
+  path still comes back with the model's own message. The enumeration is **not in an
+  isolate**: ~50 ms on the platform thread for the windowed list, and the version-info reads
+  happen once per deduped path.
+  Names come from the version info (`GetFileVersionInfoW` → `\VarFileInfo\Translation` →
+  `FileDescription`), falling back to the file name — *Google Chrome*, not *chrome*. Both
+  the picker and the rule row are **iconless**: extracting one from a PE file needs
+  `ExtractIconEx` (not even bound in the `win32` package) + a HICON→bitmap round trip, which
+  is a lot of interop for a 16 px decoration. The row shows the file name without `.exe`
+  plus the full path as its tooltip; a missing executable is a `not found` chip, checked
+  with `File.existsSync` cached for five seconds, because rows rebuild on every model
+  notification.
+  Why the app and not the service: the service is LocalSystem in **session 0**, where
+  `EnumWindows` sees none of the user's windows. The app is unelevated and can still query
+  a same-user elevated process (mandatory integrity is no-write-up; a limited-information
+  query is a read), so the only losses are SYSTEM and protected processes — nothing anyone
+  wants to route.
 - **General.** The macOS pane retitled: *Start Wayfork at sign-in*, *Connect on launch*,
   the two reliability toggles, the DNS block (F12's system-resolver switch plus the
   System/Custom resolver pair — the prototype's board 6 does not draw it, but the setting

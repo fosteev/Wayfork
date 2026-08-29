@@ -1,8 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:wayfork/app/services/file_picker.dart';
+import 'package:wayfork/app/services/running_apps.dart';
 import 'package:wayfork/app/services/tray_backend.dart';
 import 'package:wayfork/app/services/tray_menu.dart';
 import 'package:wayfork/app/services/window_backend.dart';
+import 'package:wayfork/core/app/running_app.dart';
 
 /// Records what the tray was asked to display and replays its events.
 final class FakeTrayBackend implements TrayBackend {
@@ -173,5 +175,31 @@ final class FakeFilePicker implements FilePicker {
     saveCalls += 1;
     this.suggestedName = suggestedName;
     return savePath;
+  }
+}
+
+/// Canned answers for the "Application…" picker, without Win32 (F10).
+final class FakeRunningApps implements RunningAppSource {
+  FakeRunningApps({this.apps = const [], this.background = const []});
+
+  /// What [list] returns without background processes, and the head of what it
+  /// returns with them.
+  List<RunningApp> apps;
+
+  /// Added on top of [apps] when background processes are asked for.
+  List<RunningApp> background;
+
+  /// Thrown instead of answering, for the failure path.
+  Object? failure;
+
+  int calls = 0;
+  bool? lastIncludedBackground;
+
+  @override
+  Future<List<RunningApp>> list({bool includeBackground = false}) async {
+    calls += 1;
+    lastIncludedBackground = includeBackground;
+    if (failure case final failure?) throw failure;
+    return includeBackground ? [...apps, ...background] : apps;
   }
 }

@@ -5,6 +5,7 @@ import 'package:fluent_ui/fluent_ui.dart';
 import 'package:wayfork/app/model/app_alert.dart';
 import 'package:wayfork/app/model/app_model.dart';
 import 'package:wayfork/app/services/file_picker.dart';
+import 'package:wayfork/app/services/running_apps.dart';
 import 'package:wayfork/app/services/launch_at_login_registry.dart';
 import 'package:wayfork/app/services/log_center.dart';
 import 'package:wayfork/app/services/network_watcher.dart';
@@ -147,6 +148,7 @@ class WayforkApp extends StatelessWidget {
           navigator: navigator,
           child: AppShell(
             picker: WindowsFilePicker(),
+            runningApps: WindowsRunningApps(),
             onAction: (AppAction action) => unawaited(actions.handle(action)),
           ),
         ),

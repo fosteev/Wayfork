@@ -6,6 +6,18 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Windows: pick an application rule from what is running.** *Rules → + → Application…*
+  now lists the running applications by their real names (Google Chrome, not `chrome`),
+  with a search box, an optional view of background processes and *Browse…* for an app
+  that is not started.
+
+### Fixed
+
+- The service client could throw "Future already completed" when a reconnect wait ended
+  at the same moment as *Retry* or shutdown.
+
 ## [0.2.0] — 2026-08-28
 
 ### Added

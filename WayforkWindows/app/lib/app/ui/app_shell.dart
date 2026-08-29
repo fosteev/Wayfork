@@ -4,6 +4,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:wayfork/app/model/app_alert.dart';
 import 'package:wayfork/app/services/file_picker.dart';
+import 'package:wayfork/app/services/running_apps.dart';
 import 'package:wayfork/app/ui/alert_host.dart';
 import 'package:wayfork/app/ui/app_navigation.dart';
 import 'package:wayfork/app/ui/app_scope.dart';
@@ -21,12 +22,20 @@ import 'package:wayfork/app/ui/widgets/components.dart';
 /// page is open and the alert queue on top of everything. A `.ovpn` dropped
 /// anywhere in the window is imported (board 4).
 class AppShell extends StatelessWidget {
-  const AppShell({required this.onAction, required this.picker, super.key});
+  const AppShell({
+    required this.onAction,
+    required this.picker,
+    required this.runningApps,
+    super.key,
+  });
 
   final void Function(AppAction action) onAction;
 
   /// The common dialogs of the `.ovpn` import.
   final FilePicker picker;
+
+  /// What the Rules page's "Application…" picker lists (F10).
+  final RunningAppSource runningApps;
 
   @override
   Widget build(BuildContext context) {
@@ -68,6 +77,7 @@ class AppShell extends StatelessWidget {
                     onAction: onAction,
                     importer: importer,
                     picker: picker,
+                    runningApps: runningApps,
                   ),
                 ),
             ],
@@ -92,12 +102,14 @@ class _PageBody extends StatelessWidget {
     required this.onAction,
     required this.importer,
     required this.picker,
+    required this.runningApps,
   });
 
   final AppPage page;
   final void Function(AppAction action) onAction;
   final TunnelImporter importer;
   final FilePicker picker;
+  final RunningAppSource runningApps;
 
   @override
   Widget build(BuildContext context) {
@@ -111,7 +123,11 @@ class _PageBody extends StatelessWidget {
           child: switch (page) {
             AppPage.dashboard => const DashboardPage(),
             AppPage.tunnels => TunnelsPage(importer: importer),
-            AppPage.rules => RulesPage(picker: picker, onAction: onAction),
+            AppPage.rules => RulesPage(
+              picker: picker,
+              runningApps: runningApps,
+              onAction: onAction,
+            ),
             AppPage.general => GeneralPage(picker: picker),
             AppPage.logs => const LogsPage(),
           },

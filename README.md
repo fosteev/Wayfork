@@ -130,6 +130,8 @@ under `%LOCALAPPDATA%\Wayfork` are kept.
 | `203.0.113.7`, `10.8.0.0/24` | connections opened to that address / subnet |
 
 Rules are grouped by tunnel; the *Direct* group holds exceptions and always comes first.
+On Windows, *+ › Application…* lists the applications that are running, so an app is picked
+by name; *Browse…* there points at an `.exe` that is not started.
 Inside a group, domain, application and IP rules are peers. A rule that can never fire —
 shadowed by an earlier one, or pointing at a disabled tunnel — gets a warning chip, and so
 does an IP rule covering your own LAN.
