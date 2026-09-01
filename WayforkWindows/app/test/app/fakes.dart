@@ -114,6 +114,9 @@ final class Harness {
 
     /// Where the log centre writes its files; null keeps it in memory.
     Directory? logDirectory,
+
+    /// H2: the waits between automatic re-applies after the engine failed.
+    this.recoveryDelays,
   }) : sample = SampleStore(),
        logs = LogCenter(directory: logDirectory, echoToConsole: false) {
     final base = store ?? sample.store;
@@ -149,9 +152,11 @@ final class Harness {
       pulseInterval: const Duration(hours: 1),
       connectTimeout: const Duration(seconds: 2),
       serviceStartupGrace: serviceStartupGrace,
+      recoveryDelays: recoveryDelays,
     );
   }
 
+  final List<Duration>? recoveryDelays;
   final SampleStore sample;
   final bool _seedSecrets;
   final service = FakeService();

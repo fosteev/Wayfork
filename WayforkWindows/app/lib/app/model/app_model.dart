@@ -9,6 +9,7 @@ import 'package:wayfork/app/services/log_center.dart';
 import 'package:wayfork/app/services/notifier.dart';
 import 'package:wayfork/core/app/global_state.dart';
 import 'package:wayfork/core/app/import_export.dart';
+import 'package:wayfork/core/app/recovery_backoff.dart';
 import 'package:wayfork/core/app/rule_editing.dart';
 import 'package:wayfork/core/app/status_text.dart';
 import 'package:wayfork/core/app/traffic_format.dart';
@@ -71,8 +72,12 @@ final class AppModel extends ChangeNotifier {
     this.pulseInterval = const Duration(milliseconds: 600),
     this.connectTimeout = const Duration(seconds: 10),
     this.serviceStartupGrace = const Duration(seconds: 45),
+
+    /// H2: the waits between automatic re-applies after the engine failed.
+    List<Duration>? recoveryDelays,
     this._now = DateTime.now,
-  }) : _client = client,
+  }) : _recovery = RecoveryBackoff(delays: recoveryDelays),
+       _client = client,
        _launchAtLogin = launchAtLogin ?? InMemoryLaunchAtLogin(),
        _installDirFallback =
            installDir ?? File(Platform.resolvedExecutable).parent.path {
@@ -120,6 +125,7 @@ final class AppModel extends ChangeNotifier {
   final SystemDnsSnapshot Function() _systemDns;
   final List<LocalNetwork> Function() _localNetworks;
   final String _installDirFallback;
+  final RecoveryBackoff _recovery;
   final DateTime Function() _now;
   final _subscriptions = <StreamSubscription<Object?>>[];
   final _actions = StreamController<AppAction>.broadcast();
@@ -153,6 +159,13 @@ final class AppModel extends ChangeNotifier {
   Future<void>? _applying;
   bool _applyAgain = false;
   Timer? _startingTimer;
+
+  /// H2: pending automatic re-apply while the routing engine is down.
+  Timer? _recoveryTimer;
+
+  /// Set while an automatic re-apply runs: its failures are logged, not shown
+  /// as alerts.
+  bool _autoRecovering = false;
   Timer? _pulseTimer;
   Timer? _pruneTimer;
   Timer? _trafficStaleTimer;
@@ -496,6 +509,7 @@ final class AppModel extends ChangeNotifier {
   Future<void> turnOn() async {
     if (_desiredOn || _transition != null) return;
     logs.app(LogLevel.info, 'Turn On requested');
+    _cancelRecovery();
     _desiredOn = true;
     _setTransition(AppTransition.starting(since: _now()));
     notifyListeners();
@@ -533,6 +547,7 @@ final class AppModel extends ChangeNotifier {
   Future<void> turnOff() async {
     logs.app(LogLevel.info, 'Turn Off requested');
     _desiredOn = false;
+    _cancelRecovery();
     _applyTimer?.cancel();
     _applyTimer = null;
     _applyAgain = false;
@@ -813,15 +828,63 @@ final class AppModel extends ChangeNotifier {
       );
     }
     final engine = status.engine;
+    if (engine.isRunning && old?.engine.isRunning != true) _cancelRecovery();
     if (engine is EngineStateFailed && old?.engine != engine) {
       logs.app(LogLevel.error, 'routing engine failed: ${engine.reason}');
+      _handleEngineFailure(engine.reason);
+    }
+    notifyListeners();
+  }
+
+  // Engine failure recovery (H2)
+
+  /// The engine is down for good as far as the service is concerned: say so
+  /// once, then keep re-applying with backoff while the user wants routing on
+  /// (docs/design/05-daemon.md, "Engine failure recovery").
+  void _handleEngineFailure(String reason) {
+    final message = StatusText.failureMessage(reason);
+    if (!_recovery.isRecovering) {
       _notify(
         id: 'engine',
         title: 'Routing engine failed',
-        body: StatusText.failureMessage(engine.reason),
+        body: _desiredOn ? '$message Wayfork keeps retrying.' : message,
       );
     }
-    notifyListeners();
+    if (!_desiredOn || _recoveryTimer != null) return;
+    _scheduleRecovery();
+  }
+
+  void _scheduleRecovery() {
+    final delay = _recovery.nextDelay();
+    logs.app(
+      LogLevel.info,
+      'routing engine down; re-applying in ${delay.inSeconds} s',
+    );
+    _recoveryTimer = Timer(delay, () async {
+      _recoveryTimer = null;
+      if (!_desiredOn || _status?.engine.isRunning == true) return;
+      _autoRecovering = true;
+      try {
+        await applyNow();
+      } finally {
+        _autoRecovering = false;
+      }
+      // The service pushes a new `failed` only when it got as far as starting
+      // sing-box, so the next attempt is armed from here either way.
+      if (_desiredOn &&
+          _recoveryTimer == null &&
+          _status?.engine.isRunning != true) {
+        _scheduleRecovery();
+      }
+    });
+  }
+
+  /// Stops the retries and clears the streak: the engine is up, or the user
+  /// took over.
+  void _cancelRecovery() {
+    _recoveryTimer?.cancel();
+    _recoveryTimer = null;
+    _recovery.reset();
   }
 
   void _handleLogLines(List<LogLine> lines) {
@@ -1115,6 +1178,9 @@ final class AppModel extends ChangeNotifier {
           ),
         );
       case DaemonErrorStartFailed():
+        // An automatic retry (H2) reports through the tray, the log and the one
+        // notification of the streak; only the user's own apply gets an alert.
+        if (_autoRecovering) break;
         _alert(
           const AppAlert(
             title: 'Routing engine failed to start',
@@ -1214,6 +1280,7 @@ final class AppModel extends ChangeNotifier {
     }
     _applyTimer?.cancel();
     _startingTimer?.cancel();
+    _recoveryTimer?.cancel();
     _pulseTimer?.cancel();
     _pruneTimer?.cancel();
     _trafficStaleTimer?.cancel();

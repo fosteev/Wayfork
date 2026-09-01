@@ -535,6 +535,11 @@ void main() {
       await h.model.updateSettings(
         (s) => s.copyWith(notifyOnTunnelFailure: false),
       );
+      // Back up, so the next failure starts a fresh streak and would notify.
+      h.service.current.pushStatus(
+        running(planHash: h.model.lastPlan!.planHash),
+      );
+      await pumpEventQueue();
       h.service.current.pushStatus(
         RuntimeStatus(
           engine: const EngineState.failed(reason: 'singbox.startFailed'),
@@ -543,6 +548,74 @@ void main() {
       await pumpEventQueue();
       expect(h.notifier.posts, hasLength(1));
       expect(h.appLog, contains('routing engine failed: singbox.startFailed'));
+    });
+
+    // H2: `failed` is terminal for the service, so the app keeps re-applying.
+    test('a failed engine is re-applied until it comes up', () async {
+      h = Harness(recoveryDelays: const [Duration(milliseconds: 20)]);
+      var attempts = 0;
+      h.service.onApply = (plan, connection) {
+        attempts += 1;
+        if (attempts < 3) {
+          h.service.applyResult = ApplyResult.failure(
+            DaemonError.startFailed(logTail: const ['utun did not come up']),
+          );
+          connection.pushStatus(
+            RuntimeStatus(
+              engine: const EngineState.failed(reason: 'singbox.startFailed'),
+            ),
+          );
+        } else {
+          h.service.applyResult = ApplyResult.success;
+          connection.pushStatus(running(planHash: plan.planHash));
+        }
+      };
+      h.service.status = RuntimeStatus.stopped;
+      await h.start();
+      await h.model.turnOn();
+      await waitFor(
+        () => h.model.status?.engine.isRunning == true,
+        what: 'the engine to come back up',
+      );
+      expect(attempts, 3);
+      expect(
+        h.appLog,
+        contains(contains('routing engine down; re-applying in')),
+      );
+      // One notification for the whole streak, and only the user's own Turn On
+      // got an alert — the two automatic retries stayed quiet.
+      expect(h.notifier.posts, hasLength(1));
+      expect(h.notifier.posts.single.body, contains('keeps retrying'));
+      expect(
+        h.model.alerts.where(
+          (a) => a.title == 'Routing engine failed to start',
+        ),
+        hasLength(1),
+      );
+      // Up again: the streak is over, so a later failure notifies afresh.
+      h.service.current.pushStatus(
+        RuntimeStatus(
+          engine: const EngineState.failed(reason: 'singbox.startFailed'),
+        ),
+      );
+      await pumpEventQueue();
+      expect(h.notifier.posts, hasLength(2));
+    });
+
+    test('turning off stops the automatic re-applies', () async {
+      h = Harness(recoveryDelays: const [Duration(milliseconds: 20)]);
+      await h.startOn();
+      await h.settle();
+      final applies = h.service.applied.length;
+      h.service.current.pushStatus(
+        RuntimeStatus(
+          engine: const EngineState.failed(reason: 'singbox.startFailed'),
+        ),
+      );
+      await pumpEventQueue();
+      await h.model.turnOff();
+      await h.settle();
+      expect(h.service.applied, hasLength(applies));
     });
 
     test('discovered DNS lands in the store and re-applies', () async {
