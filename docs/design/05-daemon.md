@@ -87,7 +87,8 @@ struct TrafficCounters: Codable {
 ```
 
 Semantics: `apply` validates the plan, runs `sing-box check` and — when sing-box has to
-(re)start — waits for its startup verification (≤ ~4 s) before returning; OpenVPN
+(re)start — waits for its startup verification (≤ ~25 s: two 12 s windows, see
+[03-routing.md](03-routing.md), "Startup verification") before returning; OpenVPN
 processes are only spawned, their progress arrives via `statusChanged`. `apply`, `stop` and
 `reconnect` execute one at a time in call order; an `apply` that is still waiting when a
 newer one arrives is skipped (latest wins) and answers `ok`. `stop` returns after every

@@ -9,7 +9,15 @@ import WayforkDaemonCore
 actor SingBoxEngine {
     static let source = "sing-box"
     static let interface = "utun100"
+    /// How long the start waits for the "started" line before the first check; it keeps a
+    /// `utun100` a previous process has not finished tearing down out of the answer.
     static let startupGrace: Duration = .seconds(3)
+    /// How often the startup check repeats while the TUN comes up (H1).
+    static let startupPoll: Duration = .milliseconds(500)
+    /// How long from the spawn the check may keep failing before the attempt is given up.
+    static let startupTimeout: Duration = .seconds(12)
+    /// A start that never verifies is retried once before it counts as failed.
+    static let startAttempts = 2
     static let stopTimeout: Duration = .seconds(5)
     static let logTailLines = 20
 
@@ -32,6 +40,10 @@ actor SingBoxEngine {
     private var process: ManagedProcess?
     private var generation = 0
     private var stopping = false
+    /// `abortStartup()` was called while a start was still verifying.
+    private var startupAborted = false
+    /// A start is verifying; an exit belongs to it, not to `handleExit`.
+    private var startupPending = false
     private var crashes = CrashCounter()
     private var backoff = BackoffPolicy()
     private var restartTask: Task<Void, Never>?
@@ -140,14 +152,49 @@ actor SingBoxEngine {
 
     // MARK: - Lifecycle
 
-    /// Spawns sing-box for the config installed by `check` and verifies it came up.
+    /// Spawns sing-box for the config installed by `check` and verifies it came up. A start
+    /// that never verifies is retried once before it counts as failed
+    /// (docs/design/03-routing.md, "Startup verification").
     func start() async throws(DaemonError) {
         guard process == nil else { return }
         restartTask?.cancel()
         restartTask = nil
         stopping = false
+        startupAborted = false
         try BinaryValidator.validate(path: env.singBoxPath, name: "sing-box", teamID: env.teamID)
         state = .starting
+        for attempt in 1...SingBoxEngine.startAttempts {
+            switch await startAttempt(attempt) {
+            case .verified, .abandoned:
+                return
+            case .spawnFailed(let message):
+                state = .failed(reason: "singbox.startFailed")
+                throw .startFailed(logTail: [message])
+            case .unverified(let tail):
+                guard attempt < SingBoxEngine.startAttempts else {
+                    state = .failed(reason: "singbox.startFailed")
+                    throw .startFailed(logTail: tail)
+                }
+                hub.post(
+                    .warning,
+                    "starting sing-box once more after: \(tail.first ?? "startup verification failed")"
+                )
+            }
+        }
+    }
+
+    /// How one spawn-and-verify attempt ended.
+    private enum StartAttempt {
+        case verified
+        /// The window ran out, or the process exited during startup; the tail is the failure
+        /// line followed by the last log lines of this attempt.
+        case unverified(tail: [String])
+        /// A stop or a newer apply took over; it sets the state itself.
+        case abandoned
+        case spawnFailed(String)
+    }
+
+    private func startAttempt(_ attempt: Int) async -> StartAttempt {
         configHash = checkedConfigHash
         endpoint = checkedEndpoint
         generation += 1
@@ -156,6 +203,9 @@ actor SingBoxEngine {
         let collector = LineCollector(capacity: SingBoxEngine.logTailLines)
         recent = collector
         let (started, startedSignal) = AsyncStream.makeStream(of: Void.self)
+        // startupPending stays set until the child is dealt with: it is what keeps
+        // `handleExit` from treating a termination of our own as a crash worth restarting.
+        startupPending = true
         let spawned: ManagedProcess
         do {
             spawned = try ManagedProcess(
@@ -178,45 +228,122 @@ actor SingBoxEngine {
                         Task { await self.handleExit(exit, generation: generation) }
                     }))
         } catch {
-            state = .failed(reason: "singbox.startFailed")
-            throw .startFailed(logTail: ["posix_spawn failed: \(error)"])
+            startupPending = false
+            return .spawnFailed("posix_spawn failed: \(error)")
         }
         process = spawned
         try? AtomicFile.write("\(spawned.pid)\n", to: env.runPath(RunLayout.singBoxPID))
-        hub.post(.info, "sing-box started (pid \(spawned.pid))")
+        hub.post(
+            .info,
+            attempt == 1
+                ? "sing-box started (pid \(spawned.pid))"
+                : "sing-box started (pid \(spawned.pid), attempt \(attempt))")
 
-        let outcome = await spawned.awaitStartup(
-            startedSignal: started, grace: SingBoxEngine.startupGrace)
-        guard process === spawned else { return }  // stopped meanwhile
-        var failure: String?
-        switch outcome {
-        case .exited(let exit):
-            failure = "exited during startup (\(exit))"
-        case .started, .survived:
-            if if_nametoindex(SingBoxEngine.interface) == 0 {
-                failure = "\(SingBoxEngine.interface) did not come up"
-            } else if let via = await RouteHelper.interface(forAddress: "1.1.1.1"),
-                via != SingBoxEngine.interface
-            {
-                failure = "public traffic routes via \(via), not \(SingBoxEngine.interface)"
+        let wait = await awaitStartup(spawned, startedSignal: started)
+        switch wait {
+        case .abandoned:
+            if process === spawned {
+                // Nothing is going to supervise this child: kill it and let whoever
+                // interrupted the start (a stop, a newer apply) set the state.
+                _ = await spawned.terminate(timeout: SingBoxEngine.stopTimeout)
+                if process === spawned {
+                    process = nil
+                    unlink(env.runPath(RunLayout.singBoxPID))
+                }
             }
-        }
-        guard process === spawned else { return }
-        if let failure {
+            startupPending = false
+            return .abandoned
+        case .failed(let failure):
             hub.post(.error, "sing-box startup verification failed: \(failure)")
-            stopping = true
             _ = await spawned.terminate(timeout: SingBoxEngine.stopTimeout)
             process = nil
+            startupPending = false
             unlink(env.runPath(RunLayout.singBoxPID))
-            state = .failed(reason: "singbox.startFailed")
-            throw .startFailed(logTail: [failure] + collector.snapshot())
+            return .unverified(tail: [failure] + collector.snapshot())
+        case .up:
+            break
         }
+        startupPending = false
         crashes.reset()
         backoff.reset()
         state = .running(since: Date())
         if let endpoint {
             await sampler.start(endpoint)
         }
+        return .verified
+    }
+
+    private enum StartupWait {
+        case up
+        case failed(String)
+        case abandoned
+    }
+
+    /// Waits for the "started" line (or the grace period), then repeats the startup check
+    /// every `startupPoll` until it passes or `startupTimeout` from the spawn is up.
+    private func awaitStartup(_ spawned: ManagedProcess, startedSignal: AsyncStream<Void>) async
+        -> StartupWait
+    {
+        let deadline = ContinuousClock.now + SingBoxEngine.startupTimeout
+        switch await spawned.awaitStartup(
+            startedSignal: startedSignal, grace: SingBoxEngine.startupGrace)
+        {
+        case .exited(let exit):
+            return .failed("exited during startup (\(exit))")
+        case .started, .survived:
+            break
+        }
+        while true {
+            if startupAborted || stopping || process !== spawned { return .abandoned }
+            guard let failure = await verifyStartup() else { return .up }
+            if ContinuousClock.now >= deadline { return .failed(failure) }
+            switch await pollTick(spawned) {
+            case .exited(let exit): return .failed("exited during startup (\(exit))")
+            case .elapsed: continue
+            }
+        }
+    }
+
+    /// The check itself: `utun100` exists and a public address leaves through it. nil = up.
+    private func verifyStartup() async -> String? {
+        if if_nametoindex(SingBoxEngine.interface) == 0 {
+            return "\(SingBoxEngine.interface) did not come up"
+        }
+        if let via = await RouteHelper.interface(forAddress: "1.1.1.1"),
+            via != SingBoxEngine.interface
+        {
+            return "public traffic routes via \(via), not \(SingBoxEngine.interface)"
+        }
+        return nil
+    }
+
+    private enum PollTick: Sendable {
+        case exited(ProcessExit)
+        case elapsed
+    }
+
+    /// One poll interval, cut short when the process dies.
+    private nonisolated func pollTick(_ spawned: ManagedProcess) async -> PollTick {
+        await withTaskGroup(of: PollTick.self) { group in
+            group.addTask {
+                if let exit = await spawned.waitForExit() { return .exited(exit) }
+                return .elapsed
+            }
+            group.addTask {
+                try? await Task.sleep(for: SingBoxEngine.startupPoll)
+                return .elapsed
+            }
+            let first = await group.next() ?? .elapsed
+            group.cancelAll()
+            return first
+        }
+    }
+
+    /// Makes a start that is still verifying give up, so an `apply` or a `stop` waiting
+    /// behind it is not held for the whole verification window (H1). Ignored when no start
+    /// is in flight.
+    func abortStartup() {
+        if startupPending { startupAborted = true }
     }
 
     func stop() async {
@@ -241,7 +368,8 @@ actor SingBoxEngine {
     // MARK: - Exit handling
 
     private func handleExit(_ exit: ProcessExit, generation: Int) async {
-        guard generation == self.generation, let exited = process, !stopping else { return }
+        guard generation == self.generation, let exited = process, !stopping, !startupPending
+        else { return }
         let uptime = Date().timeIntervalSince(exited.startedAt)
         process = nil
         await sampler.pause()

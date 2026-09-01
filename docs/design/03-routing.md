@@ -417,6 +417,21 @@ After `apply`, the daemon waits for sing-box to log its "started" line (or 3 s o
 and then verifies `utun100` exists (`if_nametoindex`) and that a public address leaves
 through it (`route -n get -inet 1.1.1.1` → `interface: utun100`). `route -n get default`
 is not used: `auto_route` with `route_exclude_address` installs split ranges, so the
-unscoped default route still names the physical interface. Failure → the process is
-killed, `engine = failed("singbox.startFailed")` and `apply` returns
-`singbox.startFailed` with the last 20 log lines attached.
+unscoped default route still names the physical interface. The wait for the "started" line
+stays: it keeps a TUN that a previous process has not finished tearing down from passing
+the check for the new one.
+
+The check itself is **not one shot** (H1, 2026-09-01): it repeats every 500 ms until it
+passes or 12 s from the spawn have gone by. A fixed grace period plus a single check turns
+a slow-but-healthy TUN bring-up into a failed start — which is what happened on Windows,
+where the daemon killed a working sing-box and stayed down for a day. A window that runs
+out is worth one more attempt: the process is killed and spawned again with the same
+config, and only when the second window runs out does the engine end in
+`failed("singbox.startFailed")`, with `apply` returning `singbox.startFailed` and the last
+20 log lines attached. A process that exits during startup is treated the same way (one
+retry). An operation waiting behind a start — a newer `apply`, a `stop` — aborts the wait
+rather than queueing behind two windows, and the start returns quietly to let that
+operation set the state.
+
+`engine = failed` is where the daemon stops: recovery is the app's job (H2, see
+[05-daemon.md](05-daemon.md), "Engine failure recovery").

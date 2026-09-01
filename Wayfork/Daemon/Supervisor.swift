@@ -157,6 +157,8 @@ actor Supervisor {
         }
         applyGeneration += 1
         let generation = applyGeneration
+        // A start that is still verifying must not hold this apply for its whole window.
+        await engine.abortStartup()
         return await serialized {
             // A newer plan is already queued: latest wins, this one is a no-op.
             let latest = await self.applyGeneration
@@ -167,6 +169,7 @@ actor Supervisor {
 
     func stop() async -> ApplyResult {
         applyGeneration += 1
+        await engine.abortStartup()
         return await serialized {
             await self.performStop()
             return .success
