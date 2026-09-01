@@ -180,6 +180,8 @@ func (s *Supervisor) Apply(ctx context.Context, plan core.RuntimePlan) core.Appl
 		return core.ApplyFailure(err)
 	}
 	generation := s.applyGeneration.Add(1)
+	// A start that is still verifying must not hold this apply for its whole window.
+	s.engine.AbortStartup()
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	if generation != s.applyGeneration.Load() {
@@ -191,6 +193,7 @@ func (s *Supervisor) Apply(ctx context.Context, plan core.RuntimePlan) core.Appl
 // Stop implements ipc.Handler.
 func (s *Supervisor) Stop(context.Context) core.ApplyResult {
 	s.applyGeneration.Add(1)
+	s.engine.AbortStartup()
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	s.performStop()

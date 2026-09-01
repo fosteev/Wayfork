@@ -15,7 +15,17 @@ const (
 	// SingBoxSource is the log source of sing-box's output.
 	SingBoxSource = "sing-box"
 	// singBoxStartupGrace: how long start waits for the "started" line before checking.
+	// It keeps a TUN a previous process has not finished tearing down from passing the
+	// check for the new one.
 	singBoxStartupGrace = 3 * time.Second
+	// singBoxStartupPoll: how often the startup check repeats while the TUN comes up.
+	singBoxStartupPoll = 500 * time.Millisecond
+	// singBoxStartupTimeout: how long from the spawn the check may keep failing before the
+	// attempt is given up. A wintun adapter re-created after a crash needs seconds, and
+	// the route table lags it by a beat (H1, docs/design/03-routing.md).
+	singBoxStartupTimeout = 12 * time.Second
+	// singBoxStartAttempts: a start that never verifies is retried once before startFailed.
+	singBoxStartAttempts = 2
 	// singBoxStopTimeout: sing-box has no graceful stop when detached on Windows; the
 	// TUN adapter vanishes with the process (spike S7), so the wait is short.
 	singBoxStopTimeout  = 500 * time.Millisecond
@@ -57,6 +67,13 @@ type SingBoxEngine struct {
 	state           core.EngineState
 	// startupPending: Start is still verifying; an exit belongs to it, not to handleExit.
 	startupPending bool
+	// aborted: AbortStartup was called while a start was verifying.
+	aborted bool
+	// Startup verification timings; constants by default, milliseconds in the tests.
+	startupGrace   time.Duration
+	startupPoll    time.Duration
+	startupTimeout time.Duration
+	startAttempts  int
 }
 
 // NewSingBoxEngine makes a stopped engine.
@@ -65,6 +82,9 @@ func NewSingBoxEngine(env Environment, hub *Hub, deps Dependencies, sampler *Tra
 		env: env, hub: hub, deps: deps, sampler: sampler, closer: NewConnectionCloser(),
 		onState: onState, ruleSets: map[string]string{},
 		crashes: core.NewCrashCounter(3, time.Minute), state: core.NewEngineStopped(),
+		startupGrace: singBoxStartupGrace, startupPoll: singBoxStartupPoll,
+		startupTimeout: singBoxStartupTimeout,
+		startAttempts:  singBoxStartAttempts,
 	}
 }
 
@@ -226,7 +246,9 @@ func (e *SingBoxEngine) validateBinary() *core.DaemonError {
 }
 
 // Start spawns sing-box for the config installed by Check and verifies it came up: the
-// TUN adapter exists and a public address routes through it.
+// TUN adapter exists and a public address routes through it. A start that never verifies
+// is retried once before it counts as failed (docs/design/03-routing.md, "Startup
+// verification").
 func (e *SingBoxEngine) Start(ctx context.Context) *core.DaemonError {
 	e.mu.Lock()
 	if e.process != nil {
@@ -238,12 +260,52 @@ func (e *SingBoxEngine) Start(ctx context.Context) *core.DaemonError {
 		e.restartTimer = nil
 	}
 	e.stopping = false
+	e.aborted = false
+	attempts := e.startAttempts
 	e.mu.Unlock()
 	if err := e.validateBinary(); err != nil {
 		return err
 	}
 	e.setState(core.NewEngineStarting())
 
+	for attempt := 1; ; attempt++ {
+		outcome, tail := e.startAttempt(ctx, attempt)
+		switch outcome {
+		case startupVerified, startupAbandoned:
+			return nil
+		case startupSpawnFailed:
+			e.setState(core.NewEngineFailed(EngineStartFailed))
+			return core.ErrStartFailed(tail)
+		}
+		if attempt < attempts {
+			reason := "startup verification failed"
+			if len(tail) > 0 {
+				reason = tail[0]
+			}
+			e.hub.Log(core.LogLevelWarning, "starting sing-box once more after: "+reason)
+			continue
+		}
+		e.setState(core.NewEngineFailed(EngineStartFailed))
+		return core.ErrStartFailed(tail)
+	}
+}
+
+// startupOutcome is how one spawn-and-verify attempt ended.
+type startupOutcome int
+
+const (
+	// startupVerified: the TUN is up and public traffic routes through it.
+	startupVerified startupOutcome = iota
+	// startupUnverified: the window ran out, or the process exited during startup.
+	startupUnverified
+	// startupAbandoned: a stop or a newer apply took over; it sets the state itself.
+	startupAbandoned
+	startupSpawnFailed
+)
+
+// startAttempt spawns sing-box once and waits for the startup check to pass. The returned
+// tail is the failure line followed by the last log lines of this attempt.
+func (e *SingBoxEngine) startAttempt(ctx context.Context, attempt int) (startupOutcome, []string) {
 	e.mu.Lock()
 	e.configHash = e.checkedHash
 	e.endpoint = e.checkedEndpoint
@@ -278,52 +340,49 @@ func (e *SingBoxEngine) Start(ctx context.Context) *core.DaemonError {
 		e.mu.Lock()
 		e.startupPending = false
 		e.mu.Unlock()
-		e.setState(core.NewEngineFailed(EngineStartFailed))
-		return core.ErrStartFailed([]string{"spawn failed: " + err.Error()})
+		return startupSpawnFailed, []string{"spawn failed: " + err.Error()}
 	}
 	e.mu.Lock()
 	e.process = process
 	e.mu.Unlock()
-	e.hub.Log(core.LogLevelInfo, fmt.Sprintf("sing-box started (pid %d)", process.PID()))
+	if attempt == 1 {
+		e.hub.Log(core.LogLevelInfo, fmt.Sprintf("sing-box started (pid %d)", process.PID()))
+	} else {
+		e.hub.Log(core.LogLevelInfo, fmt.Sprintf("sing-box started (pid %d, attempt %d)", process.PID(), attempt))
+	}
 
-	failure := ""
-	select {
-	case <-process.Exited():
-		failure = "exited during startup"
-	case <-started:
-	case <-e.deps.Clock.After(singBoxStartupGrace):
-	case <-ctx.Done():
-		failure = "startup interrupted"
-	}
-	if failure == "" {
-		select {
-		case <-process.Exited():
-			failure = "exited during startup"
-		default:
-			failure = e.verifyStartup()
-		}
-	}
+	// startupPending stays set until the child is dealt with: it is what keeps handleExit
+	// from treating a termination of our own as a crash worth restarting.
+	failure, abandoned := e.awaitStartup(ctx, process, started)
 	e.mu.Lock()
-	e.startupPending = false
 	current := e.process == process
 	e.mu.Unlock()
-	if !current {
-		return nil // stopped meanwhile
+	if abandoned || !current {
+		if current {
+			// Nothing is going to supervise this child: kill it and let whoever
+			// interrupted the start (a stop, a newer apply) set the state.
+			process.Terminate(singBoxStopTimeout)
+		}
+		e.mu.Lock()
+		if e.process == process {
+			e.process = nil
+		}
+		e.startupPending = false
+		e.mu.Unlock()
+		return startupAbandoned, nil
 	}
 	if failure != "" {
 		e.hub.Log(core.LogLevelError, "sing-box startup verification failed: "+failure)
-		e.mu.Lock()
-		e.stopping = true
-		e.mu.Unlock()
 		process.Terminate(singBoxStopTimeout)
 		e.mu.Lock()
 		e.process = nil
+		e.startupPending = false
 		tail := append([]string{failure}, e.recent...)
 		e.mu.Unlock()
-		e.setState(core.NewEngineFailed(EngineStartFailed))
-		return core.ErrStartFailed(tail)
+		return startupUnverified, tail
 	}
 	e.mu.Lock()
+	e.startupPending = false
 	e.crashes.Reset()
 	e.backoff.Reset()
 	endpoint := e.endpoint
@@ -332,7 +391,66 @@ func (e *SingBoxEngine) Start(ctx context.Context) *core.DaemonError {
 	if endpoint != nil {
 		e.sampler.Start(*endpoint)
 	}
-	return nil
+	return startupVerified, nil
+}
+
+// awaitStartup waits for the "started" line (or the grace period), then repeats
+// verifyStartup every startupPoll until it passes or startupTimeout from the spawn is up.
+func (e *SingBoxEngine) awaitStartup(ctx context.Context, process Process, started <-chan struct{}) (failure string, abandoned bool) {
+	graceUntil := e.deps.Clock.Now().Add(e.startupGrace)
+	deadline := e.deps.Clock.Now().Add(e.startupTimeout)
+	up := false
+	for {
+		if e.startupAbandoned(process) {
+			return "", true
+		}
+		select {
+		case <-process.Exited():
+			return "exited during startup", false
+		case <-started:
+			up = true
+		default:
+		}
+		now := e.deps.Clock.Now()
+		expired := !now.Before(deadline)
+		// Before the grace period is over only a sing-box that says it is up is
+		// checked: a TUN the previous process has not finished tearing down would
+		// otherwise pass the check for this one.
+		if up || !now.Before(graceUntil) || expired {
+			failure = e.verifyStartup()
+			if failure == "" {
+				return "", false
+			}
+			if expired {
+				return failure, false
+			}
+		}
+		select {
+		case <-process.Exited():
+			return "exited during startup", false
+		case <-ctx.Done():
+			return "startup interrupted", false
+		case <-e.deps.Clock.After(e.startupPoll):
+		}
+	}
+}
+
+// startupAbandoned: a stop, or an operation waiting behind this start, took over.
+func (e *SingBoxEngine) startupAbandoned(process Process) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.aborted || e.stopping || e.process != process
+}
+
+// AbortStartup makes a start that is still verifying give up, so an apply or a stop
+// waiting behind it is not held for the whole verification window (H1). Ignored when no
+// start is in flight.
+func (e *SingBoxEngine) AbortStartup() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.startupPending {
+		e.aborted = true
+	}
 }
 
 func (e *SingBoxEngine) verifyStartup() string {

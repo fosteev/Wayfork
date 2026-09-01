@@ -64,7 +64,11 @@ type fakeRunner struct {
 	singBoxDies bool
 	// singBoxStarted: whether the fake prints "sing-box started".
 	singBoxSilent bool
-	runs          []ProcessSpec
+	// onSingBoxStart is called with the number of sing-box spawns so far (1 = the first),
+	// before the fake prints anything: it lets a test change the world between attempts.
+	onSingBoxStart func(spawn int)
+	singBoxSpawns  int
+	runs           []ProcessSpec
 }
 
 func (r *fakeRunner) Start(spec ProcessSpec, handlers ProcessHandlers) (Process, error) {
@@ -74,9 +78,17 @@ func (r *fakeRunner) Start(spec ProcessSpec, handlers ProcessHandlers) (Process,
 	r.specs = append(r.specs, spec)
 	r.processes = append(r.processes, process)
 	singBoxSilent, singBoxDies := r.singBoxSilent, r.singBoxDies
+	onSingBoxStart, spawn := r.onSingBoxStart, 0
+	if strings.Contains(spec.Executable, "sing-box") {
+		r.singBoxSpawns++
+		spawn = r.singBoxSpawns
+	}
 	r.mu.Unlock()
 	switch {
 	case strings.Contains(spec.Executable, "sing-box"):
+		if onSingBoxStart != nil {
+			onSingBoxStart(spawn)
+		}
 		go func() {
 			time.Sleep(20 * time.Millisecond)
 			handlers.OnLine("+0300 2026-08-27 20:00:00 INFO inbound/tun[tun-in]: started")
@@ -230,6 +242,12 @@ func (n *fakeNetwork) AdapterPresent(name string) bool {
 		return n.tunUp
 	}
 	return n.adapters[name]
+}
+
+func (n *fakeNetwork) setTunUp(up bool) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.tunUp = up
 }
 
 func (n *fakeNetwork) EnsureAdapters(_ context.Context, names []string) error {

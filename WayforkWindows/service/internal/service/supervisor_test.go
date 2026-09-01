@@ -55,6 +55,10 @@ func newTestSupervisor(t *testing.T) (*Supervisor, *Hub, *fakeRunner, *fakeNetwo
 	network := newFakeNetwork()
 	resolver := &fakeResolver{probes: true}
 	supervisor := NewSupervisor(env, hub, Dependencies{Processes: runner, Network: network, Resolver: resolver})
+	// The startup verification window at millisecond scale (H1).
+	supervisor.engine.startupGrace = 30 * time.Millisecond
+	supervisor.engine.startupPoll = 10 * time.Millisecond
+	supervisor.engine.startupTimeout = 200 * time.Millisecond
 	t.Cleanup(func() { supervisor.Shutdown(context.Background()) })
 	return supervisor, hub, runner, network, resolver, env
 }
@@ -205,6 +209,10 @@ func TestApplyReportsCheckAndStartupFailures(t *testing.T) {
 	if result.OK || result.Error == nil || result.Error.Kind != core.DaemonStartFailed || !strings.Contains(strings.Join(result.Error.LogTail, "\n"), "did not come up") {
 		t.Errorf("startup failure = %+v", result)
 	}
+	// The adapter never came up, so the start was tried twice before giving up (H1).
+	if got := len(runner.started("sing-box")); got != 2 {
+		t.Errorf("%d sing-box start(s) before startFailed, want 2", got)
+	}
 	if status := supervisor.GetStatus(ctx); status.Engine.Kind != core.EngineFailed {
 		t.Errorf("engine after startup failure = %+v", status.Engine)
 	}
@@ -225,6 +233,111 @@ func TestApplyReportsCheckAndStartupFailures(t *testing.T) {
 	bad := testPlan([]core.OpenVPNRuntime{tunnelRuntime(tunnelA, "utun101")}, nil, "{}")
 	if result := supervisor.Apply(ctx, bad); result.OK || result.Error.Kind != core.DaemonPlanInvalid {
 		t.Errorf("invalid plan = %+v", result)
+	}
+}
+
+// H1: a slow TUN bring-up is a healthy start, not a failure — the check repeats until the
+// adapter is there, without a second sing-box (docs/design/03-routing.md).
+func TestStartupVerificationWaitsForASlowAdapter(t *testing.T) {
+	supervisor, _, runner, network, _, _ := newTestSupervisor(t)
+	ctx := context.Background()
+	supervisor.Bootstrap(ctx)
+	supervisor.engine.startupTimeout = 2 * time.Second
+
+	network.tunUp = false
+	timer := time.AfterFunc(80*time.Millisecond, func() { network.setTunUp(true) })
+	defer timer.Stop()
+	result := supervisor.Apply(ctx, testPlan(nil, nil, `{"log":{}}`))
+	if !result.OK {
+		t.Fatalf("apply with a slow adapter = %+v", result)
+	}
+	if status := supervisor.GetStatus(ctx); !status.Engine.IsRunning() {
+		t.Errorf("engine after a slow adapter = %+v", status.Engine)
+	}
+	if got := len(runner.started("sing-box")); got != 1 {
+		t.Errorf("%d sing-box start(s) for a slow adapter, want 1", got)
+	}
+}
+
+// A sing-box that never logs its "started" line is checked once the grace period is over.
+func TestStartupVerifiesASilentSingBoxAfterTheGrace(t *testing.T) {
+	supervisor, _, runner, _, _, _ := newTestSupervisor(t)
+	ctx := context.Background()
+	supervisor.Bootstrap(ctx)
+
+	runner.singBoxSilent = true
+	if result := supervisor.Apply(ctx, testPlan(nil, nil, `{"log":{}}`)); !result.OK {
+		t.Fatalf("apply with a silent sing-box = %+v", result)
+	}
+	if status := supervisor.GetStatus(ctx); !status.Engine.IsRunning() {
+		t.Errorf("engine after a silent start = %+v", status.Engine)
+	}
+}
+
+// H1: when the window does run out, the start is worth one more attempt.
+func TestStartupRetriesOnceAndSucceeds(t *testing.T) {
+	supervisor, hub, runner, network, _, _ := newTestSupervisor(t)
+	ctx := context.Background()
+	sink := &recordingSink{}
+	supervisor.Bootstrap(ctx)
+	supervisor.Subscribe(ctx, sink)
+
+	network.tunUp = false
+	runner.onSingBoxStart = func(spawn int) {
+		if spawn == 2 {
+			network.setTunUp(true)
+		}
+	}
+	result := supervisor.Apply(ctx, testPlan(nil, nil, `{"log":{}}`))
+	if !result.OK {
+		t.Fatalf("apply that needed a retry = %+v", result)
+	}
+	if got := len(runner.started("sing-box")); got != 2 {
+		t.Errorf("%d sing-box start(s), want 2", got)
+	}
+	if status := supervisor.GetStatus(ctx); !status.Engine.IsRunning() {
+		t.Errorf("engine after the retry = %+v", status.Engine)
+	}
+	hub.Flush()
+	if joined := strings.Join(sink.messages(), "\n"); !strings.Contains(joined, "starting sing-box once more") {
+		t.Errorf("the retry is not in the log:\n%s", joined)
+	}
+}
+
+// H1: a stop must not wait out the verification window of a doomed start.
+func TestStopAbortsAStartThatIsStillVerifying(t *testing.T) {
+	supervisor, _, runner, network, _, _ := newTestSupervisor(t)
+	ctx := context.Background()
+	supervisor.Bootstrap(ctx)
+	supervisor.engine.startupTimeout = 30 * time.Second
+
+	network.tunUp = false
+	applied := make(chan core.ApplyResult, 1)
+	go func() { applied <- supervisor.Apply(ctx, testPlan(nil, nil, `{"log":{}}`)) }()
+	eventually(t, "sing-box spawned", func() bool { return len(runner.started("sing-box")) == 1 })
+
+	stopped := make(chan time.Duration, 1)
+	go func() {
+		start := time.Now()
+		supervisor.Stop(ctx)
+		stopped <- time.Since(start)
+	}()
+	select {
+	case took := <-stopped:
+		if took > 5*time.Second {
+			t.Errorf("stop waited %s for the verification window", took)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("stop is still waiting for the startup verification")
+	}
+	<-applied
+	if status := supervisor.GetStatus(ctx); status.Engine.Kind != core.EngineStopped {
+		t.Errorf("engine after the aborted start = %+v", status.Engine)
+	}
+	select {
+	case <-runner.latest("sing-box").Exited():
+	default:
+		t.Error("the abandoned sing-box was left running")
 	}
 }
 
