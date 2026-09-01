@@ -479,3 +479,40 @@ app, "App rules (F10) on Windows".
 - [ ] Picker dialog on *Application…*: search, list, *Show background processes*,
       *Browse…* into the existing `FilePicker`, chosen path into the same `addRule`.
 - [ ] VM run: the list matches Task Manager's *Apps*, a rule added from it routes.
+
+### WM7 — Hardening (field findings, 2026-09-01)
+
+Windows half of ROADMAP.md § "Hardening (field findings, 2026-09-01)" (H1–H4), found
+while debugging Discord voice on the maintainer's PC, plus one Windows-only item.
+
+- [x] H1: `verifyStartup` in `service/internal/service/engine.go` polls the adapter +
+      route check every ~500 ms for up to 10–15 s instead of one shot after
+      `singBoxStartupGrace`; one start retry before `startFailed`. Implemented as a
+      500 ms poll over a 12 s window (`singBoxStartupPoll` / `singBoxStartupTimeout` /
+      `singBoxStartAttempts`), the grace kept as the floor; `engine.AbortStartup()` from
+      `Apply`/`Stop` before `opMu` so an operation never waits out a doomed start. Tests:
+      slow adapter, silent sing-box, retry that succeeds, retry that gives up, aborting stop.
+- [x] H2: `startFailed` surfaces in the tray icon, a Windows notification, and an
+      automatic re-apply with backoff. Icon and toast were already wired; new is
+      `core/app/recovery_backoff.dart` (5, 15, 30, 60, 120, 300 s) driving `AppModel`'s
+      retry timer — one notification per streak, no alert storm from the retries, reset on
+      `running` and on Turn On / Turn Off.
+- [x] H3: dead-UDP detector — tunnel UDP flows with `up > 0, down = 0` for ~10 s
+      highlighted in Traffic and listed in the diagnostics zip. The Go
+      `TrafficAccumulator` mirrors the Swift one; the count crosses the pipe as
+      `TrafficCounters.oneWayUDPFlows` (additive, read as zero when absent — no protocol
+      bump), shows as an orange warning glyph on the dashboard tunnel row, logs one
+      service WARNING per tunnel per streak, and lands in `system.txt`'s `## traffic`
+      section (design: 08-windows.md "Hardening (WM7)").
+- [x] H4: `reverse_mapping` dropped from the Dart generator except when a default tunnel
+      is set, same condition as the Swift one (03-routing.md records the reasoning).
+      `fixtures/singbox` regenerated once; Swift, Dart and Go suites pass, the
+      cross-client plan-hash pin in `plan_test.go` re-pinned.
+- [ ] VM run for H1/H2: a start that is slow to bring the `Wayfork` adapter up is not
+      killed; a start that cannot work (another VPN holding the TUN) ends in the error
+      tray icon plus one toast, and comes back on its own once the blocker is gone.
+- [ ] WH1 (Windows-only): version-agnostic app rules. The picker stores
+      `...\Discord\app-1.0.9255\Discord.exe`; a Squirrel auto-update silently unmatches
+      the rule. Normalize `app-<version>` path segments to a version pattern when a rule
+      is created from the picker, and warn in Rules when a rule matches no installed
+      binary.

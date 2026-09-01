@@ -164,6 +164,41 @@ Written as user scenarios. Technical details belong to Phase 2.
   tunnel is down).
 - CLI for scripting (`wayfork on`, `wayfork rule add …`).
 
+### Hardening (field findings, 2026-09-01)
+
+Both platforms unless noted; found while debugging Discord voice ("Connecting to RTC")
+on Windows. The trail: the daemon had silently killed a healthy-but-slow sing-box start
+and stayed down for a day unnoticed (H1, H2); once running, voice UDP through the tunnel
+died at the VPS (its host firewall drops UDP to high ports) and only per-flow counters
+exposed it (H3); poisoned ISP DNS made `reverse_mapping` label the voice flows with an
+unrelated domain, sending the investigation sideways (H4).
+
+**H1. Startup verification without the race**
+- The daemons wait a fixed 3 s, then check the TUN adapter and the probe route exactly
+  once (`SingBoxEngine.swift` `startupGrace`, Windows `engine.go` `singBoxStartupGrace`).
+  A slow utun/wintun bring-up fails a healthy start.
+- Poll the check every ~500 ms for up to 10–15 s; on failure, retry the start once
+  before declaring `startFailed`.
+
+**H2. Engine failure must be loud**
+- `startFailed` today is a quiet status line; the app looks On while everything routes
+  direct.
+- Error state on the menu bar / tray icon, a system notification, and an automatic
+  re-apply with backoff.
+
+**H3. Dead-UDP detector**
+- The F9 clash counters already carry per-flow up/down. A tunnel UDP flow with
+  `up > 0, down = 0` for ~10 s is a one-way tunnel (server-side UDP filtering) — the
+  exact signature of broken voice/gaming.
+- Highlight such flows in Traffic with a hint, and include them in the diagnostics
+  report.
+
+**H4. Truthful traffic labels**
+- `reverse_mapping` lets a poisoned resolver (blocked-domain answers pointing at shared
+  CDN ranges) attach an unrelated domain to raw-IP flows in Traffic.
+- Drop `reverse_mapping` from the generator (routing does not need it: tunnel domains go
+  through fake-ip), or at minimum show the IP next to the mapped name.
+
 ## Phase 2 — Design
 
 | Doc | Covers |
@@ -419,3 +454,37 @@ manual check pending.
       Two dead ends on 2026-08-26: the TUN's own address 172.19.0.1 (mDNSResponder treats
       it as loopback) and `State:` (resolver scoped to en0 by `if_index`); both left
       OpenVPN unable to resolve its server.
+
+### M6 — Hardening (field findings, 2026-09-01)
+
+Phase 1 above, § "Hardening (field findings, 2026-09-01)"; design in
+[design/03-routing.md](design/03-routing.md) ("Startup verification") and
+[design/05-daemon.md](design/05-daemon.md) ("Engine failure recovery"). The Windows half
+is tracked in [ROADMAP-windows.md](ROADMAP-windows.md) § WM7 and lands together with it.
+
+- [x] H1: `SingBoxEngine.start` polls the startup check every 500 ms for up to 12 s
+      (`startupPoll` / `startupTimeout`) instead of checking once after `startupGrace`, and
+      retries the start once before `singbox.startFailed`; `abortStartup()` from
+      `Supervisor.apply` / `stop` so a user's Turn Off never waits out a doomed start.
+- [x] H2: `RecoveryBackoff` (WayforkCore, 5, 15, 30, 60, 120, 300 s) drives an automatic
+      re-apply while the engine is failed and the user wants routing on; one notification
+      per failure streak ("Wayfork keeps retrying"), no alert per retry, backoff reset when
+      the engine runs and on Turn On / Turn Off. The `error` menu bar icon and the summary
+      line were already derived from `GlobalState.error`.
+- [x] H3: dead-UDP detector in Traffic and the diagnostics report. `TrafficAccumulator`
+      counts, per exit, UDP flows with cumulative up > 0, down == 0 and an age ≥ 10 s;
+      the count crosses XPC as `TrafficCounters.oneWayUDPFlows` (aggregate only — the F9
+      privacy rule stands, no protocol change needed), shows as an orange ⚠ with a hint
+      on the tunnel card, logs one daemon WARNING per tunnel per streak, and lands in a
+      `## traffic` section of the diagnostics `system.txt`. Tested on the extended
+      `fixtures/clash/connections.json` (design: 05-daemon.md, 02-ux.md).
+- [x] H4: `reverse_mapping` dropped from the generator **except when a default tunnel is
+      set** — there it is what keeps unsniffable flows to Direct exceptions out of the
+      default tunnel (the 2026-08-26 gitlab regression), and the fake-ip catch-all shrinks
+      the poisoning surface to the user's own exception domains; without a default tunnel
+      it could only mislabel (03-routing.md records the decision). Goldens regenerated
+      once; the Swift, Dart and Go suites pass, cross-client plan-hash pin re-pinned.
+- [ ] Manual check: a slow `utun100` bring-up is not killed any more (start with a cold
+      TUN and watch the log); with another VPN holding the interface, the menu bar goes to
+      error, one notification arrives, and Wayfork comes back on its own once that VPN is
+      off; Turn Off during a failing start answers immediately.

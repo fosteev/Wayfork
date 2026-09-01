@@ -1041,6 +1041,60 @@ WM3f — backup and diagnostics (`core/diagnostics/{zip_writer,diagnostics_repor
   Diagnostics down to the revealed file, and the navigator token opening the sheet. The
   UI flows do real file I/O, so they pump through `runAsync` like the rest of the harness.
 
+## Hardening (WM7)
+
+Deltas to ROADMAP.md § "Hardening (field findings, 2026-09-01)"; the macOS design is in
+[03-routing.md](03-routing.md) ("Startup verification") and [05-daemon.md](05-daemon.md)
+("Engine failure recovery").
+
+- **H1, startup verification.** `SingBoxEngine.Start` (`internal/service/engine.go`) polls
+  `verifyStartup` — `Wayfork` adapter present, `1.1.1.1` routing through it — every
+  `singBoxStartupPoll` (500 ms) until `singBoxStartupTimeout` (12 s) from the spawn.
+  `singBoxStartupGrace` survives as the floor of that loop: until it is over (or sing-box
+  has logged its "started" line) a passing check is not accepted, so a TUN the previous
+  process is still tearing down cannot answer for the new one. The engine then
+  spawns a second time (`singBoxStartAttempts` = 2) before reporting `startFailed`. Windows
+  is where the one-shot check actually misfired: a `Wayfork` wintun adapter that is being
+  re-created after a crash can take several seconds to appear, and the route lookup goes
+  through `GetIpForwardTable2`, which lags the adapter by a beat.
+  `Supervisor.Apply`/`Stop` call `engine.AbortStartup()` **before** taking `opMu`, so a
+  Turn Off during a doomed start is answered in milliseconds instead of after both windows;
+  the aborted start terminates its child and returns without touching the state, leaving it
+  to the operation that interrupted it. The engine's grace, poll interval, window and
+  attempt count are struct fields (defaults from the constants) so the package tests drive
+  them at millisecond scale.
+- **H2, failure is loud.** The tray icon and the toast are already wired
+  (`TrayIcons.forState` → `TrayIcon.error` for `GlobalStateError`, `_handleStatus` →
+  `Notifier.post`, delivered by `local_notifier`); what WM7 adds is the recovery. The Dart
+  `AppModel` holds a `RecoveryBackoff` (`core/app/recovery_backoff.dart`, the port of the
+  Swift type): a `failed` engine while `desiredOn` schedules `applyNow` after the next
+  delay, `running` resets it, Turn On / Turn Off cancel the timer and reset. The retry runs
+  with `_autoRecovering` set, which keeps `_handleApplyError` from queueing another
+  "Routing engine failed to start" `AppAlert` — the tray and the log carry the repeats. The
+  first failure of a streak is the only one that toasts.
+- **H3, dead-UDP detector.** The pure half is the same on both platforms: the Go
+  `TrafficAccumulator` (`internal/core/traffic.go`) tracks when it first saw each
+  connection id and counts, per exit, UDP connections with cumulative `upload > 0`,
+  `download == 0` and an age ≥ 10 s (`oneWayUDPGrace`), exactly as the Swift one
+  (docs/design/05-daemon.md, "Traffic sampling"). The count crosses the pipe as
+  `TrafficCounters.oneWayUDPFlows` — an aggregate per exit, never hosts or addresses, so
+  the Clash API secret stays the service's. **No protocol bump**: the field is additive,
+  `TrafficCounters.fromJson` reads a missing key as zero (an older service just shows no
+  hint), and the hello's `serviceProtocolVersion` stays 1 — it gates message shape, not
+  additive payload fields. The sampler (`internal/service/clashhttp.go`) logs one WARNING
+  per tunnel per streak when a tunnel's count leaves zero. The dashboard tunnel row shows
+  an orange warning glyph with the `TrafficFormat.oneWayUDPHint` tooltip next to the rate
+  (02-ux.md); `DiagnosticsReport.systemReport` gains a `## traffic` section with per-exit
+  totals, open connections and the one-way UDP counts.
+- **H4, truthful traffic labels.** The Dart generator emits `dns.reverse_mapping` only
+  when a default tunnel is set, same condition and reasoning as the Swift one
+  (docs/design/03-routing.md: without a default tunnel the mapping cannot change where a
+  flow goes — `route.final` is `direct` — while a poisoned ISP answer relabels raw-IP
+  flows with unrelated domains; with one it is what keeps unsniffable flows to Direct
+  exceptions out of the default tunnel). One shared golden change: `fixtures/singbox`
+  regenerated once, only `default-vless`/`default-openvpn` keep the key; the Swift, Dart
+  and Go suites all consume the same files.
+
 ## Open items
 
 - **t1/pilot-gps user flow (not a Windows issue) — resolved 2026-08-27.** In S5 the
