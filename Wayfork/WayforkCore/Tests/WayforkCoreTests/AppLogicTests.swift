@@ -113,6 +113,23 @@ private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased()
             == .stopping)
 }
 
+/// H2: the app's re-apply backoff after `engine = failed`.
+@Test func recoveryBackoffSlowsDownAndCapsWithoutGivingUp() {
+    var backoff = RecoveryBackoff()
+    #expect(!backoff.isRecovering)
+    var delays: [Duration] = []
+    for _ in 0..<8 { delays.append(backoff.nextDelay()) }
+    #expect(
+        delays == [
+            .seconds(5), .seconds(15), .seconds(30), .seconds(60), .seconds(120), .seconds(300),
+            .seconds(300), .seconds(300),
+        ])
+    #expect(backoff.isRecovering && backoff.failures == 8)
+    backoff.reset()
+    #expect(!backoff.isRecovering)
+    #expect(backoff.nextDelay() == .seconds(5))
+}
+
 // MARK: - Status text
 
 @Test func summaryLines() {

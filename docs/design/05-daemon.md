@@ -145,6 +145,28 @@ feeding the log stream. Restart policy per process:
 Reconcile runs on the actor; per-process start/stop are `async` steps so a slow openvpn
 shutdown never blocks status queries.
 
+### Engine failure recovery (H2)
+
+`engine = failed` is terminal for the daemon: it stops trying and waits for the next
+`apply`. The app keeps `desiredOn` across daemon restarts, so this used to leave the Mac
+routing everything direct behind an On-looking app — on Windows a day of it went unnoticed
+(2026-09-01). The app therefore treats the *transition* into `failed` as an event, not a
+state to render:
+
+- the menu bar / tray icon goes to `error` and the summary reads "Routing engine failed —
+  see Logs" (both already derived from `GlobalState.error`);
+- one notification per failure streak, saying the app keeps trying. Retries of the same
+  failure are silent — `failed → starting → failed` must not toast every few minutes;
+- an automatic re-apply on `RecoveryBackoff` (5, 15, 30, 60, 120, then 300 s for as long as
+  it keeps failing) while `desiredOn` holds. The backoff resets when the engine reports
+  `running`, and on every Turn On / Turn Off, so a user-triggered start is never delayed by
+  the streak before it.
+
+The `singbox.startFailed` alert stays a **user-action** response: an automatic retry that
+fails again logs and re-arms the backoff instead of stacking modal alerts. `RecoveryBackoff`
+is a pure type in the shared core (`WayforkCore`, `core/app/recovery_backoff.dart`) with
+tests on both platforms; the wiring lives in `AppModel`.
+
 ### Binary validation
 
 Before every spawn (and once more at the start of every `apply`, so an untrusted binary

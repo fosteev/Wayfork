@@ -68,6 +68,11 @@ final class AppModel {
     private let notifier = Notifier()
 
     private var applyTask: Task<Void, Never>?
+    /// H2: re-applies with backoff while the routing engine is down.
+    private var recoveryTask: Task<Void, Never>?
+    private var recovery = RecoveryBackoff()
+    /// Set while an automatic re-apply runs: its failures are logged, not shown as alerts.
+    private var autoRecovering = false
     private var startingTimeoutTask: Task<Void, Never>?
     private var pulseTask: Task<Void, Never>?
     private var pruneTask: Task<Void, Never>?
@@ -342,6 +347,7 @@ final class AppModel {
     func turnOn() async {
         guard !desiredOn, transition == nil else { return }
         logs.app(.info, "Turn On requested")
+        cancelRecovery()
         desiredOn = true
         setTransition(.starting(since: Date()))
         do {
@@ -363,6 +369,7 @@ final class AppModel {
     func turnOff() async {
         logs.app(.info, "Turn Off requested")
         desiredOn = false
+        cancelRecovery()
         applyTask?.cancel()
         startingTimeoutTask?.cancel()
         helperMessage = nil
@@ -600,12 +607,55 @@ final class AppModel {
                 id: "tunnel-\(id)", title: "\(name) failed",
                 body: StatusText.failureMessage(code: reason))
         }
+        if new.engine.isRunning, old?.engine.isRunning != true {
+            cancelRecovery()
+        }
         if case .failed(let reason) = new.engine, old?.engine != new.engine {
             logs.app(.error, "routing engine failed: \(reason)")
+            handleEngineFailure(reason)
+        }
+    }
+
+    // MARK: - Engine failure recovery (H2)
+
+    /// The engine is down for good as far as the daemon is concerned: say so once, then keep
+    /// re-applying with backoff while the user wants routing on
+    /// (docs/design/05-daemon.md, "Engine failure recovery").
+    private func handleEngineFailure(_ reason: String) {
+        let message = StatusText.failureMessage(code: reason)
+        if !recovery.isRecovering {
             notify(
                 id: "engine", title: "Routing engine failed",
-                body: StatusText.failureMessage(code: reason))
+                body: desiredOn ? "\(message) Wayfork keeps retrying." : message)
         }
+        guard desiredOn, recoveryTask == nil else { return }
+        scheduleRecovery()
+    }
+
+    private func scheduleRecovery() {
+        let delay = recovery.nextDelay()
+        logs.app(.info, "routing engine down; re-applying in \(delay)")
+        recoveryTask = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard let self, !Task.isCancelled else { return }
+            recoveryTask = nil
+            guard desiredOn, status?.engine.isRunning != true else { return }
+            autoRecovering = true
+            await applyNow()
+            autoRecovering = false
+            // The daemon pushes a new `failed` only when it got as far as starting
+            // sing-box, so the next attempt is armed from here either way.
+            if desiredOn, recoveryTask == nil, status?.engine.isRunning != true {
+                scheduleRecovery()
+            }
+        }
+    }
+
+    /// Stops the retries and clears the streak: the engine is up, or the user took over.
+    private func cancelRecovery() {
+        recoveryTask?.cancel()
+        recoveryTask = nil
+        recovery.reset()
     }
 
     // MARK: - Traffic (F9)
@@ -790,6 +840,9 @@ final class AppModel {
                 Task { await exportDiagnostics(includeServerAddresses: false) }
             }
         case .startFailed:
+            // An automatic retry (H2) reports through the icon, the log and the one
+            // notification of the streak; only the user's own apply gets an alert.
+            guard !autoRecovering else { break }
             if Alerts.show(
                 title: "Routing engine failed to start",
                 message: "Routing engine failed to start. Another VPN may be active.",
