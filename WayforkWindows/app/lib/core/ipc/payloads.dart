@@ -726,6 +726,7 @@ final class TrafficCounters {
     this.downTotal = 0,
     this.upTotal = 0,
     this.connections = 0,
+    this.oneWayUDPFlows = 0,
   });
 
   factory TrafficCounters.fromJson(Map<String, Object?> json) =>
@@ -735,15 +736,28 @@ final class TrafficCounters {
         downTotal: _int(json, 'downTotal'),
         upTotal: _int(json, 'upTotal'),
         connections: _int(json, 'connections'),
+        // Additive field (H3): a service build that predates it sends none.
+        oneWayUDPFlows: json['oneWayUDPFlows'] == null
+            ? 0
+            : _int(json, 'oneWayUDPFlows'),
       );
 
   static const zero = TrafficCounters();
+
+  /// How long a UDP flow may keep sending without a single byte back before
+  /// it counts as one-way (H3, docs/design/05-daemon.md "Traffic sampling").
+  static const oneWayUDPGrace = Duration(seconds: 10);
 
   final double downBytesPerSecond;
   final double upBytesPerSecond;
   final int downTotal;
   final int upTotal;
   final int connections;
+
+  /// UDP connections that sent but received nothing for [oneWayUDPGrace] —
+  /// the signature of a tunnel server dropping UDP (H3). An aggregate count;
+  /// no hosts or addresses.
+  final int oneWayUDPFlows;
 
   bool get isIdle => downBytesPerSecond == 0 && upBytesPerSecond == 0;
 
@@ -753,6 +767,7 @@ final class TrafficCounters {
     'downTotal': downTotal,
     'upTotal': upTotal,
     'connections': connections,
+    'oneWayUDPFlows': oneWayUDPFlows,
   };
 
   @override
@@ -762,7 +777,8 @@ final class TrafficCounters {
       upBytesPerSecond == other.upBytesPerSecond &&
       downTotal == other.downTotal &&
       upTotal == other.upTotal &&
-      connections == other.connections;
+      connections == other.connections &&
+      oneWayUDPFlows == other.oneWayUDPFlows;
   @override
   int get hashCode => Object.hash(
     downBytesPerSecond,
@@ -770,6 +786,7 @@ final class TrafficCounters {
     downTotal,
     upTotal,
     connections,
+    oneWayUDPFlows,
   );
 }
 

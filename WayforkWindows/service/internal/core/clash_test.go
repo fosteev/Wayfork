@@ -132,13 +132,18 @@ func TestClashConnectionsDecodeTheFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(decoded.Connections) != 5 {
+	if len(decoded.Connections) != 6 {
 		t.Fatalf("%d connections", len(decoded.Connections))
 	}
 	first := decoded.Connections[0]
 	if first.ID != "0f8a9c8e-1d2b-4c3a-9e8f-7a6b5c4d3e2f" || !reflect.DeepEqual(first.Chains, []string{"t-" + clashTunnelA}) ||
-		first.Upload != 4096 || first.Download != 1048576 || first.Host != "example.com" || first.DestinationIP != "198.18.0.5" || first.ProcessPath != "" {
+		first.Upload != 4096 || first.Download != 1048576 || first.Network != "tcp" ||
+		first.Host != "example.com" || first.DestinationIP != "198.18.0.5" || first.ProcessPath != "" {
 		t.Errorf("first = %+v", first)
+	}
+	if oneWay := decoded.Connections[5]; oneWay.Network != "udp" || oneWay.Upload != 15360 ||
+		oneWay.Download != 0 || !reflect.DeepEqual(oneWay.Chains, []string{"t-" + clashTunnelA}) {
+		t.Errorf("one-way = %+v", oneWay)
 	}
 	if decoded.Connections[1].ProcessPath != "/Applications/Safari.app/Contents/MacOS/Safari" {
 		t.Errorf("second = %+v", decoded.Connections[1])

@@ -9,6 +9,8 @@ public struct ClashConnection: Sendable, Hashable {
     public var chains: [String]
     public var upload: UInt64
     public var download: UInt64
+    /// `metadata.network`: `"tcp"` or `"udp"` (the dead-UDP detector keys on the latter).
+    public var network: String
     /// `metadata.host`: the fake-ip or sniffed domain; empty for a bare IP connection.
     public var host: String
     /// `metadata.destinationIP`
@@ -18,12 +20,14 @@ public struct ClashConnection: Sendable, Hashable {
 
     public init(
         id: String, chains: [String], upload: UInt64, download: UInt64,
-        host: String = "", destinationIP: String = "", processPath: String = ""
+        network: String = "", host: String = "", destinationIP: String = "",
+        processPath: String = ""
     ) {
         self.id = id
         self.chains = chains
         self.upload = upload
         self.download = download
+        self.network = network
         self.host = host
         self.destinationIP = destinationIP
         self.processPath = processPath
@@ -36,7 +40,7 @@ extension ClashConnection: Decodable {
     }
 
     private enum MetadataKeys: String, CodingKey {
-        case host, destinationIP, processPath
+        case network, host, destinationIP, processPath
     }
 
     public init(from decoder: Decoder) throws {
@@ -46,10 +50,12 @@ extension ClashConnection: Decodable {
         upload = UInt64(max(0, try c.decodeIfPresent(Int64.self, forKey: .upload) ?? 0))
         download = UInt64(max(0, try c.decodeIfPresent(Int64.self, forKey: .download) ?? 0))
         if let m = try? c.nestedContainer(keyedBy: MetadataKeys.self, forKey: .metadata) {
+            network = (try? m.decodeIfPresent(String.self, forKey: .network)) ?? ""
             host = (try? m.decodeIfPresent(String.self, forKey: .host)) ?? ""
             destinationIP = (try? m.decodeIfPresent(String.self, forKey: .destinationIP)) ?? ""
             processPath = (try? m.decodeIfPresent(String.self, forKey: .processPath)) ?? ""
         } else {
+            network = ""
             host = ""
             destinationIP = ""
             processPath = ""

@@ -106,6 +106,27 @@
       "chains": null,
       "rule": "final",
       "rulePayload": ""
+    },
+    {
+      "id": "d5c4b3a2-1f0e-4d9c-8b7a-6e5f4d3c2b1a",
+      "metadata": {
+        "network": "udp",
+        "type": "TUN",
+        "sourceIP": "172.19.0.1",
+        "destinationIP": "203.0.113.44",
+        "sourcePort": "61444",
+        "destinationPort": "50021",
+        "host": "",
+        "dnsMode": "normal",
+        "processPath": "",
+        "specialProxy": ""
+      },
+      "upload": 15360,
+      "download": 0,
+      "start": "2026-08-25T20:00:05.000000+03:00",
+      "chains": ["t-aaaaaaaa-0000-0000-0000-000000000001"],
+      "rule": "rule_set=rules-t-aaaaaaaa-0000-0000-0000-000000000001-ip",
+      "rulePayload": ""
     }
   ],
   "memory": 12345678

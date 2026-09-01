@@ -30,10 +30,16 @@ func (b *trafficBytes) add(other trafficBytes) {
 	b.up += other.up
 }
 
+// OneWayUDPGrace is how long a UDP flow may keep sending without a single byte back
+// before it counts as one-way (H3, docs/design/05-daemon.md "Traffic sampling").
+const OneWayUDPGrace = 10 * time.Second
+
 type trafficSeen struct {
 	exit     TrafficExit
 	download uint64
 	upload   uint64
+	// When this connection id was first sampled; the dead-UDP age runs from here (H3).
+	firstSeenAt time.Time
 }
 
 // TrafficAccumulator turns the cumulative per-connection counters of consecutive
@@ -83,21 +89,31 @@ func (a *TrafficAccumulator) Ingest(connections []ClashConnection, now time.Time
 	}
 	deltas := map[TrafficExit]trafficBytes{}
 	open := map[TrafficExit]int{}
+	oneWayUDP := map[TrafficExit]int{}
 	current := make(map[string]trafficSeen, len(connections))
 	for _, connection := range connections {
 		exit := ExitForChains(connection.Chains)
 		delta := trafficBytes{down: connection.Download, up: connection.Upload}
+		firstSeenAt := now
 		if seen, ok := a.previous[connection.ID]; ok && seen.exit == exit {
 			// Counters only grow; a smaller value means the id was reused.
 			if connection.Download >= seen.download && connection.Upload >= seen.upload {
 				delta = trafficBytes{down: connection.Download - seen.download, up: connection.Upload - seen.upload}
+				firstSeenAt = seen.firstSeenAt
 			}
 		}
 		total := deltas[exit]
 		total.add(delta)
 		deltas[exit] = total
 		open[exit]++
-		current[connection.ID] = trafficSeen{exit: exit, download: connection.Download, upload: connection.Upload}
+		// Sent for OneWayUDPGrace with nothing back: a one-way UDP flow (H3).
+		if connection.Network == "udp" && connection.Upload > 0 && connection.Download == 0 &&
+			now.Sub(firstSeenAt) >= OneWayUDPGrace {
+			oneWayUDP[exit]++
+		}
+		current[connection.ID] = trafficSeen{
+			exit: exit, download: connection.Download, upload: connection.Upload, firstSeenAt: firstSeenAt,
+		}
 	}
 	for exit, delta := range deltas {
 		total := a.totals[exit]
@@ -113,6 +129,7 @@ func (a *TrafficAccumulator) Ingest(connections []ClashConnection, now time.Time
 		delta := deltas[exit]
 		result := TrafficCounters{
 			DownTotal: total.down, UpTotal: total.up, Connections: open[exit],
+			OneWayUDPFlows: oneWayUDP[exit],
 		}
 		if interval > 0 {
 			result.DownBytesPerSecond = float64(delta.down) / interval

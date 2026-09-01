@@ -56,6 +56,12 @@ void main() {
       TrafficFormat.staleTooltip,
       'No traffic sample in the last 3 seconds',
     );
+    expect(
+      TrafficFormat.oneWayUDPHint(1),
+      '1 UDP connection sent data but received nothing for 10 s — the server '
+      'may be dropping UDP',
+    );
+    expect(TrafficFormat.oneWayUDPHint(3), startsWith('3 UDP connections '));
     expect(TrafficCounters.zero.isIdle, isTrue);
     expect(counters.isIdle, isFalse);
   });

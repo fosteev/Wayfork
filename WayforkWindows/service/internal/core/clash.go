@@ -109,6 +109,8 @@ type ClashConnection struct {
 	Chains   []string
 	Upload   uint64
 	Download uint64
+	// `metadata.network`: "tcp" or "udp" (the dead-UDP detector keys on the latter).
+	Network string
 	// `metadata.host`: the fake-ip or sniffed domain; empty for a bare IP connection.
 	Host string
 	// `metadata.destinationIP`.
@@ -128,6 +130,7 @@ type clashConnectionWire struct {
 	Upload   int64    `json:"upload"`
 	Download int64    `json:"download"`
 	Metadata *struct {
+		Network       string `json:"network"`
 		Host          string `json:"host"`
 		DestinationIP string `json:"destinationIP"`
 		ProcessPath   string `json:"processPath"`
@@ -151,6 +154,7 @@ func DecodeClashConnections(data []byte) (ClashConnections, error) {
 			Upload: uint64(max(entry.Upload, 0)), Download: uint64(max(entry.Download, 0)),
 		}
 		if entry.Metadata != nil {
+			connection.Network = entry.Metadata.Network
 			connection.Host = entry.Metadata.Host
 			connection.DestinationIP = entry.Metadata.DestinationIP
 			connection.ProcessPath = entry.Metadata.ProcessPath

@@ -52,6 +52,12 @@ abstract final class TrafficFormat {
   static final staleTooltip =
       'No traffic sample in the last ${staleAfter.inSeconds} seconds';
 
+  /// Tooltip of the dead-UDP hint on a tunnel row (H3, docs/design/02-ux.md).
+  static String oneWayUDPHint(int count) =>
+      '${StatusText.count(count, 'UDP connection')} sent data but received '
+      'nothing for ${TrafficCounters.oneWayUDPGrace.inSeconds} s — the server '
+      'may be dropping UDP';
+
   /// Label of the Direct row: exceptions only when a default tunnel takes the
   /// rest (F8).
   static String directRowTitle({required bool hasDefaultTunnel}) =>

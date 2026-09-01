@@ -249,8 +249,14 @@ class _TunnelCard extends StatelessWidget {
                   const SizedBox(width: 6),
                   TypeBadge(kind: tunnel.kind),
                   const Spacer(),
-                  if (showsRate)
+                  if (showsRate) ...[
                     RateLabel(counters: model.trafficCounters(tunnel)),
+                    if ((model.trafficCounters(tunnel)?.oneWayUDPFlows ?? 0)
+                        case final flows when flows > 0) ...[
+                      const SizedBox(width: 6),
+                      _OneWayUDPHint(count: flows),
+                    ],
+                  ],
                   if (card.action case final action?) ...[
                     const SizedBox(width: 8),
                     _CardAction(model: model, tunnel: tunnel, action: action),
@@ -279,6 +285,20 @@ class _TunnelCard extends StatelessWidget {
     model.expandedTunnelID = tunnel.id;
     NavigationScope.of(context).go(AppPage.tunnels);
   }
+}
+
+/// Orange ⚠ between the rate and the action when a tunnel has UDP flows that
+/// send but receive nothing — a server dropping UDP (H3, docs/design/02-ux.md).
+class _OneWayUDPHint extends StatelessWidget {
+  const _OneWayUDPHint({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: TrafficFormat.oneWayUDPHint(count),
+    child: Icon(FluentIcons.warning, size: 12, color: Colors.orange),
+  );
 }
 
 class _CardAction extends StatelessWidget {

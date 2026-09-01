@@ -101,6 +101,9 @@ type TrafficSampler struct {
 	cancel      context.CancelFunc
 	generation  int
 	failing     bool
+	// Tunnels warned about one-way UDP flows; cleared when their count returns to zero,
+	// so each streak logs once (H3).
+	oneWayWarned map[string]bool
 }
 
 // NewTrafficSampler makes an idle sampler.
@@ -110,7 +113,7 @@ func NewTrafficSampler(hub *Hub, clock Clock) *TrafficSampler {
 	}
 	return &TrafficSampler{
 		hub: hub, clock: clock, client: clashHTTPClient(samplerRequestTimeout),
-		accumulator: core.NewTrafficAccumulator(),
+		accumulator: core.NewTrafficAccumulator(), oneWayWarned: map[string]bool{},
 	}
 }
 
@@ -136,6 +139,7 @@ func (s *TrafficSampler) Pause() {
 		s.cancel = nil
 	}
 	s.failing = false
+	s.oneWayWarned = map[string]bool{}
 }
 
 // Reset stops and forgets everything.
@@ -183,5 +187,25 @@ func (s *TrafficSampler) sample(ctx context.Context, endpoint core.ClashAPIEndpo
 		s.failing = false
 		s.hub.Log(core.LogLevelInfo, "traffic: clash api reachable again")
 	}
+	s.warnAboutOneWayUDP(snapshot)
 	s.hub.PushTraffic(snapshot)
+}
+
+// warnAboutOneWayUDP logs one WARNING per tunnel per streak when its one-way UDP count
+// leaves zero — counts only, the flows' addresses stay with sing-box's own log (H3).
+// Callers hold s.mu.
+func (s *TrafficSampler) warnAboutOneWayUDP(snapshot core.TrafficSnapshot) {
+	for id, counters := range snapshot.Tunnels {
+		if counters.OneWayUDPFlows > 0 {
+			if s.oneWayWarned[id] {
+				continue
+			}
+			s.oneWayWarned[id] = true
+			s.hub.Log(core.LogLevelWarning, fmt.Sprintf(
+				"traffic: %d one-way udp flow(s) via t-%s — sending for %d s+ with nothing received; the server may be dropping UDP",
+				counters.OneWayUDPFlows, id, int(core.OneWayUDPGrace/time.Second)))
+		} else {
+			delete(s.oneWayWarned, id)
+		}
+	}
 }

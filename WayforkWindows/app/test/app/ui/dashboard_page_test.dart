@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wayfork/app/ui/app_navigation.dart';
 import 'package:wayfork/app/ui/pages/dashboard_page.dart';
 import 'package:wayfork/app/ui/widgets/components.dart';
+import 'package:wayfork/core/app/traffic_format.dart';
 import 'package:wayfork/core/ipc/payloads.dart';
 import 'package:wayfork/core/model/rule.dart';
 import 'package:wayfork/core/model/store.dart';
@@ -58,6 +59,37 @@ void main() {
     // pending one.
     await tester.pump(const Duration(seconds: 31));
     expect(find.text('↓ —'), findsOneWidget);
+  });
+
+  testWidgets('one-way UDP flows put a warning hint on the tunnel card', (
+    tester,
+  ) async {
+    final app = await boot(tester, on: true);
+    await goRunning(
+      tester,
+      app,
+      tunnels: {app.sample.work.id: connectedWork},
+      traffic: TrafficSnapshot(
+        sampledAt: fakeSince,
+        interval: 1,
+        tunnels: {
+          app.sample.work.id: const TrafficCounters(
+            upBytesPerSecond: 80000,
+            oneWayUDPFlows: 2,
+          ),
+        },
+        direct: TrafficCounters.zero,
+      ),
+    );
+
+    await tester.pumpWidget(
+      scoped(app.model, AppNavigator(), const DashboardPage()),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(FluentIcons.warning), findsOneWidget);
+    expect(find.byTooltip(TrafficFormat.oneWayUDPHint(2)), findsOneWidget);
+    await tester.pump(const Duration(seconds: 31));
   });
 
   testWidgets('every enabled tunnel gets a card, Direct closes the list', (

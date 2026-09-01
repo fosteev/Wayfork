@@ -726,6 +726,9 @@ type TrafficCounters struct {
 	DownTotal          uint64  `json:"downTotal"`
 	UpTotal            uint64  `json:"upTotal"`
 	Connections        int     `json:"connections"`
+	// UDP connections that sent but received nothing for OneWayUDPGrace — the signature
+	// of a tunnel server dropping UDP (H3). An aggregate count; no hosts or addresses.
+	OneWayUDPFlows int `json:"oneWayUDPFlows"`
 }
 
 // IsIdle reports whether no bytes moved during the sampled interval.
@@ -737,7 +740,8 @@ func (c TrafficCounters) IsIdle() bool {
 func (c TrafficCounters) MarshalJSON() ([]byte, error) {
 	return MarshalWire(map[string]any{
 		"connections": c.Connections, "downBytesPerSecond": c.DownBytesPerSecond,
-		"downTotal": c.DownTotal, "upBytesPerSecond": c.UpBytesPerSecond, "upTotal": c.UpTotal,
+		"downTotal": c.DownTotal, "oneWayUDPFlows": c.OneWayUDPFlows,
+		"upBytesPerSecond": c.UpBytesPerSecond, "upTotal": c.UpTotal,
 	})
 }
 

@@ -951,7 +951,8 @@ final class AppModel {
         let input = DiagnosticsExporter.Input(
             store: store, plan: lastPlan ?? buildPlanForDiagnostics(), daemon: daemon,
             daemonInfo: daemonInfo, helperState: "\(helperState)", appVersion: appVersion,
-            logDirectory: LogCenter.directory, includeServerAddresses: includeServerAddresses)
+            logDirectory: LogCenter.directory, includeServerAddresses: includeServerAddresses,
+            traffic: traffic)
         do {
             try await DiagnosticsExporter.export(input, to: url)
             logs.app(.info, "diagnostics exported to \(url.path)")

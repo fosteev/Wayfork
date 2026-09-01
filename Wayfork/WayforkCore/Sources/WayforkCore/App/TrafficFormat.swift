@@ -44,6 +44,13 @@ public enum TrafficFormat {
 
     public static let staleTooltip = "No traffic sample in the last \(Int(staleAfter)) seconds"
 
+    /// Tooltip of the dead-UDP hint on a tunnel card (H3, docs/design/02-ux.md).
+    public static func oneWayUDPHint(_ count: Int) -> String {
+        StatusText.count(count, "UDP connection")
+            + " sent data but received nothing for \(Int(TrafficCounters.oneWayUDPGrace)) s"
+            + " — the server may be dropping UDP"
+    }
+
     /// Label of the Direct row: exceptions only when a default tunnel takes the rest (F8).
     public static func directRowTitle(hasDefaultTunnel: Bool) -> String {
         hasDefaultTunnel ? "Direct · exceptions" : "Direct"

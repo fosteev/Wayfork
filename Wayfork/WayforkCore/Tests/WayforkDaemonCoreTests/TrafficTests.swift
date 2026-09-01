@@ -8,9 +8,9 @@ private let tunnelA = "aaaaaaaa-0000-0000-0000-000000000001"
 private let tunnelB = "aaaaaaaa-0000-0000-0000-000000000002"
 
 private func connection(
-    _ id: String, chains: [String], up: UInt64, down: UInt64
+    _ id: String, chains: [String], up: UInt64, down: UInt64, network: String = ""
 ) -> ClashConnection {
-    ClashConnection(id: id, chains: chains, upload: up, download: down)
+    ClashConnection(id: id, chains: chains, upload: up, download: down, network: network)
 }
 
 private let t0 = Date(timeIntervalSince1970: 1_756_140_000)
@@ -121,13 +121,19 @@ private let t0 = Date(timeIntervalSince1970: 1_756_140_000)
 
 @Test func clashConnectionsDecodeTheFixture() throws {
     let decoded = try ClashConnections.decode(Fixtures.data("clash/connections.json"))
-    #expect(decoded.connections.count == 5)
+    #expect(decoded.connections.count == 6)
     let first = decoded.connections[0]
     #expect(first.id == "0f8a9c8e-1d2b-4c3a-9e8f-7a6b5c4d3e2f")
     #expect(first.chains == ["t-\(tunnelA)"])
     #expect(first.upload == 4096)
     #expect(first.download == 1_048_576)
+    #expect(first.network == "tcp")
     #expect(decoded.connections[4].chains == [])  // `null`
+    let oneWay = decoded.connections[5]
+    #expect(oneWay.network == "udp")
+    #expect(oneWay.upload == 15360)
+    #expect(oneWay.download == 0)
+    #expect(oneWay.chains == ["t-\(tunnelA)"])
     #expect(TrafficAccumulator.Exit(chains: first.chains) == .tunnel(tunnelA))
     #expect(TrafficAccumulator.Exit(chains: ["direct"]) == .direct)
     #expect(TrafficAccumulator.Exit(chains: ["dns-out"]) == .direct)
@@ -154,10 +160,12 @@ private let t0 = Date(timeIntervalSince1970: 1_756_140_000)
     #expect(snapshot.sampledAt == t0.addingTimeInterval(2))
     let a = snapshot.counters(forTunnel: tunnelA)
     #expect(a.downTotal == 1_048_576)
-    #expect(a.upTotal == 4096)
+    #expect(a.upTotal == 4096 + 15360)
     #expect(a.downBytesPerSecond == 524_288)
-    #expect(a.upBytesPerSecond == 2048)
-    #expect(a.connections == 1)
+    #expect(a.upBytesPerSecond == (2048 + 7680))
+    #expect(a.connections == 2)
+    // The one-way UDP flow is younger than the grace on the first sample.
+    #expect(a.oneWayUDPFlows == 0)
     let b = snapshot.counters(forTunnel: tunnelB)
     #expect(b.downTotal == 524_288)
     #expect(b.connections == 1)
@@ -167,6 +175,12 @@ private let t0 = Date(timeIntervalSince1970: 1_756_140_000)
     #expect(snapshot.direct.connections == 3)
     #expect(snapshot.counters(forTunnel: "missing") == .zero)
     #expect(snapshot.tunnels.count == 2)
+
+    // Ten seconds on: the same up-only UDP flow through tunnel A is now one-way.
+    let later = accumulator.ingest(decoded.connections, at: t0.addingTimeInterval(12))
+    #expect(later.counters(forTunnel: tunnelA).oneWayUDPFlows == 1)
+    #expect(later.counters(forTunnel: tunnelB).oneWayUDPFlows == 0)
+    #expect(later.direct.oneWayUDPFlows == 0)
 }
 
 @Test func accumulatorUsesDeltasForConnectionsSeenBefore() {
@@ -244,6 +258,48 @@ private let t0 = Date(timeIntervalSince1970: 1_756_140_000)
     #expect(moved.direct.downTotal == 30)
 }
 
+@Test func accumulatorFlagsOneWayUDPOnlyAfterTheGraceAndClearsOnReplies() {
+    var accumulator = TrafficAccumulator()
+    accumulator.restartConnections(at: t0)
+    let udp = { (down: UInt64, at: TimeInterval) -> TrafficSnapshot in
+        accumulator.ingest(
+            [connection("c1", chains: ["t-\(tunnelA)"], up: 500, down: down, network: "udp")],
+            at: t0.addingTimeInterval(at))
+    }
+    #expect(udp(0, 1).counters(forTunnel: tunnelA).oneWayUDPFlows == 0)
+    #expect(udp(0, 10).counters(forTunnel: tunnelA).oneWayUDPFlows == 0)  // age 9 s
+    #expect(udp(0, 11).counters(forTunnel: tunnelA).oneWayUDPFlows == 1)  // age 10 s
+    // A single byte back clears it for the connection's lifetime.
+    #expect(udp(1, 12).counters(forTunnel: tunnelA).oneWayUDPFlows == 0)
+    #expect(udp(1, 30).counters(forTunnel: tunnelA).oneWayUDPFlows == 0)
+}
+
+@Test func accumulatorIgnoresTCPAndRestartsTheOneWayClockForReusedIDs() {
+    var accumulator = TrafficAccumulator()
+    accumulator.restartConnections(at: t0)
+    let tcp = connection("c1", chains: ["t-\(tunnelA)"], up: 500, down: 0, network: "tcp")
+    _ = accumulator.ingest([tcp], at: t0.addingTimeInterval(1))
+    let tcpLater = accumulator.ingest([tcp], at: t0.addingTimeInterval(20))
+    #expect(tcpLater.counters(forTunnel: tunnelA).oneWayUDPFlows == 0)
+
+    // A UDP flow whose counters shrank is a reused id: its age starts over.
+    let udp = connection("c2", chains: ["t-\(tunnelA)"], up: 500, down: 0, network: "udp")
+    _ = accumulator.ingest([tcp, udp], at: t0.addingTimeInterval(21))
+    let reused = accumulator.ingest(
+        [tcp, connection("c2", chains: ["t-\(tunnelA)"], up: 5, down: 0, network: "udp")],
+        at: t0.addingTimeInterval(32))
+    #expect(reused.counters(forTunnel: tunnelA).oneWayUDPFlows == 0)
+
+    // A one-way UDP flow on Direct is counted there, not on any tunnel.
+    var fresh = TrafficAccumulator()
+    fresh.restartConnections(at: t0)
+    let direct = connection("c3", chains: ["direct"], up: 64, down: 0, network: "udp")
+    _ = fresh.ingest([direct], at: t0.addingTimeInterval(1))
+    let directLater = fresh.ingest([direct], at: t0.addingTimeInterval(11))
+    #expect(directLater.direct.oneWayUDPFlows == 1)
+    #expect(directLater.tunnels.isEmpty)
+}
+
 @Test func accumulatorWithoutAStartTimeReportsZeroRates() {
     var accumulator = TrafficAccumulator()
     let snapshot = accumulator.ingest(
@@ -256,8 +312,22 @@ private let t0 = Date(timeIntervalSince1970: 1_756_140_000)
 @Test func trafficSnapshotRoundTripsThroughTheCodec() throws {
     let snapshot = TrafficSnapshot(
         sampledAt: t0, interval: 1,
-        tunnels: [tunnelA: TrafficCounters(downBytesPerSecond: 1.5, downTotal: 3, connections: 2)],
+        tunnels: [
+            tunnelA: TrafficCounters(
+                downBytesPerSecond: 1.5, downTotal: 3, connections: 2, oneWayUDPFlows: 1)
+        ],
         direct: TrafficCounters(upBytesPerSecond: 2, upTotal: 4))
     let data = try XPCCodec.encode(snapshot)
     #expect(try XPCCodec.decode(TrafficSnapshot.self, from: data) == snapshot)
+}
+
+@Test func trafficCountersReadAMissingOneWayCountAsZero() throws {
+    // A payload from a build that predates the dead-UDP detector (H3).
+    let old = """
+        {"downBytesPerSecond": 1, "upBytesPerSecond": 2, "downTotal": 3, "upTotal": 4,
+         "connections": 5}
+        """
+    let decoded = try XPCCodec.decode(TrafficCounters.self, from: Data(old.utf8))
+    #expect(decoded.oneWayUDPFlows == 0)
+    #expect(decoded.connections == 5)
 }

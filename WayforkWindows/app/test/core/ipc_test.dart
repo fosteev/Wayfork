@@ -170,6 +170,7 @@ void main() {
       downTotal: 100,
       upTotal: 20,
       connections: 3,
+      oneWayUDPFlows: 1,
     );
     expect(counters.isIdle, isFalse);
     final snapshot = TrafficSnapshot(
@@ -184,5 +185,18 @@ void main() {
     expect(decoded, snapshot);
     expect(decoded.countersForTunnel('missing'), TrafficCounters.zero);
     expect(RuntimeStatus.stopped.resolverOverride, const ResolverOverrideOff());
+  });
+
+  test('traffic counters read a missing one-way count as zero', () {
+    // A service build that predates the dead-UDP detector (H3).
+    final decoded = TrafficCounters.fromJson(const {
+      'downBytesPerSecond': 1.0,
+      'upBytesPerSecond': 2.0,
+      'downTotal': 3,
+      'upTotal': 4,
+      'connections': 5,
+    });
+    expect(decoded.oneWayUDPFlows, 0);
+    expect(decoded.connections, 5);
   });
 }

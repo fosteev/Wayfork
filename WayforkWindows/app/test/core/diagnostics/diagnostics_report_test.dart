@@ -161,6 +161,42 @@ void main() {
     expect(report, endsWith('\n'));
   });
 
+  test('system.txt reports the traffic sample with one-way UDP counts', () {
+    final report = DiagnosticsReport.systemReport(
+      appVersion: '0.1.0',
+      windowsVersion: '10.0.26100',
+      serviceState: 'ready',
+      serviceInfo: null,
+      generatedAt: DateTime.utc(2026, 9, 1),
+      commands: const {},
+      traffic: TrafficSnapshot(
+        sampledAt: DateTime.utc(2026, 9, 1, 12, 0, 5),
+        interval: 1,
+        tunnels: const {
+          'aa-1': TrafficCounters(
+            downTotal: 1048576,
+            upTotal: 20480,
+            connections: 3,
+            oneWayUDPFlows: 2,
+          ),
+        },
+        direct: const TrafficCounters(downTotal: 512, connections: 1),
+      ),
+      tunnelNames: const {'aa-1': 'Work'},
+    );
+    expect(report, contains('## traffic'));
+    expect(report, contains('sampled 2026-09-01T12:00:05.000Z'));
+    expect(
+      report,
+      contains(
+        'Work (t-aa-1): ↓ 1.0 MB ↑ 20 KB · 3 connections · '
+        '2 one-way UDP flows',
+      ),
+    );
+    expect(report, contains('Direct: ↓ 512 B ↑ 0 B · 1 connection'));
+    expect(report, isNot(contains('Direct: ↓ 512 B ↑ 0 B · 1 connection ·')));
+  });
+
   test('an unreachable service leaves the versions unknown', () {
     final report = DiagnosticsReport.systemReport(
       appVersion: '0.1.0',

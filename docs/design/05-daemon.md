@@ -245,6 +245,27 @@ and VLESS alike. Interface counters would only cover OpenVPN, so one mechanism s
   `dns-out`, `block` and chain-less entries count as Direct. A counter that shrank under a
   reused id, or an id that moved to another outbound, is treated as a new connection. The
   snapshot lists only tunnels seen since Turn On; the app reads a missing entry as zero.
+- **Dead-UDP detector (H3, 2026-09-01)**: a UDP flow that keeps sending but has received
+  nothing for ~10 s is the signature of server-side UDP filtering — the exact way broken
+  voice/gaming looks (Discord "Connecting to RTC" through a VPS whose host firewall drops
+  UDP to high ports). `TrafficAccumulator` remembers when it first saw each connection id
+  (reset when the id is reused or moves to another outbound) and counts, per exit, the
+  connections with `metadata.network == "udp"`, cumulative `upload > 0`, cumulative
+  `download == 0` and an age of at least 10 s (`TrafficAccumulator.oneWayUDPGrace`; age
+  runs from the first sample that saw the flow, so at most one sampling interval late —
+  irrelevant against 10 s). The count rides in the snapshot as
+  `TrafficCounters.oneWayUDPFlows`. **What crosses the trust boundary**: the per-tunnel
+  *count* only — the aggregates-only rule above stands, no hosts and no addresses reach
+  the client, so the Clash API stays the daemon's secret. The flows' addresses are already
+  in sing-box's own log at `info`; for diagnosis the sampler additionally logs one WARNING
+  per tunnel per streak (`traffic: N one-way udp flow(s) via t-<id> …`) when a tunnel's
+  count leaves zero, cleared when it returns to zero — counts only, addresses stay with
+  sing-box. The app shows the count as a warning hint on the tunnel card (02-ux.md) and
+  writes a `## traffic` section (per-exit totals, open connections, one-way UDP counts)
+  into the diagnostics `system.txt`. Extending `TrafficCounters` needs no protocol or
+  handshake change: the field is additive, the macOS payload decodes it as optional-zero,
+  the Windows one reads a missing key as zero, and version-mismatched halves are already
+  torn down by the build check in the handshake.
 
 ## Connection cut on rule change
 

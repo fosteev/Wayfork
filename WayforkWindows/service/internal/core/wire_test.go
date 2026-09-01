@@ -209,14 +209,14 @@ func TestSmallPayloadsWire(t *testing.T) {
 		t.Errorf("daemon info round trip = %+v", decodedInfo)
 	}
 
-	counters := TrafficCounters{DownBytesPerSecond: 12.5, UpBytesPerSecond: 2, DownTotal: 100, UpTotal: 20, Connections: 3}
+	counters := TrafficCounters{DownBytesPerSecond: 12.5, UpBytesPerSecond: 2, DownTotal: 100, UpTotal: 20, Connections: 3, OneWayUDPFlows: 1}
 	if counters.IsIdle() || !(TrafficCounters{}).IsIdle() {
 		t.Error("IsIdle is wrong")
 	}
 	snapshot := TrafficSnapshot{SampledAt: NewTimestamp(fixtureDate), Interval: 1.25, Tunnels: map[string]TrafficCounters{"a": counters}}
-	wantSnapshot := `{"direct":{"connections":0,"downBytesPerSecond":0,"downTotal":0,"upBytesPerSecond":0,"upTotal":0},` +
+	wantSnapshot := `{"direct":{"connections":0,"downBytesPerSecond":0,"downTotal":0,"oneWayUDPFlows":0,"upBytesPerSecond":0,"upTotal":0},` +
 		`"interval":1.25,"sampledAt":"2026-08-25T12:00:00Z",` +
-		`"tunnels":{"a":{"connections":3,"downBytesPerSecond":12.5,"downTotal":100,"upBytesPerSecond":2,"upTotal":20}}}`
+		`"tunnels":{"a":{"connections":3,"downBytesPerSecond":12.5,"downTotal":100,"oneWayUDPFlows":1,"upBytesPerSecond":2,"upTotal":20}}}`
 	if got := mustMarshal(t, snapshot); got != wantSnapshot {
 		t.Errorf("snapshot = %s, want %s", got, wantSnapshot)
 	}

@@ -184,22 +184,46 @@ public enum XPCCodec {
 /// Traffic figures of one exit — a tunnel or Direct (F9). Rates cover
 /// `TrafficSnapshot.interval`; totals run since Turn On.
 public struct TrafficCounters: Codable, Sendable, Hashable {
+    /// How long a UDP flow may keep sending without a single byte back before it counts as
+    /// one-way (H3, docs/design/05-daemon.md "Traffic sampling").
+    public static let oneWayUDPGrace: TimeInterval = 10
+
     public var downBytesPerSecond: Double
     public var upBytesPerSecond: Double
     public var downTotal: UInt64
     public var upTotal: UInt64
     /// Connections open at sample time.
     public var connections: Int
+    /// UDP connections that sent but received nothing for `oneWayUDPGrace` — the signature
+    /// of a tunnel server dropping UDP (H3). An aggregate count; no hosts or addresses.
+    public var oneWayUDPFlows: Int
 
     public init(
         downBytesPerSecond: Double = 0, upBytesPerSecond: Double = 0, downTotal: UInt64 = 0,
-        upTotal: UInt64 = 0, connections: Int = 0
+        upTotal: UInt64 = 0, connections: Int = 0, oneWayUDPFlows: Int = 0
     ) {
         self.downBytesPerSecond = downBytesPerSecond
         self.upBytesPerSecond = upBytesPerSecond
         self.downTotal = downTotal
         self.upTotal = upTotal
         self.connections = connections
+        self.oneWayUDPFlows = oneWayUDPFlows
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case downBytesPerSecond, upBytesPerSecond, downTotal, upTotal, connections
+        case oneWayUDPFlows
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        downBytesPerSecond = try c.decode(Double.self, forKey: .downBytesPerSecond)
+        upBytesPerSecond = try c.decode(Double.self, forKey: .upBytesPerSecond)
+        downTotal = try c.decode(UInt64.self, forKey: .downTotal)
+        upTotal = try c.decode(UInt64.self, forKey: .upTotal)
+        connections = try c.decode(Int.self, forKey: .connections)
+        // Additive field: a payload from a build that predates it reads as zero.
+        oneWayUDPFlows = try c.decodeIfPresent(Int.self, forKey: .oneWayUDPFlows) ?? 0
     }
 
     public static let zero = TrafficCounters()

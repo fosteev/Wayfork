@@ -53,6 +53,10 @@ final class DiagnosticsExporter {
           commands: {
             for (final command in commands) command: await shell(command),
           },
+          traffic: model.traffic,
+          tunnelNames: {
+            for (final tunnel in model.store.tunnels) tunnel.id: tunnel.name,
+          },
         ),
         storeJSON: StoreCodec.encode(model.store),
         singBoxConfig: plan?.singBox.config,

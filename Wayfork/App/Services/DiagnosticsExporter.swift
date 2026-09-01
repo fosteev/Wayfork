@@ -13,6 +13,8 @@ enum DiagnosticsExporter {
         var appVersion: String
         var logDirectory: URL
         var includeServerAddresses: Bool
+        /// The latest F9 sample, for the `## traffic` section (one-way UDP counts, H3).
+        var traffic: TrafficSnapshot?
     }
 
     static let maxLogBytes = 5 * 1024 * 1024
@@ -105,7 +107,32 @@ enum DiagnosticsExporter {
         ] {
             sections.append("## \(title)\n" + run(path, arguments))
         }
+        if let traffic = input.traffic {
+            sections.append("## traffic\n" + trafficReport(traffic, store: input.store))
+        }
         return sections.joined(separator: "\n\n") + "\n"
+    }
+
+    /// Per-exit totals since Turn On, with the one-way UDP counts the dead-UDP detector
+    /// flags (H3). Aggregates only — no hosts, no addresses.
+    private static func trafficReport(_ traffic: TrafficSnapshot, store: Store) -> String {
+        var lines = ["sampled \(ISO8601DateFormatter().string(from: traffic.sampledAt))"]
+        func describe(_ label: String, _ counters: TrafficCounters) -> String {
+            var line =
+                "\(label): ↓ \(TrafficFormat.bytes(counters.downTotal))"
+                + " ↑ \(TrafficFormat.bytes(counters.upTotal))"
+                + " · \(StatusText.count(counters.connections, "connection"))"
+            if counters.oneWayUDPFlows > 0 {
+                line += " · \(StatusText.count(counters.oneWayUDPFlows, "one-way UDP flow"))"
+            }
+            return line
+        }
+        for (id, counters) in traffic.tunnels.sorted(by: { $0.key < $1.key }) {
+            let name = store.tunnels.first { $0.id.uuidString.lowercased() == id }?.name
+            lines.append(describe("\(name ?? "?") (t-\(id))", counters))
+        }
+        lines.append(describe("Direct", traffic.direct))
+        return lines.joined(separator: "\n") + "\n"
     }
 
     private static func run(_ path: String, _ arguments: [String]) -> String {

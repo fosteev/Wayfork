@@ -1,4 +1,6 @@
 import 'package:wayfork/core/app/log_file.dart';
+import 'package:wayfork/core/app/status_text.dart';
+import 'package:wayfork/core/app/traffic_format.dart';
 import 'package:wayfork/core/diagnostics/diagnostics_sanitizer.dart';
 import 'package:wayfork/core/diagnostics/zip_writer.dart';
 import 'package:wayfork/core/ipc/payloads.dart';
@@ -54,7 +56,8 @@ abstract final class DiagnosticsReport {
         '${pad(local.second)}.zip';
   }
 
-  /// `system.txt`: the header, then one section per command that was run.
+  /// `system.txt`: the header, then one section per command that was run, and
+  /// the latest traffic sample when there is one (one-way UDP counts, H3).
   static String systemReport({
     required String appVersion,
     required String windowsVersion,
@@ -62,6 +65,8 @@ abstract final class DiagnosticsReport {
     required DaemonInfo? serviceInfo,
     required DateTime generatedAt,
     required Map<String, String> commands,
+    TrafficSnapshot? traffic,
+    Map<String, String> tunnelNames = const {},
   }) {
     final sections = <String>[
       [
@@ -76,8 +81,34 @@ abstract final class DiagnosticsReport {
       ].join('\n'),
       for (final MapEntry(:key, :value) in commands.entries)
         '## $key\n${value.trimRight()}',
+      if (traffic != null)
+        '## traffic\n${_trafficReport(traffic, tunnelNames)}',
     ];
     return '${sections.join('\n\n')}\n';
+  }
+
+  /// Per-exit totals since Turn On, with the one-way UDP counts the dead-UDP
+  /// detector flags (H3). Aggregates only — no hosts, no addresses.
+  static String _trafficReport(
+    TrafficSnapshot traffic,
+    Map<String, String> tunnelNames,
+  ) {
+    String describe(String label, TrafficCounters counters) {
+      final oneWay = counters.oneWayUDPFlows > 0
+          ? ' · ${StatusText.count(counters.oneWayUDPFlows, 'one-way UDP flow')}'
+          : '';
+      return '$label: ↓ ${TrafficFormat.bytes(counters.downTotal)} '
+          '↑ ${TrafficFormat.bytes(counters.upTotal)} · '
+          '${StatusText.count(counters.connections, 'connection')}$oneWay';
+    }
+
+    final ids = traffic.tunnels.keys.toList()..sort();
+    return [
+      'sampled ${LogLineFormat.timestamp(traffic.sampledAt)}',
+      for (final id in ids)
+        describe('${tunnelNames[id] ?? '?'} (t-$id)', traffic.tunnels[id]!),
+      describe('Direct', traffic.direct),
+    ].join('\n');
   }
 
   /// The archive's files, in the order they are written.

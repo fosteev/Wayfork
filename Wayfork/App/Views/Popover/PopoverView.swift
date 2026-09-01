@@ -128,7 +128,11 @@ struct TunnelCardView: View {
                 TypeBadge(kind: tunnel.kind)
                 Spacer(minLength: 4)
                 if showsRate(card) {
-                    RateLabel(counters: model.trafficCounters(for: tunnel))
+                    let counters = model.trafficCounters(for: tunnel)
+                    RateLabel(counters: counters)
+                    if let counters, counters.oneWayUDPFlows > 0 {
+                        OneWayUDPHint(count: counters.oneWayUDPFlows)
+                    }
                 }
                 actionButton(card.action)
             }
@@ -196,6 +200,19 @@ struct RateLabel: View {
             .lineLimit(1)
             .fixedSize()
             .help(counters.map(TrafficFormat.tooltip) ?? TrafficFormat.staleTooltip)
+    }
+}
+
+/// Orange ⚠ between the rate and the action button when a tunnel has UDP flows that send
+/// but receive nothing — the signature of a server dropping UDP (H3, docs/design/02-ux.md).
+struct OneWayUDPHint: View {
+    let count: Int
+
+    var body: some View {
+        Image(systemName: "exclamationmark.triangle.fill")
+            .font(.system(size: 10))
+            .foregroundStyle(.orange)
+            .help(TrafficFormat.oneWayUDPHint(count))
     }
 }
 

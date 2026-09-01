@@ -40,6 +40,8 @@ public struct TrafficAccumulator: Sendable {
         var exit: Exit
         var download: UInt64
         var upload: UInt64
+        /// When this connection id was first sampled; the dead-UDP age runs from here (H3).
+        var firstSeenAt: Date
     }
 
     private var totals: [Exit: Bytes] = [:]
@@ -65,22 +67,32 @@ public struct TrafficAccumulator: Sendable {
         let interval = max(0, lastSampledAt.map { now.timeIntervalSince($0) } ?? 0)
         var deltas: [Exit: Bytes] = [:]
         var open: [Exit: Int] = [:]
+        var oneWayUDP: [Exit: Int] = [:]
         var current: [String: Seen] = [:]
         for connection in connections {
             let exit = Exit(chains: connection.chains)
             var delta = Bytes(down: connection.download, up: connection.upload)
+            var firstSeenAt = now
             if let seen = previous[connection.id], seen.exit == exit {
                 // Counters only grow; a smaller value means the id was reused.
                 if connection.download >= seen.download, connection.upload >= seen.upload {
                     delta = Bytes(
                         down: connection.download - seen.download,
                         up: connection.upload - seen.upload)
+                    firstSeenAt = seen.firstSeenAt
                 }
             }
             deltas[exit, default: Bytes()].add(delta)
             open[exit, default: 0] += 1
+            // Sent for `oneWayUDPGrace` with nothing back: a one-way UDP flow (H3).
+            if connection.network == "udp", connection.upload > 0, connection.download == 0,
+                now.timeIntervalSince(firstSeenAt) >= TrafficCounters.oneWayUDPGrace
+            {
+                oneWayUDP[exit, default: 0] += 1
+            }
             current[connection.id] = Seen(
-                exit: exit, download: connection.download, upload: connection.upload)
+                exit: exit, download: connection.download, upload: connection.upload,
+                firstSeenAt: firstSeenAt)
         }
         for (exit, delta) in deltas {
             totals[exit, default: Bytes()].add(delta)
@@ -94,7 +106,8 @@ public struct TrafficAccumulator: Sendable {
             return TrafficCounters(
                 downBytesPerSecond: interval > 0 ? Double(delta.down) / interval : 0,
                 upBytesPerSecond: interval > 0 ? Double(delta.up) / interval : 0,
-                downTotal: total.down, upTotal: total.up, connections: open[exit] ?? 0)
+                downTotal: total.down, upTotal: total.up, connections: open[exit] ?? 0,
+                oneWayUDPFlows: oneWayUDP[exit] ?? 0)
         }
         var tunnels: [String: TrafficCounters] = [:]
         for case .tunnel(let id) in Set(totals.keys).union(open.keys) {

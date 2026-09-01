@@ -21,6 +21,9 @@ actor TrafficSampler {
     private var generation = 0
     /// One WARNING per failure streak.
     private var failing = false
+    /// Tunnels warned about one-way UDP flows; cleared when their count returns to zero,
+    /// so each streak logs once (H3).
+    private var oneWayWarned: Set<String> = []
 
     init(hub: ClientHub) {
         self.hub = hub
@@ -52,6 +55,7 @@ actor TrafficSampler {
         poll?.cancel()
         poll = nil
         failing = false
+        oneWayWarned = []
     }
 
     /// Turn Off: stop and forget everything.
@@ -76,11 +80,29 @@ actor TrafficSampler {
                 failing = false
                 hub.post(.info, "traffic: clash api reachable again")
             }
+            warnAboutOneWayUDP(snapshot)
             await hub.pushTraffic(snapshot)
         } catch {
             guard generation == self.generation, poll != nil, !failing else { return }
             failing = true
             hub.post(.warning, "traffic: clash api unreachable (\(describe(error)))")
+        }
+    }
+
+    /// One WARNING per tunnel per streak when its one-way UDP count leaves zero — counts
+    /// only, the flows' addresses stay with sing-box's own log (H3).
+    private func warnAboutOneWayUDP(_ snapshot: TrafficSnapshot) {
+        for (id, counters) in snapshot.tunnels {
+            if counters.oneWayUDPFlows > 0 {
+                guard oneWayWarned.insert(id).inserted else { continue }
+                hub.post(
+                    .warning,
+                    "traffic: \(counters.oneWayUDPFlows) one-way udp flow(s) via t-\(id) — "
+                        + "sending for \(Int(TrafficCounters.oneWayUDPGrace)) s+ with nothing "
+                        + "received; the server may be dropping UDP")
+            } else {
+                oneWayWarned.remove(id)
+            }
         }
     }
 
