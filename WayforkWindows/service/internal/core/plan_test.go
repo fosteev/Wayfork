@@ -98,8 +98,9 @@ func TestPlanHash(t *testing.T) {
 		t.Errorf("plan hash %q is not a stable SHA-256", hash)
 	}
 	// The values the Dart core computes for the same inputs (cross-client pin, taken from
-	// RuntimePlan.planHash / OpenVPNRuntime.configHash on 2026-08-27).
-	if hash != "c657ba242b63a58ead61972d3c5def6e993d6a61dc98e3c6e4f2c0a4da513f22" {
+	// RuntimePlan.planHash / OpenVPNRuntime.configHash; re-pinned 2026-09-01 for the H4
+	// golden change).
+	if hash != "9bbb5a830eb85079ee4b239f10e06601bea150a1fda67d6af8712ef4b886ab2e" {
 		t.Errorf("plan hash %s differs from the Dart core's", hash)
 	}
 	if plan.OpenVPN[0].ConfigHash != "9bcd89cb9ed8d1ff0362c5a01b0cf2688be60cfb8b4dcaa44e848da1d311b989" {

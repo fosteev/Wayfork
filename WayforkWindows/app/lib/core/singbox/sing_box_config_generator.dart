@@ -300,8 +300,10 @@ abstract final class SingBoxConfigGenerator {
       // IPv6 answers after the TUN owns the IPv6 default route.
       'strategy': 'ipv4_only',
       'independent_cache': true,
-      // Preserve real-answer name mappings for flows with no SNI or Host.
-      'reverse_mapping': true,
+      // Real-answer name mappings keep unsniffable flows to Direct exceptions
+      // out of the default tunnel; without one they only let a poisoned ISP
+      // answer mislabel raw-IP flows (H4, docs/design/03-routing.md).
+      if (defaultTunnel != null) 'reverse_mapping': true,
     };
     final route = <String, Object?>{
       'rules': routeRules,

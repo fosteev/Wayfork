@@ -2,7 +2,6 @@
   "dns" : {
     "final" : "dns-direct",
     "independent_cache" : true,
-    "reverse_mapping" : true,
     "rules" : [
       {
         "action" : "predefined",

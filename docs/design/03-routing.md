@@ -161,12 +161,26 @@ Notes on specific choices:
   ("detour to an empty direct outbound makes no sense", found 2026-08-26 when the explicit
   `dns-direct` first shipped); the default dialer already binds to the physical interface
   via `auto_detect_interface`.
-- `reverse_mapping: true`: sing-box remembers which name a *real* answer was for and attaches
-  it to later flows to that IP. The exceptions (`rules-direct`) get real IPs from
-  `dns-direct`, so without it a flow with nothing to sniff — SSH to a Direct-listed host —
-  reaches the router as a bare IP, misses every domain rule and takes the default tunnel
-  (2026-08-26: `git pull` from gitlab.sccloud.ru, which blocks the VLESS exit, was reset).
-  IP rules (F11) still win when they come first in the rule order.
+- `reverse_mapping: true` — **only when a default tunnel is set** (H4, 2026-09-01):
+  sing-box remembers which name a *real* answer was for and attaches it to later flows to
+  that IP. With a default tunnel the exceptions (`rules-direct`) get real IPs from
+  `dns-direct`, so without the mapping a flow with nothing to sniff — SSH to a
+  Direct-listed host — reaches the router as a bare IP, misses every domain rule and takes
+  the default tunnel (2026-08-26: `git pull` from gitlab.sccloud.ru, which blocks the VLESS
+  exit, was reset). IP rules (F11) still win when they come first in the rule order.
+  Without a default tunnel `route.final` is `direct`, so that flow lands on `direct` with
+  or without the mapping — the mapping then only relabels connections, and it lies:
+  `final: dns-direct` hands every unmatched name to the ISP resolver, and a poisoned
+  answer (blocked domains pointed at shared CDN ranges) attaches an unrelated domain to
+  raw-IP flows in Traffic and in the logs (2026-09-01: Discord voice flows labelled with a
+  blocked domain sent the dead-UDP investigation sideways). So the generator emits the key
+  only for a default-tunnel config, where the fake-ip catch-all also shrinks the poisoning
+  surface to the user's own exception domains and the OpenVPN server names — the residual
+  risk (a poisoned answer for one of *those* steering an unrelated raw-IP flow to
+  `direct`) is accepted and this note is its record. Known cost of the removal: with no
+  default tunnel, the connection cut on a rule change (05-daemon.md) can no longer match a
+  bare-IP flow by its resolved name — such a connection outlives the rule change until it
+  closes on its own.
 - `hijack-dns` captures every plain-DNS packet that enters TUN. **While Wayfork is On the
   system resolver is Wayfork itself (F12):** the daemon points the primary network
   service's DNS at `172.19.0.2` — the neighbour of the TUN's own address inside its /30,

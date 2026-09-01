@@ -231,7 +231,7 @@ public enum SingBoxConfigGenerator {
             }
             dnsFinal = tag
         }
-        let dns: [String: Any] = [
+        var dns: [String: Any] = [
             "servers": dnsServers,
             "rules": dnsRules,
             "final": dnsFinal,
@@ -240,12 +240,17 @@ public enum SingBoxConfigGenerator {
             // would end in "no route to host" inside sing-box. Tunnels are IPv4-only anyway.
             "strategy": "ipv4_only",
             "independent_cache": true,
+        ]
+        if defaultTunnel != nil {
             // Remember which name a real answer was for, so that domain rules also match
             // flows that carry no SNI/Host (SSH to a Direct-listed host, 2026-08-26): the
             // exceptions get real IPs from `dns-direct`, and without this only sniffing
-            // could attach the name to the connection.
-            "reverse_mapping": true,
-        ]
+            // would keep such a flow out of the default tunnel. Without a default tunnel
+            // the mapping cannot change where a flow goes (`route.final` is `direct`) and
+            // a poisoned ISP answer would only mislabel raw-IP flows, so it is omitted
+            // (H4, docs/design/03-routing.md).
+            dns["reverse_mapping"] = true
+        }
 
         let route: [String: Any] = [
             "rules": routeRules,
