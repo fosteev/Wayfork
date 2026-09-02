@@ -6,6 +6,32 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-09-02
+
+Hardening from a day of field debugging (Discord voice through a UDP-filtering VPS,
+a poisoned ISP resolver, and a daemon that had died silently).
+
+### Added
+
+- **One-way UDP warning.** A tunnel whose UDP connections keep sending but have received
+  nothing for 10 seconds gets an orange ⚠ next to its traffic rate — the signature of a
+  VPN server dropping UDP, which is how broken voice chat and gaming look. The counts are
+  also logged and included in Export Diagnostics, which now carries a traffic summary.
+
+### Fixed
+
+- **A slow TUN bring-up no longer kills a healthy start.** The startup check polls for up
+  to 12 seconds and retries the start once, instead of a single check after 3 seconds
+  that could declare a working sing-box failed. Turn Off during a failing start answers
+  immediately.
+- **A routing engine that cannot start is loud now.** The menu bar / tray icon shows the
+  error state, one notification per failure streak says Wayfork keeps retrying, and the
+  app re-applies on its own with growing backoff (5 s … 5 min) until the engine is back —
+  previously the app looked On while everything routed direct.
+- **Traffic labels no longer trust a poisoned resolver.** `reverse_mapping` is emitted
+  only when a default tunnel needs it for routing, so a spoofed ISP answer for a blocked
+  domain can no longer tag unrelated raw-IP connections with that domain.
+
 ## [0.3.0] — 2026-08-29
 
 ### Added
@@ -100,6 +126,7 @@ First release: per-domain split tunneling across several VPNs at once from the m
   matched as the proxy. IP rules are IPv4, destination-address only.
 - No rule lists / subscriptions, no WireGuard, Shadowsocks or XHTTP transports yet.
 
+[0.4.0]: https://github.com/fosteev/Wayfork/releases/tag/v0.4.0
 [0.3.0]: https://github.com/fosteev/Wayfork/releases/tag/v0.3.0
 [0.2.0]: https://github.com/fosteev/Wayfork/releases/tag/v0.2.0
 [0.1.0]: https://github.com/fosteev/Wayfork/releases/tag/v0.1.0
