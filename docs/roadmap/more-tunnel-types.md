@@ -1,8 +1,9 @@
 # F13 — More tunnel types
 
-> Status: in progress · created 2026-09-07 · **stages 1–5 done and the shipping docs
-> written**; what is left is stage 6's two live checks, which only the maintainer can run
-> (macOS and the Windows PC), and then the optional stages 7–8
+> Status: in progress · created 2026-09-07 · stages 1–5 done; **released as 0.5.0 on
+> 2026-09-08** (macOS DMG + both MSIs + the bundle on the GitHub release, all three CI runs
+> green) · the two live checks below are still owed and are the only thing between this and
+> "done"; stages 7–8 stay optional
 
 ## Goal
 
@@ -312,6 +313,12 @@ that the Swift and Dart generators agree about `endpoints[]` and the three new o
       README — the badge row, the one-line pitch, the Features bullet and the Tunnels
       section now name every kind and what is refused at import. M8 / WM9 are ticked except
       for their manual checks, which are the two below.
+> The release went out before these checks, on the maintainer's call. Nothing here is
+> unverified in the sense of untested — the parsers, the generator and the goldens are
+> covered on both clients and every new config starts under a real `sing-box run` — but no
+> byte of traffic has yet crossed a real WireGuard, Shadowsocks, Trojan or VMess server
+> through Wayfork. That is what these two checks are for.
+
 - [ ] Live check, macOS (maintainer): one inbound of each kind on the Xray panel
       (wireguard, shadowsocks, trojan, vmess), imported into Wayfork; a domain rule through
       each carries traffic; **WireGuard as default** resolves DNS through the endpoint (no
