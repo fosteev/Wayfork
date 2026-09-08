@@ -1,7 +1,18 @@
-# Tunnels: OpenVPN and VLESS
+# Tunnels
 
-Technical side of F1. Two tunnel kinds with very different shapes: OpenVPN is an external
-process the daemon babysits; VLESS is a few fields in the sing-box config.
+Technical side of F1 and F13. Six kinds in two runtime shapes:
+
+| Shape | Kinds | In the sing-box config | Process | Interface |
+|-------|-------|------------------------|---------|-----------|
+| External process | OpenVPN | `direct` outbound with `bind_interface` | `openvpn`, one per tunnel | own `utun` |
+| Native | VLESS, Shadowsocks, Trojan, VMess | one entry in `outbounds[]` | — | — |
+| Native | WireGuard | one entry in `endpoints[]` | — | userspace (gVisor) |
+
+Everything native is "ready whenever sing-box runs": nothing to start, nothing to
+supervise, no route to install. The tag is `t-<id>` in every case, so route rules, DNS
+detours, rule-sets and the traffic counters do not care which kind is behind it — the one
+exception is `endpoints[]` being a second array the generator has to fill (see
+"What the pinned sing-box accepts").
 
 ## OpenVPN
 
@@ -193,3 +204,269 @@ requires `pbk`; `ws`/`grpc` with `reality` is rejected (sing-box does not suppor
 
 No process, no routes, no DNS entry: the tunnel is "ready" whenever sing-box runs.
 Reachability is only observed per connection until L4 adds health checks.
+
+## Shared TLS and transport (F13)
+
+VLESS, Trojan and VMess carry the same `tls` and `transport` blocks, so the generator has
+one builder for each, extracted from `vlessOutbound` unchanged (the VLESS goldens must not
+move when it lands):
+
+```swift
+static func tlsBlock(security:server:sni:fingerprint:alpn:
+                     realityPublicKey:realityShortID:allowInsecure:) -> [String: Any]?
+static func transportBlock(_ transport: ProxyTransport) -> [String: Any]?
+```
+
+`VLESSSecurity` and `VLESSTransport` are renamed `TLSSecurity` and `ProxyTransport` and
+shared by the three metas. Renaming changes no JSON: neither type name appears in
+`store.json` (the enums encode by case name and payload), so no store migration and no
+fixture churn.
+
+**The metas stay flat and per-kind.** `TrojanMeta` and `VMessMeta` repeat the seven TLS
+fields rather than embedding a shared `ProxyTLS` struct, because embedding would nest
+`VLESSMeta`'s existing keys one level deeper — a store migration and a rewrite of every
+golden `input.json` for no user-visible gain. Duplication in three structs, shared code in
+one generator helper.
+
+## WireGuard
+
+### Import (app)
+
+Input: a `.conf` file (`Add WireGuard…`, drag & drop, paste). wg-quick INI, one
+`[Interface]` and one or more `[Peer]` sections; keys are case-insensitive, values may be
+comma-separated lists, `#`/`;` start a comment.
+
+| Key | Section | Meaning | Mapping |
+|-----|---------|---------|---------|
+| `PrivateKey` | Interface | 32-byte base64 | Keychain `tunnel/<id>/privateKey`; required, else `import.wireguard.invalid` |
+| `Address` | Interface | tunnel addresses | `WireGuardMeta.addresses`; required; a bare IP is normalized to `/32` (sing-box rejects an address without a prefix); IPv6 entries dropped |
+| `DNS` | Interface | resolvers inside the tunnel | first IPv4 entry → `discoveredDNS`, used by `TunnelDNS.auto`; IPv6 entries dropped |
+| `MTU` | Interface | link MTU | `mtu`; absent → key omitted, sing-box defaults to 1408 |
+| `ListenPort`, `Table`, `PreUp`, `PostUp`, `PreDown`, `PostDown`, `SaveConfig`, `FwMark` | Interface | wg-quick / kernel | ignored (nothing to do inside a userspace stack) |
+| `PublicKey` | Peer | 32-byte base64 | `peer.publicKey`; required |
+| `PresharedKey` | Peer | 32-byte base64 | Keychain `tunnel/<id>/presharedKey`; optional |
+| `Endpoint` | Peer | `host:port` | `peer.host`, `peer.port`; required — a peer with no endpoint is a listener, which a client tunnel cannot use |
+| `AllowedIPs` | Peer | prefixes routed into the tunnel | `peer.allowedIPs`; required (sing-box: `missing allowed ips for peer 0`); IPv6 entries dropped; warning badge when the result is not `0.0.0.0/0` |
+| `PersistentKeepalive` | Peer | seconds | `peer.keepalive`; `0`/absent → omitted |
+
+Unknown keys are ignored with a note in the import log, not refused: wg-quick confs pick up
+distribution-specific extras and none of them change how the tunnel dials.
+
+Validation at import (sing-box only notices some of this at start, and a start that fails
+is a dead tunnel, so the parser is the gate): both keys decode to exactly 32 bytes;
+`Address` holds at least one IPv4 prefix; every peer has `PublicKey`, `Endpoint` and
+`AllowedIPs`; the port is 1…65535. Multiple peers are kept as written — sing-box picks by
+`allowed_ips` — and the tunnel card shows the first peer's endpoint as its server.
+
+**IPv6 is dropped on purpose**, matching the IPv4-only TUN (03-routing.md): a `::/0` in
+`AllowedIPs` or an `fd00::/64` interface address would only offer sing-box a path it can
+never be handed traffic for.
+
+### sing-box endpoint mapping
+
+```json
+"endpoints": [{
+  "type": "wireguard", "tag": "t-<id>",
+  "system": false,                          // userspace stack (gVisor), never a real interface
+  "mtu": 1420,                              // omitted when the conf has none
+  "address": ["10.9.0.2/32"],
+  "private_key": "<base64>",
+  "domain_resolver": { "server": "dns-t-<id>", "strategy": "ipv4_only" },
+  "peers": [{
+    "address": "203.0.113.7",               // literal IP whenever the app knows one
+    "port": 51820,
+    "public_key": "<base64>",
+    "pre_shared_key": "<base64>",           // omitted when the conf has none
+    "allowed_ips": ["0.0.0.0/0"],
+    "persistent_keepalive_interval": 25     // omitted when 0/absent
+  }]
+}]
+```
+
+`system: false` is explicit even though it is the default: a system interface would need
+privileges the config generator has no business asking for.
+
+### The peer address and `domain_resolver`
+
+A WireGuard endpoint is an IP tunnel, so — exactly like OpenVPN and unlike a proxy
+protocol — it has to resolve the destination name itself before it can put a packet on the
+wire. That is what `domain_resolver` is for, and it must be the tunnel's own resolver
+(`dns-t-<id>`), or every name routed into the tunnel would be resolved by the ISP and the
+whole point of the tunnel is lost.
+
+**But the same `domain_resolver` also resolves the peer's own hostname**, and a resolver
+detoured through the endpoint that is trying to come up is a deadlock. Verified 2026-09-07
+against 1.13.19 — peer `wg.example.net`, `domain_resolver: dns-t-<id>`:
+
+```
+ERROR dns: lookup failed for wg.example.net: dial UDP connection: WireGuard is not ready yet
+FATAL start service: post-start endpoint/wireguard[wg]: resolve endpoint domain for peer[0]
+```
+
+So the generator emits, per tunnel:
+
+- every peer address it can as a **literal IP**, taken from `Input.resolvedServerAddresses`
+  (the map the app already fills for OpenVPN `remote` hosts, extended to WireGuard peers);
+  with the peer given by IP, `domain_resolver: dns-t-<id>` starts and runs (verified).
+  `HostResolver` drops answers inside the fake-IP range before they get there: a lookup made
+  while Wayfork is On goes through Wayfork's own resolver, which returns a fake IP for every
+  name the *currently applied* config does not send to `dns-direct` — which is exactly the
+  case on the first apply after a WireGuard tunnel is added. Pinning that as the peer would
+  dial the TUN in circles. Filtered, the host simply counts as unresolved and takes the
+  fallback below; the next apply, with the host now in the DNS rule, resolves it for real;
+- when a peer host is not resolved yet (first apply, offline, resolver down) the hostname
+  goes in as written and the endpoint's `domain_resolver` degrades to `"dns-direct"`, so
+  the tunnel comes up with direct name resolution instead of not at all; the next apply,
+  once the address is known, promotes it back;
+- peer hostnames join the existing `{"domain": [...], "server": "dns-direct"}` DNS rule
+  next to the OpenVPN server names, so the app's own `getaddrinfo` — which goes through
+  Wayfork while the F12 override is on — gets a real address instead of a fake IP. They get
+  no *route* rule: sing-box dials its peers through its own dialer, which never passes
+  through route rules.
+
+DNS otherwise follows OpenVPN's shape (03-routing.md): `{"type": "udp", "tag": "dns-t-<id>",
+"server": "<DNS from the conf, else 1.1.1.1>", "detour": "t-<id>"}`, `TunnelDNS.auto` /
+`.custom` reused verbatim, and a WireGuard default tunnel gets that server as `dns.final`
+instead of the DoT server the proxy kinds get.
+
+### Throughput and MTU
+
+The userspace stack costs throughput next to a kernel WireGuard; for split tunnelling that
+is an acceptable trade and it is the only option without a Network Extension. sing-box's
+default MTU is 1408, lower than wg-quick's 1420 — the conf's `MTU` wins when it has one.
+
+## Shadowsocks
+
+### Link parsing (app)
+
+SIP002: `ss://<base64url(method:password)>@<host>:<port>/?<query>#<name>`. The legacy
+whole-URI form `ss://<base64(method:password@host:port)>#<name>` is accepted too — panels
+still emit it and detecting it is one `@` check after decoding. Userinfo that is not
+base64 is treated as percent-encoded `method:password`, which some clients emit.
+
+| Element | Meaning | Mapping |
+|---------|---------|---------|
+| userinfo | `method:password` | `ShadowsocksMeta.method`, Keychain `tunnel/<id>/password` |
+| host, port | server | `server`, `port` |
+| `plugin` | SIP003 plugin and its options | **rejected**, `import.link.unsupported` (see below) |
+| fragment | name | tunnel name, falls back to `host` |
+
+Accepted methods: `aes-128-gcm`, `aes-256-gcm`, `chacha20-ietf-poly1305`,
+`xchacha20-ietf-poly1305`, `2022-blake3-aes-128-gcm`, `2022-blake3-aes-256-gcm`,
+`2022-blake3-chacha20-poly1305`, and `none`. Anything else — `aes-256-cfb`, `rc4-md5`, the
+rest of the pre-AEAD family — is `import.link.unsupported`.
+
+Both rejections are **Wayfork policy, not a sing-box limitation** (checked 2026-09-07:
+1.13.19 initializes `aes-256-cfb` happily, and ships `obfs-local` and `v2ray-plugin`
+built in). They stand because F13's fence is "a kind ships only if a live server can prove
+it", and the panel this was built against serves neither: shipping a code path nobody can
+test is how silent breakage gets in. Lifting either is a whitelist entry plus two
+pass-through fields in the generator on the day a server exists.
+
+For a `2022-blake3-*` method the password is a base64 key of exactly the cipher's key
+length (16 or 32 bytes); the parser checks it, because sing-box only fails at start
+(`decode key: illegal base64 data`).
+
+### sing-box outbound mapping
+
+```json
+{ "type": "shadowsocks", "tag": "t-<id>",
+  "server": "<host>", "server_port": <port>,
+  "method": "<method>", "password": "<password>" }
+```
+
+No TLS, no transport: the simplest outbound there is.
+
+## Trojan
+
+### Link parsing (app)
+
+`trojan://<password>@<host>:<port>?<query>#<name>`; the password is percent-decoded from
+the userinfo. The query is the VLESS query minus `encryption`, `flow` and `pbk`-only
+concerns, and it maps through the same code:
+
+| Query key | Meaning | Mapping |
+|-----------|---------|---------|
+| `security` | `tls` (default when absent), `reality` | `TLSSecurity`; `none` → `import.link.unsupported` (a plaintext Trojan is a Trojan with its one defence removed) |
+| `sni`, `fp`, `alpn` | TLS | as VLESS (`sni` defaults to host; `fp` defaults to `chrome` under `reality`, which sing-box requires) |
+| `pbk`, `sid` | REALITY | as VLESS; `pbk` required when `security=reality` |
+| `type` | `tcp` (default), `ws`, `grpc` | `ProxyTransport`; others unsupported |
+| `path`, `host`, `serviceName` | transport parameters | as VLESS |
+| `allowInsecure` / `insecure` | skip cert verify | `allowInsecure`, warning badge |
+
+### sing-box outbound mapping
+
+```json
+{ "type": "trojan", "tag": "t-<id>",
+  "server": "<host>", "server_port": <port>, "password": "<password>",
+  "tls": { … }, "transport": { … } }
+```
+
+`tls` and `transport` come from the shared builders, so Trojan is the first proof that the
+extraction was faithful.
+
+## VMess
+
+### Link parsing (app)
+
+`vmess://<base64(JSON)>` in the V2RayN form — the de-facto standard. Other forms
+(Shadowrocket's `vmess://uuid@host:port?…`) are rejected with
+`import.link.unsupported`: guessing between incompatible dialects is how a tunnel ends up
+silently misconfigured.
+
+| JSON key | Meaning | Mapping |
+|----------|---------|---------|
+| `add`, `port` | server | `server`, `port` — `port` may be a number or a string |
+| `id` | uuid | Keychain `tunnel/<id>/uuid`; must parse as a UUID (sing-box accepts *any* string here and hashes it, so an invalid link would otherwise become a tunnel that connects to nothing) |
+| `aid` | alterId | must be `0` (number or string), else `import.link.unsupported` — the legacy MD5 handshake is broken and no current server needs it |
+| `scy` / `security` | cipher | `auto` (default), `none`, `zero`, `aes-128-gcm`, `chacha20-poly1305`; others rejected (`vmess: unsupported security type`) |
+| `net` | transport | `tcp`, `ws`, `grpc`; `kcp`, `h2`, `quic`, `httpupgrade`, `xhttp` → unsupported |
+| `type` | header obfuscation | anything but `none`/empty → unsupported |
+| `tls` | `""`, `tls`, `reality` | `TLSSecurity` |
+| `sni`, `fp`, `alpn` | TLS | as VLESS; `alpn` is comma-separated |
+| `host`, `path` | ws Host / path, grpc authority | `ProxyTransport` |
+| `ps` | name | tunnel name, falls back to `add` |
+| `v` | link version (`2`) | ignored |
+
+### sing-box outbound mapping
+
+```json
+{ "type": "vmess", "tag": "t-<id>",
+  "server": "<host>", "server_port": <port>,
+  "uuid": "<uuid>", "security": "auto", "alter_id": 0,
+  "tls": { … }, "transport": { … } }
+```
+
+## What the pinned sing-box accepts (1.13.19, checked 2026-09-07)
+
+Everything below was run against the bundled binary before the mappings above were
+written, because several of them contradict what the plan assumed.
+
+- **An `endpoints[]` tag is a first-class outbound tag.** A WireGuard endpoint referenced
+  as `route.final`, as a rule `outbound` and as a DNS server `detour` starts and runs.
+  WireGuard therefore needs no process and no interface of its own.
+- **`sing-box check` does not resolve tags.** A config whose `route.final` names an
+  outbound nobody defines passes `check` with exit 0 and dies at `run` with
+  `FATAL start service: default outbound not found`; the same for a DNS `detour`
+  (`outbound detour not found`). The golden-fixture `check` in `TrafficTests` and the
+  daemon's pre-apply `check` are therefore schema validators, not reference checkers — the
+  generator tests carry their own assertion that every referenced tag exists.
+- **Unknown keys are refused** (`decode config`), so an experimental key cannot be left in
+  the generator by accident.
+- **REALITY requires uTLS** (`uTLS is required by reality client`) — `fp` defaults to
+  `chrome` wherever REALITY is accepted.
+- **REALITY is accepted on `trojan` and `vmess`, and over `ws`/`grpc`.** The last part
+  contradicts the VLESS note above ("`ws`/`grpc` with `reality` is rejected"), which is
+  older than 1.13; the import rule stays as it is for now — relaxing it is an F1 change
+  with its own live check, not something to slip in with F13 *(open)*.
+- **WireGuard endpoint validation is thin**: a missing `private_key` and a peer without
+  `allowed_ips` are refused, but a missing `address`, a peer with no port and even a peer
+  list that is entirely absent all start "successfully" into a tunnel that can never carry
+  a packet. Hence the parser-side validation listed under WireGuard.
+- **An endpoint's `domain_resolver` resolves the peer's own address**, so it must not point
+  at a DNS server detoured through that endpoint (see "The peer address and
+  `domain_resolver`"). Both the string form (`"dns-direct"`) and the object form
+  (`{"server": …, "strategy": …}`) are accepted.
+- **VMess accepts a non-UUID `id`** and **`alter_id > 0`**, and **Shadowsocks accepts
+  pre-AEAD ciphers and SIP003 plugins**. Every one of those is refused at import by
+  Wayfork, by policy, not because sing-box would object.

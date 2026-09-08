@@ -274,9 +274,10 @@ With `Store.defaultTunnelID` set to `Work` the config above changes as follows:
 - Every A/AAAA query that is not an exception gets a fake IP, so the default outbound dials
   by domain: VLESS resolves server-side, an OpenVPN default resolves through its own
   `domain_resolver` (pushed/custom DNS via the tunnel). Other query types (HTTPS, MX, …)
-  go to `dns.final`, which is the default tunnel's resolver: `dns-t-<id>` for OpenVPN; for
-  a VLESS default a DoT server (`1.1.1.1:853`) detoured through the VLESS outbound. Without
-  a default tunnel the DNS section is exactly the M3 one.
+  go to `dns.final`, which is the default tunnel's resolver: `dns-t-<id>` for OpenVPN and
+  WireGuard (the tunnel's own resolver over plain UDP through the tunnel); for a proxy
+  default (VLESS, Shadowsocks, Trojan, VMess) a DoT server (`1.1.1.1:853`) detoured through
+  that outbound. Without a default tunnel the DNS section is exactly the M3 one.
 - `ip_is_private` stays after the rule-sets and still sends LAN IPs direct; LAN *names* are
   covered by the built-in exceptions (resolved by `dns-direct`, routed `direct`).
 - Kill-switch by construction: if the default OpenVPN tunnel is down, `bind_interface`
@@ -291,6 +292,27 @@ With `Store.defaultTunnelID` set to `Work` the config above changes as follows:
   so a default tunnel only ever sees fake v4 addresses. A default tunnel that is disabled
   or lacks its secret is dropped by the generator (`route.final` = `direct`), matching the
   UI warning. Golden variants `default-openvpn` and `default-vless` pass `sing-box check`.
+
+### DNS per tunnel kind (F13)
+
+Which resolver a tunnel gets follows from *who resolves the destination name*, and there
+are only two answers:
+
+| Kinds | Who resolves | DNS entry | Why |
+|-------|--------------|-----------|-----|
+| OpenVPN, WireGuard | sing-box, locally, before the packet enters the tunnel | `{"type":"udp","tag":"dns-t-<id>","server":"<pushed / conf / custom, else 1.1.1.1>","detour":"t-<id>"}` plus `domain_resolver` on the outbound/endpoint | an IP tunnel carries packets, not names; without its own resolver every tunnelled name would be resolved by the ISP |
+| VLESS, Shadowsocks, Trojan, VMess | the proxy server, from the domain in the request | none per tunnel; a DoT `1.1.1.1:853` server detoured through the outbound only when the tunnel is the *default* one (it needs an answer for non-A/AAAA queries) | the outbound dials by name, so a local lookup would be a second, worse resolution |
+
+So `TunnelDNS` (`.auto` / `.custom`, the per-tunnel DNS editor in Settings) is offered for
+OpenVPN and WireGuard and hidden for the proxy kinds — for WireGuard `.auto` means the
+conf's `DNS =` line, falling back to `1.1.1.1` through the tunnel, exactly as `.auto` means
+the pushed `dhcp-option DNS` for OpenVPN.
+
+One WireGuard-specific trap, verified against 1.13.19 and recorded in 04-tunnels.md: the
+endpoint's `domain_resolver` also resolves the *peer's* address, so it may only be
+`dns-t-<id>` when every peer is given as a literal IP; with a peer left as a hostname the
+generator emits `"dns-direct"` there instead, and sing-box otherwise refuses to start
+("WireGuard is not ready yet").
 
 ## Rule-set files
 

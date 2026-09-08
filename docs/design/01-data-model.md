@@ -22,9 +22,13 @@ struct Tunnel: Codable, Identifiable {
     var createdAt: Date
 }
 
-enum TunnelKind: Codable {
+enum TunnelKind: Codable {            // encoded as a one-key object: {"vless": {…}}
     case openVPN(OpenVPNMeta)
     case vless(VLESSMeta)
+    case wireGuard(WireGuardMeta)     // F13
+    case shadowsocks(ShadowsocksMeta)
+    case trojan(TrojanMeta)
+    case vmess(VMessMeta)
 }
 
 struct OpenVPNMeta: Codable {         // config body itself is in Keychain
@@ -39,6 +43,56 @@ struct OpenVPNMeta: Codable {         // config body itself is in Keychain
 enum TunnelDNS: Codable {
     case auto                         // discoveredDNS if known, else fallback 1.1.1.1 via the tunnel
     case custom([String])             // IPs
+}
+
+struct WireGuardMeta: Codable {       // private key and preshared key are in Keychain
+    var addresses: [String]           // IPv4 prefixes from `Address`, bare IPs normalized to /32
+    var peers: [WireGuardPeer]        // at least one; the first is the tunnel's "server"
+    var mtu: Int?                     // from `MTU`; nil → sing-box default (1408)
+    var dns: TunnelDNS                // same editor as OpenVPN
+    var discoveredDNS: [String]       // the conf's `DNS =`, IPv4 only
+}
+
+struct WireGuardPeer: Codable {
+    var host: String                  // `Endpoint` host: name or literal IP
+    var port: Int
+    var publicKey: String             // not a secret: it is the server's, and it is in every conf
+    var hasPresharedKey: Bool         // the key itself is in Keychain
+    var allowedIPs: [String]          // IPv4 prefixes; a value other than 0.0.0.0/0 raises a badge
+    var keepalive: Int?
+}
+
+struct ShadowsocksMeta: Codable {     // password is in Keychain
+    var server: String
+    var port: Int
+    var method: String                // AEAD or 2022-blake3-*; see 04-tunnels.md
+}
+
+struct TrojanMeta: Codable {          // password is in Keychain
+    var server: String
+    var port: Int
+    var security: TLSSecurity         // tls | reality (never none)
+    var sni: String?
+    var fingerprint: String?
+    var alpn: [String]
+    var realityPublicKey: String?
+    var realityShortID: String?
+    var transport: ProxyTransport
+    var allowInsecure: Bool
+}
+
+struct VMessMeta: Codable {           // uuid is in Keychain
+    var server: String
+    var port: Int
+    var security: String              // VMess cipher: auto | none | zero | aes-128-gcm | chacha20-poly1305
+    var tlsSecurity: TLSSecurity      // none | tls | reality
+    var sni: String?
+    var fingerprint: String?
+    var alpn: [String]
+    var realityPublicKey: String?
+    var realityShortID: String?
+    var transport: ProxyTransport
+    var allowInsecure: Bool
 }
 
 struct VLESSMeta: Codable {           // UUID is in Keychain
@@ -192,6 +246,14 @@ know `"match": "ip"` refuses the file); export files carry IP rules unchanged.
 - Loading: `schemaVersion` drives migrations (`Migration` list, applied in order). Unknown
   newer version → refuse to load, alert "store was written by a newer Wayfork". Corrupt
   file → renamed to `store.json.corrupt-<timestamp>`, start empty, alert.
+- **Adding a tunnel kind is forward-only and does not bump `schemaVersion`** (F13 decision).
+  `TunnelKind` throws on an unknown key, so a store holding a WireGuard tunnel does not load
+  in a build that predates F13 — it reports a corrupt store, which is a lie, but the only
+  way to reach that state is to downgrade the app. Solo project, both installers ship app
+  and daemon together, and the alternative (a version bump plus a "written by a newer
+  Wayfork" refusal) buys a better message for a case that should not happen. If it ever
+  does bite, the fix is decoding an unknown kind into a disabled placeholder that round
+  trips — an afternoon, still no schema version.
 - `slot` is assigned at creation (lowest free); it never changes, so the interface name
   stays stable across reconnects and app restarts.
 
@@ -205,7 +267,15 @@ one item per secret so they can be rotated independently:
 | `tunnel/<id>/ovpn`            | sanitized `.ovpn` body (contains inline key/certs) |
 | `tunnel/<id>/credentials`     | JSON `{"username":…,"password":…}` |
 | `tunnel/<id>/keyPassphrase`   | passphrase for an encrypted inline key |
-| `tunnel/<id>/uuid`            | VLESS UUID |
+| `tunnel/<id>/uuid`            | VLESS / VMess UUID |
+| `tunnel/<id>/privateKey`      | WireGuard `PrivateKey` |
+| `tunnel/<id>/presharedKey`    | WireGuard `PresharedKey` (only when the conf has one) |
+| `tunnel/<id>/password`        | Shadowsocks / Trojan password |
+
+One account per secret *kind*, not per tunnel kind: `uuid` is shared by VLESS and VMess and
+`password` by Shadowsocks and Trojan, because a tunnel has exactly one kind and the account
+already carries its id. `SecretKey.all(for:)` (used to delete a tunnel's items and to find
+orphans) lists every account, so it stays kind-agnostic.
 
 Default ACL (accessible to the signed app only). Deleting a tunnel deletes its items;
 on launch, orphan items whose tunnel no longer exists are removed. The daemon never touches
@@ -235,7 +305,10 @@ File: `wayfork-export.json`
 
 - Export sheet: checkbox "Include secrets (keys, passwords, UUIDs)" — off by default, with a
   warning when on. Without secrets, imported OpenVPN tunnels need their config re-attached
-  and VLESS tunnels their UUID before they can be enabled; the UI flags them.
+  and every other kind its key, password or UUID before it can be enabled; the UI flags
+  them. The `secrets` object of an exported tunnel holds exactly the accounts its kind uses
+  (`privateKey` + `presharedKey` for WireGuard, `password` for Shadowsocks and Trojan,
+  `uuid` for VLESS and VMess), so the file shape follows the kind with no new rules.
 - Import sheet shows a summary (N tunnels, M rules, secrets present or not) and two
   actions: **Replace all** or **Merge** (add new, update existing by `id`; rules referencing
   unknown tunnels are skipped with a warning). `settings` are imported only on Replace.

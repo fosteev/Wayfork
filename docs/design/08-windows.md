@@ -1095,6 +1095,43 @@ Deltas to ROADMAP.md § "Hardening (field findings, 2026-09-01)"; the macOS desi
   regenerated once, only `default-vless`/`default-openvpn` keep the key; the Swift, Dart
   and Go suites all consume the same files.
 
+## More tunnel types (WM9, F13)
+
+The Windows half of F13 is a port, not a design: the mappings, the grammars and the
+validation rules live in [04-tunnels.md](04-tunnels.md) and the DNS shapes in
+[03-routing.md](03-routing.md), and the goldens under `fixtures/singbox/` are what both
+clients are held to. Only the deltas are listed here.
+
+- **The Go service does not change.** It receives a `sing-box.json` it treats as opaque and
+  a plan whose tunnel entries it only reads for the process side; `endpoints[]` never
+  reaches it as a concept. The one thing to confirm when the work starts is that
+  `core/validate.go` has no outbound-type whitelist that would need `endpoints` added
+  *(verify)*; if it does, extend it and add a Go test with a WireGuard golden.
+- **wintun is not involved.** WireGuard runs inside sing-box's own userspace stack
+  (`system: false`), so there is no second adapter, no driver to install next to the dco
+  ones, and nothing for `winnet` to clean up on a crash — a WireGuard tunnel on Windows
+  leaves exactly the traces a VLESS tunnel does, which is none.
+- **Secrets.** New DPAPI entries in `secrets.dat` under the same `tunnel/<id>/<name>` keys
+  as the Keychain accounts: `privateKey`, `presharedKey`, `password`, and `uuid` reused for
+  VMess. `SecretKey.all(for:)`'s Dart twin lists them all, so deleting a tunnel and the
+  orphan sweep stay kind-agnostic.
+- **Dart core.** `core/model/tunnel.dart` grows the four kinds with the same one-key JSON
+  envelope (`{"wireGuard": {…}}`) — the envelope is what makes an export from either
+  platform import on the other, so the case names must match Swift character for character.
+  `core/wireguard/wireguard_conf_parser.dart` and `core/links/proxy_link_parser.dart`
+  replay the shared fixtures; `core/singbox/sing_box_config_generator.dart` grows the
+  `endpoints[]` array and the shared TLS/transport builders, and its golden replay is the
+  proof of equivalence.
+- **Flutter.** The `+ Add` flyout gains *Add WireGuard…* and *Add from link…*;
+  `add_vless_dialog.dart` becomes `add_link_dialog.dart` with scheme detection, and a
+  second dialog takes a `.conf` by picker or paste. `tunnel_details.dart` gets the per-kind
+  field lists from 02-ux.md, `status_text.dart` the kind labels. The `AllowedIPs` warning
+  is an `InfoBar` with severity `warning`, matching how the `allowInsecure` badge is drawn.
+- **File picker.** The `.conf` extension is added next to `.ovpn` in the drop target and the
+  open dialog. Windows has no uniform type identifiers here, so it is an extension list —
+  and `.conf` is generic enough that the parser, not the extension, decides.
+
+
 ## Open items
 
 - **t1/pilot-gps user flow (not a Windows issue) — resolved 2026-08-27.** In S5 the
