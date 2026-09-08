@@ -94,7 +94,13 @@ void main() {
       SecretKind.credentials: 'credentials',
       SecretKind.keyPassphrase: 'keyPassphrase',
       SecretKind.uuid: 'uuid',
+      SecretKind.privateKey: 'privateKey',
+      SecretKind.presharedKey: 'presharedKey',
+      SecretKind.password: 'password',
     };
+    // Every kind must be listed: `SecretKey.all` drives deleting a tunnel's
+    // secrets and the orphan sweep, so a kind missing here leaks a secret.
+    expect(expected.keys.toSet(), SecretKind.values.toSet());
     for (final entry in expected.entries) {
       final key = SecretKey(entry.key, Fixtures.workID);
       expect(key.account, 'tunnel/${Fixtures.workID}/${entry.value}');

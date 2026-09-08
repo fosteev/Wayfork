@@ -50,7 +50,7 @@ abstract final class Fixtures {
         server: 'home.example.net',
         port: 443,
         flow: 'xtls-rprx-vision',
-        security: VLESSSecurity.reality,
+        security: TlsSecurity.reality,
         sni: 'www.apple.com',
         fingerprint: 'chrome',
         realityPublicKey: 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8',

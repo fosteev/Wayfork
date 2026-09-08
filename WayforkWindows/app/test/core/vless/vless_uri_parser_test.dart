@@ -18,7 +18,7 @@ void main() {
     expect(reality.uuid, vlessUUID);
     expect(reality.name, 'Reality');
     expect(reality.meta.flow, 'xtls-rprx-vision');
-    expect(reality.meta.security, VLESSSecurity.reality);
+    expect(reality.meta.security, TlsSecurity.reality);
     expect(reality.meta.realityPublicKey, 'public-key');
 
     final ws = VLESSURIParser.parse(
@@ -31,7 +31,7 @@ void main() {
     expect(ws.meta.alpn, ['h2', 'http/1.1']);
     expect(
       ws.meta.transport,
-      const VLESSTransportWS(path: '/socket?x=1', host: 'example.com'),
+      const ProxyTransportWS(path: '/socket?x=1', host: 'example.com'),
     );
     expect(ws.meta.allowInsecure, isTrue);
 
@@ -41,7 +41,7 @@ void main() {
     );
     expect(
       grpc.meta.transport,
-      const VLESSTransportGRPC(serviceName: 'wayfork'),
+      const ProxyTransportGRPC(serviceName: 'wayfork'),
     );
     expect(grpc.meta.sni, 'example.com');
     expect(grpc.meta.allowInsecure, isTrue);
@@ -49,7 +49,7 @@ void main() {
     final plain = VLESSURIParser.parse(
       'VLESS://$vlessUUID@example.com:80?fp=first&fp=last#A+B',
     );
-    expect(plain.meta.security, VLESSSecurity.none);
+    expect(plain.meta.security, TlsSecurity.none);
     expect(plain.meta.sni, isNull);
     expect(plain.meta.fingerprint, 'last');
     expect(plain.name, 'A+B');
@@ -166,29 +166,29 @@ void main() {
 
   test('sharing URI round-trips and uses stable order', () {
     final cases = [
-      VLESSMeta(server: 'example.com', port: 80, security: VLESSSecurity.none),
+      VLESSMeta(server: 'example.com', port: 80, security: TlsSecurity.none),
       VLESSMeta(
         server: 'example.com',
         port: 443,
-        security: VLESSSecurity.tls,
+        security: TlsSecurity.tls,
         sni: 'example.com',
         fingerprint: 'chrome',
         alpn: const ['h2', 'http/1.1'],
-        transport: const VLESSTransportWS(path: '/socket', host: 'example.com'),
+        transport: const ProxyTransportWS(path: '/socket', host: 'example.com'),
         allowInsecure: true,
       ),
       VLESSMeta(
         server: 'example.com',
         port: 443,
-        security: VLESSSecurity.tls,
+        security: TlsSecurity.tls,
         sni: 'example.com',
-        transport: const VLESSTransportGRPC(serviceName: 'wayfork'),
+        transport: const ProxyTransportGRPC(serviceName: 'wayfork'),
       ),
       VLESSMeta(
         server: '2001:db8::1',
         port: 443,
         flow: 'xtls-rprx-vision',
-        security: VLESSSecurity.reality,
+        security: TlsSecurity.reality,
         sni: 'example.com',
         fingerprint: 'chrome',
         realityPublicKey: 'public-key',
@@ -219,11 +219,7 @@ void main() {
     final longName = List.filled(41, 'é').join();
     final result = VLESSURIParser.parse(
       VLESSURIParser.uri(
-        VLESSMeta(
-          server: 'example.com',
-          port: 443,
-          security: VLESSSecurity.none,
-        ),
+        VLESSMeta(server: 'example.com', port: 443, security: TlsSecurity.none),
         vlessUUID,
         longName,
       ),

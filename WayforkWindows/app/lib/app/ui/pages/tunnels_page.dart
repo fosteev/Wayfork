@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:wayfork/app/model/app_alert.dart';
 import 'package:wayfork/app/model/app_model.dart';
-import 'package:wayfork/app/ui/add_vless_dialog.dart';
+import 'package:wayfork/app/ui/add_link_dialog.dart';
+import 'package:wayfork/app/ui/add_wireguard_dialog.dart';
 import 'package:wayfork/app/ui/app_scope.dart';
 import 'package:wayfork/app/ui/pages/tunnel_details.dart';
 import 'package:wayfork/app/ui/tunnel_import.dart';
@@ -24,11 +25,24 @@ class TunnelsPage extends StatefulWidget {
 }
 
 class _TunnelsPageState extends State<TunnelsPage> {
-  Future<void> _addVLESS() async {
+  Future<void> _addLink() async {
     final model = AppScope.of(context);
-    final result = await showAddVLESSDialog(context);
-    if (result == null) return;
-    final error = await model.addVLESS(result);
+    final link = await showAddLinkDialog(context);
+    if (link == null) return;
+    final error = await model.addLink(link);
+    if (error != null && mounted) {
+      model.showAlert(AppAlert(title: 'Cannot add the tunnel', message: error));
+    }
+  }
+
+  Future<void> _addWireGuard() async {
+    final model = AppScope.of(context);
+    final imported = await showAddWireGuardDialog(
+      context,
+      picker: widget.importer.picker,
+    );
+    if (imported == null) return;
+    final error = await model.addWireGuard(imported.result, imported.name);
     if (error != null && mounted) {
       model.showAlert(AppAlert(title: 'Cannot add the tunnel', message: error));
     }
@@ -64,8 +78,12 @@ class _TunnelsPageState extends State<TunnelsPage> {
                         unawaited(widget.importer.importFromPicker()),
                   ),
                   MenuFlyoutItem(
-                    text: const Text('Add VLESS from URL…'),
-                    onPressed: () => unawaited(_addVLESS()),
+                    text: const Text('Add WireGuard…'),
+                    onPressed: () => unawaited(_addWireGuard()),
+                  ),
+                  MenuFlyoutItem(
+                    text: const Text('Add from link…'),
+                    onPressed: () => unawaited(_addLink()),
                   ),
                 ],
               ),
@@ -88,16 +106,22 @@ class _TunnelsPageState extends State<TunnelsPage> {
                                 onTap: () => _toggle(model, tunnel),
                               ),
                               if (model.expandedTunnelID == tunnel.id)
-                                tunnel.kind.isOpenVPN
-                                    ? OpenVPNDetail(
-                                        key: ValueKey('detail-${tunnel.id}'),
-                                        tunnel: tunnel,
-                                        importer: widget.importer,
-                                      )
-                                    : VLESSDetail(
-                                        key: ValueKey('detail-${tunnel.id}'),
-                                        tunnel: tunnel,
-                                      ),
+                                switch (tunnel.kind) {
+                                  TunnelKindOpenVPN() => OpenVPNDetail(
+                                    key: ValueKey('detail-${tunnel.id}'),
+                                    tunnel: tunnel,
+                                    importer: widget.importer,
+                                  ),
+                                  TunnelKindWireGuard() => WireGuardDetail(
+                                    key: ValueKey('detail-${tunnel.id}'),
+                                    tunnel: tunnel,
+                                    picker: widget.importer.picker,
+                                  ),
+                                  _ => LinkDetail(
+                                    key: ValueKey('detail-${tunnel.id}'),
+                                    tunnel: tunnel,
+                                  ),
+                                },
                             ],
                           ),
                       ],
@@ -112,8 +136,8 @@ class _TunnelsPageState extends State<TunnelsPage> {
   Widget _emptyState(BuildContext context) => Align(
     alignment: Alignment.topLeft,
     child: SecondaryText(
-      'No tunnels yet. Import an OpenVPN config or add a VLESS URL with '
-      '+ Add, or drop a .ovpn file on the window.',
+      'No tunnels yet. Import an OpenVPN or WireGuard config or add a link '
+      'with + Add, or drop a .ovpn or .conf file on the window.',
       maxLines: 3,
       overflow: TextOverflow.clip,
     ),

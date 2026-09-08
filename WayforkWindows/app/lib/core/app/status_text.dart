@@ -382,7 +382,12 @@ abstract final class StatusText {
       );
     }
     if (missingSecret) {
-      final what = tunnel.kind.isOpenVPN ? 'config missing' : 'UUID missing';
+      final what = switch (tunnel.kind) {
+        TunnelKindOpenVPN() => 'config missing',
+        TunnelKindVLESS() || TunnelKindVMess() => 'UUID missing',
+        TunnelKindWireGuard() => 'private key missing',
+        TunnelKindShadowsocks() || TunnelKindTrojan() => 'password missing',
+      };
       return (
         text: '$what · $endpoint',
         glyph: StatusGlyph.failed,
@@ -439,28 +444,68 @@ abstract final class StatusText {
       case TunnelKindVLESS(:final meta):
         final parts = ['${meta.server}:${meta.port}'];
         switch (meta.security) {
-          case VLESSSecurity.reality:
+          case TlsSecurity.reality:
             parts.add('REALITY');
-          case VLESSSecurity.tls:
+          case TlsSecurity.tls:
             parts.add('TLS');
-          case VLESSSecurity.none:
+          case TlsSecurity.none:
             parts.add('no TLS');
         }
         switch (meta.transport) {
-          case VLESSTransportTCP():
+          case ProxyTransportTCP():
             break;
-          case VLESSTransportWS():
+          case ProxyTransportWS():
             parts.add('ws');
-          case VLESSTransportGRPC():
+          case ProxyTransportGRPC():
             parts.add('gRPC');
         }
         if (meta.flow == 'xtls-rprx-vision') parts.add('vision');
         return parts.join(' · ');
+      case TunnelKindWireGuard(:final meta):
+        if (meta.peers.isEmpty) return 'no peer';
+        final peer = meta.peers.first;
+        return '${peer.host}:${peer.port}';
+      case TunnelKindShadowsocks(:final meta):
+        return '${meta.server}:${meta.port} · ${meta.method}';
+      case TunnelKindTrojan(:final meta):
+        final parts = [
+          '${meta.server}:${meta.port}',
+          _securityDescription(meta.security),
+          ..._transportDescription(meta.transport),
+        ];
+        return parts.join(' · ');
+      case TunnelKindVMess(:final meta):
+        final parts = [
+          '${meta.server}:${meta.port}',
+          meta.security,
+          ..._transportDescription(meta.transport),
+        ];
+        return parts.join(' · ');
     }
   }
 
-  static String typeBadge(TunnelKind kind) =>
-      kind.isOpenVPN ? 'OpenVPN' : 'VLESS';
+  static String _securityDescription(TlsSecurity security) =>
+      switch (security) {
+        TlsSecurity.reality => 'REALITY',
+        TlsSecurity.tls => 'TLS',
+        TlsSecurity.none => 'no TLS',
+      };
+
+  static List<String> _transportDescription(ProxyTransport transport) =>
+      switch (transport) {
+        ProxyTransportTCP() => const [],
+        ProxyTransportWS() => const ['ws'],
+        ProxyTransportGRPC() => const ['gRPC'],
+      };
+
+  static String typeBadge(TunnelKind kind) => switch (kind) {
+    TunnelKindOpenVPN() => 'OpenVPN',
+    TunnelKindVLESS() => 'VLESS',
+    TunnelKindWireGuard() => 'WireGuard',
+    TunnelKindShadowsocks() => 'Shadowsocks',
+    TunnelKindTrojan() => 'Trojan',
+    TunnelKindVMess() => 'VMess',
+  };
 
   /// `1 rule`, `3 rules`.
   static String count(int n, String noun) => '$n $noun${n == 1 ? '' : 's'}';

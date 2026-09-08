@@ -19,7 +19,9 @@ import 'package:wayfork/core/plan/system_dns.dart';
 import 'package:wayfork/core/rules/rule_validator.dart';
 import 'package:wayfork/core/secrets/secret_store.dart';
 import 'package:wayfork/core/store/store_repository.dart';
+import 'package:wayfork/core/links/proxy_link_parser.dart';
 import 'package:wayfork/core/vless/vless_uri_parser.dart';
+import 'package:wayfork/core/wireguard/wireguard_conf_parser.dart';
 
 import '../core/app/sample_store.dart';
 import '../core/ipc/fake_service.dart';
@@ -771,11 +773,13 @@ void main() {
         kind: SecretStoreError.dpapi,
         status: 5,
       );
-      final message = await h.model.addVLESS(
-        VLESSImportResult(
-          uuid: sampleVLESSUUID,
-          meta: h.sample.home.kind.vless!,
-          name: 'X',
+      final message = await h.model.addLink(
+        ProxyLinkVLESS(
+          VLESSImportResult(
+            uuid: sampleVLESSUUID,
+            meta: h.sample.home.kind.vless!,
+            name: 'X',
+          ),
         ),
       );
       expect(message, startsWith('Cannot store the UUID'));
@@ -783,33 +787,38 @@ void main() {
       expect(h.model.store.tunnels, hasLength(3));
     });
 
-    test('adds VLESS and exposes the URI', () async {
+    test('adds a link tunnel and exposes its URI', () async {
       h = Harness();
       h.service.status = RuntimeStatus.stopped;
       await h.start();
       final meta = h.sample.home.kind.vless!;
       expect(
-        await h.model.addVLESS(
-          VLESSImportResult(uuid: sampleVLESSUUID, meta: meta, name: ''),
+        await h.model.addLink(
+          ProxyLinkVLESS(
+            VLESSImportResult(uuid: sampleVLESSUUID, meta: meta, name: ''),
+          ),
         ),
         isNull,
       );
       final added = h.model.store.tunnels.last;
       expect(added.name, meta.server);
       expect(
-        await h.model.vlessURI(added),
+        await h.model.linkURI(added),
         startsWith('vless://$sampleVLESSUUID@'),
       );
-      expect(h.model.maskedVLESSURI(added), contains('••••••••@'));
-      expect(await h.model.vlessURI(h.sample.work), isNull);
+      expect(h.model.maskedLinkURI(added), contains('••••••••@'));
+      // OpenVPN has no link form.
+      expect(await h.model.linkURI(h.sample.work), isNull);
 
       expect(
-        await h.model.replaceVLESS(
+        await h.model.replaceLink(
           added.id,
-          VLESSImportResult(
-            uuid: '00000000-0000-4000-8000-0000000000bb',
-            meta: meta,
-            name: 'n',
+          ProxyLinkVLESS(
+            VLESSImportResult(
+              uuid: '00000000-0000-4000-8000-0000000000bb',
+              meta: meta,
+              name: 'n',
+            ),
           ),
         ),
         isNull,
@@ -818,6 +827,56 @@ void main() {
         await h.secrets.read(SecretKey(SecretKind.uuid, added.id)),
         '00000000-0000-4000-8000-0000000000bb',
       );
+
+      // A link of another kind must not overwrite this tunnel (the guard is
+      // by case, not by the badge text).
+      final wrongKind = await h.model.replaceLink(
+        added.id,
+        ProxyLinkShadowsocks(
+          ShadowsocksImportResult(
+            password: 'p',
+            meta: const ShadowsocksMeta(
+              server: 'ss.example.net',
+              port: 8388,
+              method: 'aes-256-gcm',
+            ),
+            name: 'SS',
+          ),
+        ),
+      );
+      expect(wrongKind, contains('this tunnel is VLESS'));
+    });
+
+    test('adds a WireGuard tunnel from a parsed conf', () async {
+      h = Harness();
+      h.service.status = RuntimeStatus.stopped;
+      await h.start();
+      final result = WireGuardConfParser.parse('''
+[Interface]
+PrivateKey = AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
+Address = 10.9.0.2/32
+DNS = 10.9.0.1
+[Peer]
+PublicKey = ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=
+PresharedKey = QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8=
+Endpoint = wg.example.net:51820
+AllowedIPs = 0.0.0.0/0
+''');
+      expect(await h.model.addWireGuard(result, 'Home WG'), isNull);
+      final added = h.model.store.tunnels.last;
+      expect(added.name, 'Home WG');
+      expect(added.kind.wireGuard!.discoveredDNS, ['10.9.0.1']);
+      expect(
+        await h.secrets.read(SecretKey(SecretKind.privateKey, added.id)),
+        isNotNull,
+      );
+      expect(
+        await h.secrets.read(SecretKey(SecretKind.presharedKey, added.id)),
+        isNotNull,
+      );
+      // No link form: Copy is not offered for WireGuard.
+      expect(await h.model.linkURI(added), isNull);
+      expect(h.model.maskedLinkURI(added), isEmpty);
     });
 
     test('renames with validation', () async {
@@ -873,11 +932,13 @@ void main() {
       h = Harness(store: Store(tunnels: tunnels), seedSecrets: false);
       h.service.status = RuntimeStatus.stopped;
       await h.start();
-      final message = await h.model.addVLESS(
-        VLESSImportResult(
-          uuid: sampleVLESSUUID,
-          meta: tunnels.first.kind.vless!,
-          name: 'x',
+      final message = await h.model.addLink(
+        ProxyLinkVLESS(
+          VLESSImportResult(
+            uuid: sampleVLESSUUID,
+            meta: tunnels.first.kind.vless!,
+            name: 'x',
+          ),
         ),
       );
       expect(message, contains('up to 32 tunnels'));

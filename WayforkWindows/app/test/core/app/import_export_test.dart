@@ -49,7 +49,7 @@ Tunnel vlessTunnel({
     VLESSMeta(
       server: 'proxy.example.com',
       port: 443,
-      security: VLESSSecurity.tls,
+      security: TlsSecurity.tls,
     ),
   ),
   createdAt: importDate,

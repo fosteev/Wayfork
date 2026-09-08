@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:wayfork/core/model/store.dart';
+import 'package:wayfork/core/model/tunnel.dart';
 import 'package:wayfork/core/singbox/constants.dart';
 import 'package:wayfork/core/support/ipv4_prefix.dart';
 
@@ -8,6 +9,31 @@ import 'package:wayfork/core/support/ipv4_prefix.dart';
 /// blocking below the Dart API, so callers should keep it off latency-sensitive
 /// UI paths.
 abstract final class HostResolver {
+  /// Non-literal OpenVPN remotes and WireGuard peers, lowercase and unique in
+  /// store order.
+  static List<String> serverHosts(Store store) {
+    final hosts = <String>[];
+    for (final tunnel in store.tunnels.where((tunnel) => tunnel.isEnabled)) {
+      final candidates = switch (tunnel.kind) {
+        TunnelKindOpenVPN(:final meta) => meta.remotes.map(
+          (remote) => remote.host,
+        ),
+        TunnelKindWireGuard(:final meta) => meta.peers.map((peer) => peer.host),
+        TunnelKindVLESS() ||
+        TunnelKindShadowsocks() ||
+        TunnelKindTrojan() ||
+        TunnelKindVMess() => const Iterable<String>.empty(),
+      };
+      for (final candidate in candidates) {
+        final prefix = IPv4Prefix.parse(candidate);
+        if (!candidate.contains('/') && prefix?.isHost == true) continue;
+        final host = candidate.toLowerCase();
+        if (host.isNotEmpty && !hosts.contains(host)) hosts.add(host);
+      }
+    }
+    return hosts;
+  }
+
   /// Non-literal remotes of enabled OpenVPN tunnels, lowercase and unique in
   /// store order.
   static List<String> openVPNHosts(Store store) {

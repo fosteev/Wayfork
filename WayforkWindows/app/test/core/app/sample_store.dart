@@ -39,7 +39,7 @@ Tunnel vlessTunnel(
       server: 'host.example.com',
       port: 443,
       flow: 'xtls-rprx-vision',
-      security: VLESSSecurity.reality,
+      security: TlsSecurity.reality,
       sni: 'cdn.example.com',
       fingerprint: 'chrome',
     ),

@@ -31,6 +31,64 @@ void main() {
     expect(text.endsWith('\n'), isFalse);
   });
 
+  test('every tunnel kind round-trips through its one-key envelope', () {
+    // The envelope is what makes an export from macOS import on Windows, so the
+    // key names and the meta fields must stay identical to the Swift Codable.
+    final kinds = <String, TunnelKind>{
+      'wireGuard': TunnelKindWireGuard(
+        WireGuardMeta(
+          addresses: ['10.9.0.2/32'],
+          peers: [
+            WireGuardPeer(
+              host: 'wg.example.net',
+              port: 51820,
+              publicKey: 'ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=',
+              hasPresharedKey: true,
+              allowedIPs: ['0.0.0.0/0'],
+              keepalive: 25,
+            ),
+          ],
+          mtu: 1420,
+          discoveredDNS: ['10.9.0.1'],
+        ),
+      ),
+      'shadowsocks': TunnelKindShadowsocks(
+        ShadowsocksMeta(
+          server: 'ss.example.net',
+          port: 8388,
+          method: 'aes-256-gcm',
+        ),
+      ),
+      'trojan': TunnelKindTrojan(
+        TrojanMeta(
+          server: 'trojan.example.net',
+          port: 443,
+          security: TlsSecurity.reality,
+          sni: 'sni.example.net',
+          fingerprint: 'chrome',
+          alpn: ['h2'],
+          realityPublicKey: 'public-key',
+          realityShortID: 'short-id',
+          transport: ProxyTransportWS(path: '/x', host: 'host.example.net'),
+        ),
+      ),
+      'vmess': TunnelKindVMess(
+        VMessMeta(
+          server: 'vmess.example.net',
+          port: 443,
+          security: 'auto',
+          tlsSecurity: TlsSecurity.tls,
+          transport: ProxyTransportGRPC(serviceName: 'wayfork'),
+        ),
+      ),
+    };
+    for (final entry in kinds.entries) {
+      final json = entry.value.toJson();
+      expect(json.keys, [entry.key]);
+      expect(TunnelKind.fromJson(json), entry.value);
+    }
+  });
+
   test('store refuses a newer schema', () {
     expect(
       () => StoreCodec.decode('{"schemaVersion":99,"tunnels":[],"rules":[]}'),
@@ -68,7 +126,7 @@ void main() {
               VLESSMeta(
                 server: 'example.com',
                 port: 1,
-                security: VLESSSecurity.none,
+                security: TlsSecurity.none,
               ),
             ),
           ),
@@ -124,7 +182,7 @@ void main() {
     );
     expect(document.tunnels, hasLength(2));
     expect(document.tunnels[0].kind.isOpenVPN, isTrue);
-    expect(document.tunnels[1].kind.vless?.security, VLESSSecurity.reality);
+    expect(document.tunnels[1].kind.vless?.security, TlsSecurity.reality);
     expect(document.rules, hasLength(3));
     expect(document.rules[2].isException, isTrue);
     expect(document.defaultTunnelID, document.tunnels[1].id);

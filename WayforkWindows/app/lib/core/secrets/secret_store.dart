@@ -7,7 +7,10 @@ enum SecretKind {
   ovpn('ovpn'),
   credentials('credentials'),
   keyPassphrase('keyPassphrase'),
-  uuid('uuid');
+  uuid('uuid'),
+  privateKey('privateKey'),
+  presharedKey('presharedKey'),
+  password('password');
 
   const SecretKind(this.jsonValue);
   final String jsonValue;

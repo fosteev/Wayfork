@@ -285,8 +285,25 @@ abstract final class StoreExporter {
             ),
           );
         case TunnelKindVLESS():
+        case TunnelKindVMess():
           secrets = TunnelSecrets(
             uuid: await secretStore.read(SecretKey(SecretKind.uuid, tunnel.id)),
+          );
+        case TunnelKindWireGuard():
+          secrets = TunnelSecrets(
+            privateKey: await secretStore.read(
+              SecretKey(SecretKind.privateKey, tunnel.id),
+            ),
+            presharedKey: await secretStore.read(
+              SecretKey(SecretKind.presharedKey, tunnel.id),
+            ),
+          );
+        case TunnelKindShadowsocks():
+        case TunnelKindTrojan():
+          secrets = TunnelSecrets(
+            password: await secretStore.read(
+              SecretKey(SecretKind.password, tunnel.id),
+            ),
           );
       }
       tunnels.add(ExportedTunnel.fromTunnel(tunnel, secrets: secrets));

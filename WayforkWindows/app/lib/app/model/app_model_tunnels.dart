@@ -142,85 +142,201 @@ extension AppModelTunnels on AppModel {
     return null;
   }
 
-  Future<void> setDNS(String tunnelID, TunnelDNS dns) =>
-      _updateTunnel(tunnelID, (tunnel) {
-        final meta = tunnel.kind.openVPN;
-        if (meta == null) return tunnel;
-        return tunnel.copyWith(
-          kind: TunnelKindOpenVPN(AppModel._copyMeta(meta, dns: dns)),
-        );
-      });
+  /// OpenVPN and WireGuard are the kinds that resolve names themselves, so they
+  /// are the only ones with a DNS editor (docs/design/03-routing.md).
+  Future<void> setDNS(String tunnelID, TunnelDNS dns) => _updateTunnel(
+    tunnelID,
+    (tunnel) => switch (tunnel.kind) {
+      TunnelKindOpenVPN(:final meta) => tunnel.copyWith(
+        kind: TunnelKindOpenVPN(AppModel._copyMeta(meta, dns: dns)),
+      ),
+      TunnelKindWireGuard(:final meta) => tunnel.copyWith(
+        kind: TunnelKindWireGuard(AppModel._copyWireGuardMeta(meta, dns: dns)),
+      ),
+      _ => tunnel,
+    },
+  );
 
-  // VLESS
+  // WireGuard
 
-  /// Adds a tunnel from an already validated `vless://` URI.
-  Future<String?> addVLESS(VLESSImportResult result) async {
+  /// Adds a tunnel from an already parsed `.conf`; [rawName] is the file name.
+  Future<String?> addWireGuard(
+    WireGuardImportResult result,
+    String rawName,
+  ) async {
     final slot = _store.nextFreeSlot();
     if (slot == null) {
       _alert(AppAlert(title: 'Tunnel limit reached', message: _limitMessage));
       return _limitMessage;
     }
     final tunnel = Tunnel(
-      name: uniqueName(result.name.isEmpty ? result.meta.server : result.name),
+      name: uniqueName(rawName.isEmpty ? result.name : rawName),
       slot: slot,
-      kind: TunnelKindVLESS(result.meta),
+      kind: TunnelKindWireGuard(result.meta),
     );
     try {
-      await _secrets.write(result.uuid, SecretKey(SecretKind.uuid, tunnel.id));
+      await _secrets.write(
+        result.privateKey,
+        SecretKey(SecretKind.privateKey, tunnel.id),
+      );
+      final presharedKey = result.presharedKey;
+      if (presharedKey != null) {
+        await _secrets.write(
+          presharedKey,
+          SecretKey(SecretKind.presharedKey, tunnel.id),
+        );
+      }
     } on Object catch (error) {
-      return _secretsFailed('Cannot store the UUID: $error');
+      return _secretsFailed('Cannot store the keys: $error');
     }
     await update(
       (store) => store.copyWith(tunnels: [...store.tunnels, tunnel]),
     );
-    logs.app(LogLevel.info, 'added VLESS tunnel ${tunnel.name}');
+    logs.app(LogLevel.info, 'added WireGuard tunnel ${tunnel.name}');
     expandedTunnelID = tunnel.id;
     pendingFocus = null;
     _changed();
     return null;
   }
 
-  Future<String?> replaceVLESS(
+  /// Replaces the config, keeping the tunnel's own DNS choice.
+  Future<String?> replaceWireGuardConfig(
     String tunnelID,
-    VLESSImportResult result,
+    WireGuardImportResult result,
   ) async {
     final tunnel = _store.tunnel(tunnelID);
-    if (tunnel == null) return 'Tunnel not found';
+    final old = tunnel?.kind.wireGuard;
+    if (tunnel == null || old == null) return 'Tunnel not found';
+    final meta = AppModel._copyWireGuardMeta(result.meta, dns: old.dns);
     try {
-      await _secrets.write(result.uuid, SecretKey(SecretKind.uuid, tunnel.id));
+      await _secrets.write(
+        result.privateKey,
+        SecretKey(SecretKind.privateKey, tunnel.id),
+      );
+      final presharedKey = result.presharedKey;
+      if (presharedKey == null) {
+        await _secrets.delete(SecretKey(SecretKind.presharedKey, tunnel.id));
+      } else {
+        await _secrets.write(
+          presharedKey,
+          SecretKey(SecretKind.presharedKey, tunnel.id),
+        );
+      }
     } on Object catch (error) {
-      return _secretsFailed('Cannot store the UUID: $error');
+      return _secretsFailed('Cannot store the keys: $error');
     }
     await _updateTunnel(
       tunnel.id,
-      (t) => t.copyWith(kind: TunnelKindVLESS(result.meta)),
+      (t) => t.copyWith(kind: TunnelKindWireGuard(meta)),
     );
     secretsChanged();
-    logs.app(LogLevel.info, 'replaced URL of ${tunnel.name}');
+    logs.app(LogLevel.info, 'replaced config of ${tunnel.name}');
     return null;
   }
 
-  /// Full `vless://` URI with the stored UUID (for Copy); null when it is
-  /// missing.
-  Future<String?> vlessURI(Tunnel tunnel) async {
-    final meta = tunnel.kind.vless;
-    if (meta == null) return null;
-    final String? uuid;
+  // Proxy links
+
+  /// Adds a tunnel from an already validated link of any supported scheme.
+  Future<String?> addLink(ProxyLink link) async {
+    final slot = _store.nextFreeSlot();
+    if (slot == null) {
+      _alert(AppAlert(title: 'Tunnel limit reached', message: _limitMessage));
+      return _limitMessage;
+    }
+    final kind = link.tunnelKind;
+    final tunnel = Tunnel(
+      name: uniqueName(
+        link.linkName.isEmpty ? kind.serverHosts.first : link.linkName,
+      ),
+      slot: slot,
+      kind: kind,
+    );
     try {
-      uuid = await _secrets.read(SecretKey(SecretKind.uuid, tunnel.id));
+      await _secrets.write(link.secret, SecretKey(link.secretKind, tunnel.id));
+    } on Object catch (error) {
+      return _secretsFailed('Cannot store the ${link.secretLabel}: $error');
+    }
+    await update(
+      (store) => store.copyWith(tunnels: [...store.tunnels, tunnel]),
+    );
+    logs.app(
+      LogLevel.info,
+      'added ${StatusText.typeBadge(kind)} tunnel ${tunnel.name}',
+    );
+    expandedTunnelID = tunnel.id;
+    pendingFocus = null;
+    _changed();
+    return null;
+  }
+
+  Future<String?> replaceLink(String tunnelID, ProxyLink link) async {
+    final tunnel = _store.tunnel(tunnelID);
+    if (tunnel == null) return 'Tunnel not found';
+    // Identity by case, never by the badge text: this is what stops a pasted
+    // link from overwriting a tunnel of another kind.
+    if (!link.matches(tunnel.kind)) {
+      return 'That link is a ${StatusText.typeBadge(link.tunnelKind)} link; '
+          'this tunnel is ${StatusText.typeBadge(tunnel.kind)}.';
+    }
+    try {
+      await _secrets.write(link.secret, SecretKey(link.secretKind, tunnel.id));
+    } on Object catch (error) {
+      return _secretsFailed('Cannot store the ${link.secretLabel}: $error');
+    }
+    await _updateTunnel(tunnel.id, (t) => t.copyWith(kind: link.tunnelKind));
+    secretsChanged();
+    logs.app(LogLevel.info, 'replaced link of ${tunnel.name}');
+    return null;
+  }
+
+  /// Full link with the stored secret (for Copy); null when it is missing or
+  /// the kind has no link form.
+  Future<String?> linkURI(Tunnel tunnel) async {
+    final secretKind = _linkSecretKind(tunnel.kind);
+    if (secretKind == null) return null;
+    final String? secret;
+    try {
+      secret = await _secrets.read(SecretKey(secretKind, tunnel.id));
     } on Object {
       return null;
     }
-    if (uuid == null) return null;
-    return VLESSURIParser.uri(meta, uuid, tunnel.name);
+    if (secret == null) return null;
+    return _linkURI(tunnel, secret);
   }
 
-  /// The URI with the UUID masked, for display.
-  String maskedVLESSURI(Tunnel tunnel) {
-    final meta = tunnel.kind.vless;
-    if (meta == null) return '';
-    return VLESSURIParser.uri(meta, '••••••••', tunnel.name);
-  }
+  /// The link with its secret masked, for display.
+  String maskedLinkURI(Tunnel tunnel) => _linkURI(tunnel, '••••••••') ?? '';
+
+  static SecretKind? _linkSecretKind(TunnelKind kind) => switch (kind) {
+    TunnelKindVLESS() || TunnelKindVMess() => SecretKind.uuid,
+    TunnelKindShadowsocks() || TunnelKindTrojan() => SecretKind.password,
+    _ => null,
+  };
+
+  static String? _linkURI(Tunnel tunnel, String secret) =>
+      switch (tunnel.kind) {
+        TunnelKindVLESS(:final meta) => VLESSURIParser.uri(
+          meta,
+          secret,
+          tunnel.name,
+        ),
+        TunnelKindShadowsocks(:final meta) => ProxyLinkParser.shadowsocksURI(
+          meta,
+          secret,
+          tunnel.name,
+        ),
+        TunnelKindTrojan(:final meta) => ProxyLinkParser.trojanURI(
+          meta,
+          secret,
+          tunnel.name,
+        ),
+        TunnelKindVMess(:final meta) => ProxyLinkParser.vmessURI(
+          meta,
+          secret,
+          tunnel.name,
+        ),
+        _ => null,
+      };
 
   // Common
 
@@ -318,4 +434,45 @@ extension AppModelTunnels on AppModel {
     _alert(AppAlert(title: 'Secrets error', message: message));
     return message;
   }
+}
+
+extension _ProxyLinkTunnel on ProxyLink {
+  TunnelKind get tunnelKind => switch (this) {
+    ProxyLinkVLESS(:final result) => TunnelKindVLESS(result.meta),
+    ProxyLinkShadowsocks(:final result) => TunnelKindShadowsocks(result.meta),
+    ProxyLinkTrojan(:final result) => TunnelKindTrojan(result.meta),
+    ProxyLinkVMess(:final result) => TunnelKindVMess(result.meta),
+  };
+
+  String get linkName => switch (this) {
+    ProxyLinkVLESS(:final result) => result.name,
+    ProxyLinkShadowsocks(:final result) => result.name,
+    ProxyLinkTrojan(:final result) => result.name,
+    ProxyLinkVMess(:final result) => result.name,
+  };
+
+  String get secret => switch (this) {
+    ProxyLinkVLESS(:final result) => result.uuid,
+    ProxyLinkShadowsocks(:final result) => result.password,
+    ProxyLinkTrojan(:final result) => result.password,
+    ProxyLinkVMess(:final result) => result.uuid,
+  };
+
+  SecretKind get secretKind => switch (this) {
+    ProxyLinkVLESS() || ProxyLinkVMess() => SecretKind.uuid,
+    ProxyLinkShadowsocks() || ProxyLinkTrojan() => SecretKind.password,
+  };
+
+  String get secretLabel => switch (this) {
+    ProxyLinkVLESS() || ProxyLinkVMess() => 'UUID',
+    ProxyLinkShadowsocks() || ProxyLinkTrojan() => 'password',
+  };
+
+  bool matches(TunnelKind kind) => switch ((this, kind)) {
+    (ProxyLinkVLESS(), TunnelKindVLESS()) => true,
+    (ProxyLinkShadowsocks(), TunnelKindShadowsocks()) => true,
+    (ProxyLinkTrojan(), TunnelKindTrojan()) => true,
+    (ProxyLinkVMess(), TunnelKindVMess()) => true,
+    _ => false,
+  };
 }

@@ -34,6 +34,9 @@ final class TunnelSecrets {
     this.credentials,
     this.keyPassphrase,
     this.uuid,
+    this.password,
+    this.privateKey,
+    this.presharedKey,
   });
 
   factory TunnelSecrets.fromJson(Map<String, Object?> json) => TunnelSecrets(
@@ -43,6 +46,9 @@ final class TunnelSecrets {
         : Credentials.fromJson(_map(json['credentials'], 'credentials')),
     keyPassphrase: _optionalString(json, 'keyPassphrase'),
     uuid: _optionalString(json, 'uuid'),
+    password: _optionalString(json, 'password'),
+    privateKey: _optionalString(json, 'privateKey'),
+    presharedKey: _optionalString(json, 'presharedKey'),
   );
 
   static const none = TunnelSecrets();
@@ -51,18 +57,27 @@ final class TunnelSecrets {
   final Credentials? credentials;
   final String? keyPassphrase;
   final String? uuid;
+  final String? password;
+  final String? privateKey;
+  final String? presharedKey;
 
   bool get isEmpty =>
       ovpn == null &&
       credentials == null &&
       keyPassphrase == null &&
-      uuid == null;
+      uuid == null &&
+      password == null &&
+      privateKey == null &&
+      presharedKey == null;
 
   Map<String, Object?> toJson() => {
     if (ovpn != null) 'ovpn': ovpn,
     if (credentials != null) 'credentials': credentials!.toJson(),
     if (keyPassphrase != null) 'keyPassphrase': keyPassphrase,
     if (uuid != null) 'uuid': uuid,
+    if (password != null) 'password': password,
+    if (privateKey != null) 'privateKey': privateKey,
+    if (presharedKey != null) 'presharedKey': presharedKey,
   };
 
   @override
@@ -71,10 +86,21 @@ final class TunnelSecrets {
       ovpn == other.ovpn &&
       credentials == other.credentials &&
       keyPassphrase == other.keyPassphrase &&
-      uuid == other.uuid;
+      uuid == other.uuid &&
+      password == other.password &&
+      privateKey == other.privateKey &&
+      presharedKey == other.presharedKey;
 
   @override
-  int get hashCode => Object.hash(ovpn, credentials, keyPassphrase, uuid);
+  int get hashCode => Object.hash(
+    ovpn,
+    credentials,
+    keyPassphrase,
+    uuid,
+    password,
+    privateKey,
+    presharedKey,
+  );
 }
 
 final class ExportedTunnel {

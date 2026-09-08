@@ -34,7 +34,9 @@ import 'package:wayfork/core/singbox/sing_box_config_generator.dart';
 import 'package:wayfork/core/store/store_repository.dart';
 import 'package:wayfork/core/support/local_networks.dart';
 import 'package:wayfork/core/version.dart';
+import 'package:wayfork/core/links/proxy_link_parser.dart';
 import 'package:wayfork/core/vless/vless_uri_parser.dart';
+import 'package:wayfork/core/wireguard/wireguard_conf_parser.dart';
 
 part 'app_model_diagnostics.dart';
 part 'app_model_import_export.dart';
@@ -1296,6 +1298,17 @@ final class AppModel extends ChangeNotifier {
     ServiceException(:final message) => message,
     _ => '$error',
   };
+
+  static WireGuardMeta _copyWireGuardMeta(
+    WireGuardMeta meta, {
+    TunnelDNS? dns,
+  }) => WireGuardMeta(
+    addresses: meta.addresses,
+    peers: meta.peers,
+    mtu: meta.mtu,
+    dns: dns ?? meta.dns,
+    discoveredDNS: meta.discoveredDNS,
+  );
 
   static OpenVPNMeta _copyMeta(
     OpenVPNMeta meta, {

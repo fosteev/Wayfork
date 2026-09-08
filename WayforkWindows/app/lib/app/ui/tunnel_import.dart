@@ -4,6 +4,7 @@ import 'package:wayfork/app/model/app_alert.dart';
 import 'package:wayfork/app/model/app_model.dart';
 import 'package:wayfork/app/services/file_picker.dart';
 import 'package:wayfork/core/openvpn/openvpn_config_parser.dart';
+import 'package:wayfork/core/wireguard/wireguard_conf_parser.dart';
 
 /// Asks whether to look for [missing] in another folder; the macOS
 /// "Referenced files not found" alert with its two buttons. True means the
@@ -22,6 +23,7 @@ final class TunnelImporter {
   });
 
   static const fileExtension = 'ovpn';
+  static const wireGuardExtension = 'conf';
 
   final AppModel model;
   final FilePicker picker;
@@ -42,7 +44,7 @@ final class TunnelImporter {
   Future<void> importFile(String path) async {
     final result = await _parse(path);
     if (result == null) return;
-    await model.addOpenVPN(result, name: _tunnelName(path));
+    await model.addOpenVPN(result, name: tunnelName(path));
   }
 
   /// The expanded row's "Replace…": a new profile for an existing tunnel,
@@ -60,12 +62,42 @@ final class TunnelImporter {
     if (error != null) _alert('Cannot replace the config', error);
   }
 
-  /// A drop anywhere in the window: every `.ovpn` in it, in order. Anything
-  /// else is ignored — the window is not a general drop target.
+  /// A drop anywhere in the window: every `.ovpn` and `.conf` in it, in order.
+  /// Anything else is ignored — the window is not a general drop target.
   Future<void> importDropped(Iterable<String> paths) async {
     for (final path in paths) {
-      if (!path.toLowerCase().endsWith('.$fileExtension')) continue;
-      await importFile(path);
+      final lowercased = path.toLowerCase();
+      if (lowercased.endsWith('.$fileExtension')) {
+        await importFile(path);
+      } else if (lowercased.endsWith('.$wireGuardExtension')) {
+        await importWireGuardFile(path);
+      }
+    }
+  }
+
+  /// Adds one WireGuard profile; the tunnel is named after the file.
+  Future<void> importWireGuardFile(String path) async {
+    final result = await _parseWireGuard(path);
+    if (result == null) return;
+    await model.addWireGuard(result, tunnelName(path));
+  }
+
+  Future<WireGuardImportResult?> _parseWireGuard(String path) async {
+    final String text;
+    try {
+      text = await File(path).readAsString();
+    } on Object catch (error) {
+      _alert('Cannot read file', '$error');
+      return null;
+    }
+    try {
+      return WireGuardConfParser.parse(text);
+    } on WireGuardImportException catch (error) {
+      _alert(
+        'Invalid config',
+        'Not a valid WireGuard config: ${error.message}',
+      );
+      return null;
     }
   }
 
@@ -116,7 +148,7 @@ final class TunnelImporter {
       model.showAlert(AppAlert(title: title, message: message));
 
   /// `C:\profiles\work.ovpn` → `work`.
-  static String _tunnelName(String path) {
+  static String tunnelName(String path) {
     final file = path.substring(_separator(path) + 1);
     final dot = file.lastIndexOf('.');
     return dot <= 0 ? file : file.substring(0, dot);

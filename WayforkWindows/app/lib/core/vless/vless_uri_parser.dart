@@ -79,16 +79,16 @@ abstract final class VLESSURIParser {
     }
 
     final security = switch (query['security']) {
-      null || 'none' => VLESSSecurity.none,
-      'tls' => VLESSSecurity.tls,
-      'reality' => VLESSSecurity.reality,
+      null || 'none' => TlsSecurity.none,
+      'tls' => TlsSecurity.tls,
+      'reality' => TlsSecurity.reality,
       _ => _invalid('security must be none, tls, or reality'),
     };
 
     final transport = switch (query['type']) {
-      null || 'tcp' => const VLESSTransportTCP(),
-      'ws' => VLESSTransportWS(path: query['path'] ?? '/', host: query['host']),
-      'grpc' => VLESSTransportGRPC(serviceName: query['serviceName'] ?? ''),
+      null || 'tcp' => const ProxyTransportTCP(),
+      'ws' => ProxyTransportWS(path: query['path'] ?? '/', host: query['host']),
+      'grpc' => ProxyTransportGRPC(serviceName: query['serviceName'] ?? ''),
       final type => _unsupported('Transport "$type" is not supported yet.'),
     };
 
@@ -102,21 +102,21 @@ abstract final class VLESSURIParser {
         _unsupported('Flow "$unsupported" is not supported yet.');
     }
     if (flow != null &&
-        (security == VLESSSecurity.none || transport is! VLESSTransportTCP)) {
+        (security == TlsSecurity.none || transport is! ProxyTransportTCP)) {
       _invalid('flow requires TLS/REALITY over TCP');
     }
 
-    if (security == VLESSSecurity.reality) {
+    if (security == TlsSecurity.reality) {
       final publicKey = query['pbk'];
       if (publicKey == null || publicKey.isEmpty) {
         _invalid('REALITY requires pbk');
       }
-      if (transport is! VLESSTransportTCP) {
+      if (transport is! ProxyTransportTCP) {
         _unsupported('REALITY over ws/grpc is not supported');
       }
     }
 
-    final sni = security == VLESSSecurity.none ? null : query['sni'] ?? host;
+    final sni = security == TlsSecurity.none ? null : query['sni'] ?? host;
     final alpn =
         query['alpn']
             ?.split(',')
@@ -165,13 +165,13 @@ abstract final class VLESSURIParser {
     _append(meta.realityPublicKey, 'pbk', query);
     _append(meta.realityShortID, 'sid', query);
     switch (meta.transport) {
-      case VLESSTransportTCP():
+      case ProxyTransportTCP():
         query.add(('type', 'tcp'));
-      case VLESSTransportWS(:final path, :final host):
+      case ProxyTransportWS(:final path, :final host):
         query.add(('type', 'ws'));
         query.add(('path', path));
         _append(host, 'host', query);
-      case VLESSTransportGRPC(:final serviceName):
+      case ProxyTransportGRPC(:final serviceName):
         query.add(('type', 'grpc'));
         query.add(('serviceName', serviceName));
     }

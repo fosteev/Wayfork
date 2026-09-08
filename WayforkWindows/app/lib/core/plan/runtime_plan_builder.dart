@@ -13,10 +13,18 @@ import 'package:wayfork/core/singbox/sing_box_config_generator.dart';
 final class PlanSecrets {
   PlanSecrets({
     Map<String, String> vlessUUIDs = const {},
+    Map<String, WireGuardSecrets> wireGuardKeys = const {},
+    Map<String, String> passwords = const {},
+    Map<String, String> vmessUUIDs = const {},
     Map<String, String> openVPNConfigs = const {},
     Map<String, Credentials> credentials = const {},
     Map<String, String> keyPassphrases = const {},
   }) : vlessUUIDs = _lowercaseMap(vlessUUIDs),
+       wireGuardKeys = Map.unmodifiable(
+         wireGuardKeys.map((key, value) => MapEntry(key.toLowerCase(), value)),
+       ),
+       passwords = _lowercaseMap(passwords),
+       vmessUUIDs = _lowercaseMap(vmessUUIDs),
        openVPNConfigs = _lowercaseMap(openVPNConfigs),
        credentials = Map.unmodifiable(
          credentials.map((key, value) => MapEntry(key.toLowerCase(), value)),
@@ -24,6 +32,9 @@ final class PlanSecrets {
        keyPassphrases = _lowercaseMap(keyPassphrases);
 
   final Map<String, String> vlessUUIDs;
+  final Map<String, WireGuardSecrets> wireGuardKeys;
+  final Map<String, String> passwords;
+  final Map<String, String> vmessUUIDs;
   final Map<String, String> openVPNConfigs;
   final Map<String, Credentials> credentials;
   final Map<String, String> keyPassphrases;
@@ -31,6 +42,9 @@ final class PlanSecrets {
   /// Loads only the secrets required by enabled tunnels.
   static Future<PlanSecrets> load(Store store, SecretStore secretStore) async {
     final vlessUUIDs = <String, String>{};
+    final wireGuardKeys = <String, WireGuardSecrets>{};
+    final passwords = <String, String>{};
+    final vmessUUIDs = <String, String>{};
     final openVPNConfigs = <String, String>{};
     final credentials = <String, Credentials>{};
     final keyPassphrases = <String, String>{};
@@ -68,10 +82,35 @@ final class PlanSecrets {
             SecretKey(SecretKind.uuid, tunnel.id),
           );
           if (uuid != null) vlessUUIDs[tunnel.id] = uuid;
+        case TunnelKindWireGuard():
+          final privateKey = await secretStore.read(
+            SecretKey(SecretKind.privateKey, tunnel.id),
+          );
+          if (privateKey != null) {
+            wireGuardKeys[tunnel.id] = WireGuardSecrets(
+              privateKey: privateKey,
+              presharedKey: await secretStore.read(
+                SecretKey(SecretKind.presharedKey, tunnel.id),
+              ),
+            );
+          }
+        case TunnelKindShadowsocks() || TunnelKindTrojan():
+          final password = await secretStore.read(
+            SecretKey(SecretKind.password, tunnel.id),
+          );
+          if (password != null) passwords[tunnel.id] = password;
+        case TunnelKindVMess():
+          final uuid = await secretStore.read(
+            SecretKey(SecretKind.uuid, tunnel.id),
+          );
+          if (uuid != null) vmessUUIDs[tunnel.id] = uuid;
       }
     }
     return PlanSecrets(
       vlessUUIDs: vlessUUIDs,
+      wireGuardKeys: wireGuardKeys,
+      passwords: passwords,
+      vmessUUIDs: vmessUUIDs,
       openVPNConfigs: openVPNConfigs,
       credentials: credentials,
       keyPassphrases: keyPassphrases,
@@ -84,6 +123,15 @@ final class PlanSecrets {
       const MapEquality<String, String>().equals(
         vlessUUIDs,
         other.vlessUUIDs,
+      ) &&
+      const MapEquality<String, WireGuardSecrets>().equals(
+        wireGuardKeys,
+        other.wireGuardKeys,
+      ) &&
+      const MapEquality<String, String>().equals(passwords, other.passwords) &&
+      const MapEquality<String, String>().equals(
+        vmessUUIDs,
+        other.vmessUUIDs,
       ) &&
       const MapEquality<String, String>().equals(
         openVPNConfigs,
@@ -101,6 +149,9 @@ final class PlanSecrets {
   @override
   int get hashCode => Object.hash(
     const MapEquality<String, String>().hash(vlessUUIDs),
+    const MapEquality<String, WireGuardSecrets>().hash(wireGuardKeys),
+    const MapEquality<String, String>().hash(passwords),
+    const MapEquality<String, String>().hash(vmessUUIDs),
     const MapEquality<String, String>().hash(openVPNConfigs),
     const MapEquality<String, Credentials>().hash(credentials),
     const MapEquality<String, String>().hash(keyPassphrases),
@@ -200,6 +251,21 @@ abstract final class RuntimePlanBuilder {
             warnings.add(PlanWarning.missingSecret(tunnel.id));
             effectiveTunnels[index] = tunnel.copyWith(isEnabled: false);
           }
+        case TunnelKindWireGuard():
+          if (!secrets.wireGuardKeys.containsKey(tunnel.id)) {
+            warnings.add(PlanWarning.missingSecret(tunnel.id));
+            effectiveTunnels[index] = tunnel.copyWith(isEnabled: false);
+          }
+        case TunnelKindShadowsocks() || TunnelKindTrojan():
+          if (!secrets.passwords.containsKey(tunnel.id)) {
+            warnings.add(PlanWarning.missingSecret(tunnel.id));
+            effectiveTunnels[index] = tunnel.copyWith(isEnabled: false);
+          }
+        case TunnelKindVMess():
+          if (!secrets.vmessUUIDs.containsKey(tunnel.id)) {
+            warnings.add(PlanWarning.missingSecret(tunnel.id));
+            effectiveTunnels[index] = tunnel.copyWith(isEnabled: false);
+          }
       }
     }
 
@@ -208,6 +274,9 @@ abstract final class RuntimePlanBuilder {
       SingBoxInput(
         store: effectiveStore,
         vlessUUIDs: secrets.vlessUUIDs,
+        wireGuardKeys: secrets.wireGuardKeys,
+        passwords: secrets.passwords,
+        vmessUUIDs: secrets.vmessUUIDs,
         openVPNBinaryPath: platform.openVPNBinaryPath(installDir),
         resolvedServerAddresses: resolvedServerAddresses,
         systemDNSServers: systemDNSServers,

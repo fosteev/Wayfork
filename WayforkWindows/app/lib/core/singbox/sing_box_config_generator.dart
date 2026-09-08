@@ -11,11 +11,41 @@ import 'package:wayfork/core/support/ipv4_prefix.dart';
 
 export 'package:wayfork/core/singbox/constants.dart';
 
+final class WireGuardSecrets {
+  const WireGuardSecrets({required this.privateKey, this.presharedKey});
+
+  factory WireGuardSecrets.fromJson(Map<String, Object?> json) =>
+      WireGuardSecrets(
+        privateKey: _string(json, 'privateKey'),
+        presharedKey: _optionalString(json, 'presharedKey'),
+      );
+
+  final String privateKey;
+  final String? presharedKey;
+
+  Map<String, Object?> toJson() => {
+    'privateKey': privateKey,
+    if (presharedKey != null) 'presharedKey': presharedKey,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is WireGuardSecrets &&
+      privateKey == other.privateKey &&
+      presharedKey == other.presharedKey;
+
+  @override
+  int get hashCode => Object.hash(privateKey, presharedKey);
+}
+
 /// Everything consumed by the deterministic sing-box generator.
 final class SingBoxInput {
   SingBoxInput({
     required this.store,
     required Map<String, String> vlessUUIDs,
+    Map<String, WireGuardSecrets> wireGuardKeys = const {},
+    Map<String, String> passwords = const {},
+    Map<String, String> vmessUUIDs = const {},
     required this.openVPNBinaryPath,
     Map<String, List<String>> resolvedServerAddresses = const {},
     List<String> systemDNSServers = const [],
@@ -24,6 +54,11 @@ final class SingBoxInput {
   }) : vlessUUIDs = Map.unmodifiable(
          vlessUUIDs.map((key, value) => MapEntry(key.toLowerCase(), value)),
        ),
+       wireGuardKeys = Map.unmodifiable(
+         wireGuardKeys.map((key, value) => MapEntry(key.toLowerCase(), value)),
+       ),
+       passwords = _lowercaseMap(passwords),
+       vmessUUIDs = _lowercaseMap(vmessUUIDs),
        resolvedServerAddresses = Map.unmodifiable(
          resolvedServerAddresses.map(
            (key, value) => MapEntry(key, List<String>.unmodifiable(value)),
@@ -38,6 +73,9 @@ final class SingBoxInput {
   }) => SingBoxInput(
     store: Store.fromJson(_map(json['store'], 'store')),
     vlessUUIDs: _stringMap(json['vlessUUIDs'], 'vlessUUIDs'),
+    wireGuardKeys: _wireGuardKeys(json['wireGuardKeys'], 'wireGuardKeys'),
+    passwords: _optionalStringMap(json['passwords'], 'passwords'),
+    vmessUUIDs: _optionalStringMap(json['vmessUUIDs'], 'vmessUUIDs'),
     openVPNBinaryPath: _string(json, 'openVPNBinaryPath'),
     resolvedServerAddresses: _stringListMap(
       json['resolvedServerAddresses'],
@@ -52,6 +90,9 @@ final class SingBoxInput {
 
   /// VLESS UUID by lowercase tunnel id. Tunnels without one are not routed.
   final Map<String, String> vlessUUIDs;
+  final Map<String, WireGuardSecrets> wireGuardKeys;
+  final Map<String, String> passwords;
+  final Map<String, String> vmessUUIDs;
 
   /// The executable path is matched so OpenVPN control traffic stays direct.
   final String openVPNBinaryPath;
@@ -71,6 +112,12 @@ final class SingBoxInput {
   Map<String, Object?> toJson() => {
     'store': store.toJson(),
     'vlessUUIDs': vlessUUIDs,
+    if (wireGuardKeys.isNotEmpty)
+      'wireGuardKeys': wireGuardKeys.map(
+        (key, value) => MapEntry(key, value.toJson()),
+      ),
+    if (passwords.isNotEmpty) 'passwords': passwords,
+    if (vmessUUIDs.isNotEmpty) 'vmessUUIDs': vmessUUIDs,
     'openVPNBinaryPath': openVPNBinaryPath,
     'resolvedServerAddresses': resolvedServerAddresses,
     'systemDNSServers': systemDNSServers,
@@ -129,6 +176,10 @@ abstract final class SingBoxConfigGenerator {
       return switch (tunnel.kind) {
         TunnelKindOpenVPN() => true,
         TunnelKindVLESS() => input.vlessUUIDs.containsKey(tunnel.id),
+        TunnelKindWireGuard() => input.wireGuardKeys.containsKey(tunnel.id),
+        TunnelKindShadowsocks() ||
+        TunnelKindTrojan() => input.passwords.containsKey(tunnel.id),
+        TunnelKindVMess() => input.vmessUUIDs.containsKey(tunnel.id),
       };
     }).toList();
     final activeRules = RuleValidator.activeRules(store);
@@ -147,6 +198,7 @@ abstract final class SingBoxConfigGenerator {
     final outbounds = <Map<String, Object?>>[
       {'type': 'direct', 'tag': 'direct'},
     ];
+    final endpoints = <Map<String, Object?>>[];
     // Direct exceptions come first so they beat tunnel sets and the default.
     final routeRules = <Map<String, Object?>>[
       {'action': 'sniff'},
@@ -214,6 +266,49 @@ abstract final class SingBoxConfigGenerator {
               uuid: input.vlessUUIDs[tunnel.id] ?? '',
             ),
           );
+        case TunnelKindWireGuard(:final meta):
+          final dnsTag = 'dns-${tunnel.outboundTag}';
+          dnsServers.add({
+            'type': 'udp',
+            'tag': dnsTag,
+            'server': resolverForWireGuard(meta),
+            'detour': tunnel.outboundTag,
+          });
+          final keys = input.wireGuardKeys[tunnel.id];
+          if (keys != null) {
+            endpoints.add(
+              wireGuardEndpoint(
+                meta,
+                tag: tunnel.outboundTag,
+                secrets: keys,
+                resolved: input.resolvedServerAddresses,
+              ),
+            );
+          }
+        case TunnelKindShadowsocks(:final meta):
+          outbounds.add(
+            shadowsocksOutbound(
+              meta,
+              tag: tunnel.outboundTag,
+              password: input.passwords[tunnel.id] ?? '',
+            ),
+          );
+        case TunnelKindTrojan(:final meta):
+          outbounds.add(
+            trojanOutbound(
+              meta,
+              tag: tunnel.outboundTag,
+              password: input.passwords[tunnel.id] ?? '',
+            ),
+          );
+        case TunnelKindVMess(:final meta):
+          outbounds.add(
+            vmessOutbound(
+              meta,
+              tag: tunnel.outboundTag,
+              uuid: input.vmessUUIDs[tunnel.id] ?? '',
+            ),
+          );
       }
       routeRules.add({
         'rule_set': [tunnel.ruleSetTag, tunnel.ipRuleSetTag],
@@ -263,8 +358,12 @@ abstract final class SingBoxConfigGenerator {
       },
       {'rule_set': RuleSetGenerator.directTag, 'server': 'dns-direct'},
     ];
-    if (servers.hosts.isNotEmpty) {
-      dnsRules.add({'domain': servers.hosts, 'server': 'dns-direct'});
+    final directDNSHosts = _uniqueHosts([
+      ...servers.hosts,
+      ..._wireGuardPeerHosts(routed),
+    ]);
+    if (directDNSHosts.isNotEmpty) {
+      dnsRules.add({'domain': directDNSHosts, 'server': 'dns-direct'});
     }
     if (routed.isNotEmpty) {
       dnsRules.add({
@@ -281,7 +380,7 @@ abstract final class SingBoxConfigGenerator {
         'server': 'fakeip',
       });
       final tag = 'dns-${defaultTunnel.outboundTag}';
-      if (!defaultTunnel.kind.isOpenVPN) {
+      if (!defaultTunnel.kind.hasOwnResolver) {
         dnsServers.add({
           'type': 'tls',
           'tag': tag,
@@ -319,6 +418,7 @@ abstract final class SingBoxConfigGenerator {
       'dns': dns,
       'inbounds': [tunInbound(carving: carved, platform: input.platform)],
       'outbounds': outbounds,
+      if (endpoints.isNotEmpty) 'endpoints': endpoints,
       'route': route,
       'experimental': {
         'cache_file': {
@@ -415,12 +515,83 @@ abstract final class SingBoxConfigGenerator {
     TunnelDNSAuto() => meta.discoveredDNS.firstOrNull ?? fallbackTunnelDNS,
   };
 
+  static String resolverForWireGuard(WireGuardMeta meta) => switch (meta.dns) {
+    TunnelDNSCustom(:final servers) => servers.firstOrNull ?? fallbackTunnelDNS,
+    TunnelDNSAuto() => meta.discoveredDNS.firstOrNull ?? fallbackTunnelDNS,
+  };
+
+  static Map<String, Object?> wireGuardEndpoint(
+    WireGuardMeta meta, {
+    required String tag,
+    required WireGuardSecrets secrets,
+    Map<String, List<String>> resolved = const {},
+  }) {
+    var everyPeerIsLiteral = true;
+    final peers = meta.peers.map((peer) {
+      String address;
+      if (_isIPv4Literal(peer.host)) {
+        address = peer.host;
+      } else {
+        final resolvedAddresses =
+            resolved[peer.host] ?? resolved[peer.host.toLowerCase()];
+        final first = resolvedAddresses?.firstOrNull;
+        if (first != null && _isIPv4Literal(first)) {
+          address = first;
+        } else {
+          address = peer.host;
+          everyPeerIsLiteral = false;
+        }
+      }
+      return <String, Object?>{
+        'address': address,
+        'port': peer.port,
+        'public_key': peer.publicKey,
+        if (peer.hasPresharedKey && secrets.presharedKey != null)
+          'pre_shared_key': secrets.presharedKey,
+        'allowed_ips': peer.allowedIPs,
+        if (peer.keepalive != null)
+          'persistent_keepalive_interval': peer.keepalive,
+      };
+    }).toList();
+    return <String, Object?>{
+      'type': 'wireguard',
+      'tag': tag,
+      'system': false,
+      if (meta.mtu != null) 'mtu': meta.mtu,
+      'address': meta.addresses,
+      'private_key': secrets.privateKey,
+      'domain_resolver': everyPeerIsLiteral
+          ? {'server': 'dns-$tag', 'strategy': 'ipv4_only'}
+          : 'dns-direct',
+      'peers': peers,
+    };
+  }
+
+  static List<String> _wireGuardPeerHosts(List<Tunnel> routed) => [
+    for (final tunnel in routed)
+      if (tunnel.kind case TunnelKindWireGuard(:final meta))
+        for (final peer in meta.peers)
+          if (!_isIPv4Literal(peer.host)) peer.host.toLowerCase(),
+  ];
+
+  static List<String> _uniqueHosts(Iterable<String> hosts) {
+    final result = <String>[];
+    for (final host in hosts) {
+      if (host.isNotEmpty && !result.contains(host)) result.add(host);
+    }
+    return result;
+  }
+
+  static bool _isIPv4Literal(String host) =>
+      !host.contains('/') && IPv4Prefix.parse(host)?.isHost == true;
+
   /// Exclusions are carved around the TUN subnet because otherwise redirected
   /// TCP replies to the neighbour address leave through the physical interface.
   static List<String> routeExcludeAddresses({
     List<IPv4Prefix> carving = const [],
   }) {
-    final holes = <IPv4Prefix>[?IPv4Prefix.parse(tunAddress), ...carving];
+    final tunPrefix = IPv4Prefix.parse(tunAddress);
+    final holes = <IPv4Prefix>[?tunPrefix, ...carving];
     return [
       for (final text in lanRanges)
         ...(IPv4Prefix.parse(text)?.subtractingAll(holes) ?? const []).map(
@@ -465,38 +636,135 @@ abstract final class SingBoxConfigGenerator {
       'uuid': uuid,
       if (meta.flow != null) 'flow': meta.flow,
     };
-    if (meta.security != VLESSSecurity.none) {
-      final tls = <String, Object?>{
+    final tls = tlsBlock(
+      security: meta.security,
+      server: meta.server,
+      sni: meta.sni,
+      fingerprint: meta.fingerprint,
+      alpn: meta.alpn,
+      realityPublicKey: meta.realityPublicKey,
+      realityShortID: meta.realityShortID,
+      allowInsecure: meta.allowInsecure,
+    );
+    if (tls != null) outbound['tls'] = tls;
+    final transport = transportBlock(meta.transport);
+    if (transport != null) outbound['transport'] = transport;
+    return outbound;
+  }
+
+  static Map<String, Object?> shadowsocksOutbound(
+    ShadowsocksMeta meta, {
+    required String tag,
+    required String password,
+  }) => {
+    'type': 'shadowsocks',
+    'tag': tag,
+    'server': meta.server,
+    'server_port': meta.port,
+    'method': meta.method,
+    'password': password,
+  };
+
+  static Map<String, Object?> trojanOutbound(
+    TrojanMeta meta, {
+    required String tag,
+    required String password,
+  }) {
+    final outbound = <String, Object?>{
+      'type': 'trojan',
+      'tag': tag,
+      'server': meta.server,
+      'server_port': meta.port,
+      'password': password,
+    };
+    final tls = tlsBlock(
+      security: meta.security,
+      server: meta.server,
+      sni: meta.sni,
+      fingerprint: meta.fingerprint,
+      alpn: meta.alpn,
+      realityPublicKey: meta.realityPublicKey,
+      realityShortID: meta.realityShortID,
+      allowInsecure: meta.allowInsecure,
+    );
+    if (tls != null) outbound['tls'] = tls;
+    final transport = transportBlock(meta.transport);
+    if (transport != null) outbound['transport'] = transport;
+    return outbound;
+  }
+
+  static Map<String, Object?> vmessOutbound(
+    VMessMeta meta, {
+    required String tag,
+    required String uuid,
+  }) {
+    final outbound = <String, Object?>{
+      'type': 'vmess',
+      'tag': tag,
+      'server': meta.server,
+      'server_port': meta.port,
+      'uuid': uuid,
+      'security': meta.security,
+      'alter_id': 0,
+    };
+    final tls = tlsBlock(
+      security: meta.tlsSecurity,
+      server: meta.server,
+      sni: meta.sni,
+      fingerprint: meta.fingerprint,
+      alpn: meta.alpn,
+      realityPublicKey: meta.realityPublicKey,
+      realityShortID: meta.realityShortID,
+      allowInsecure: meta.allowInsecure,
+    );
+    if (tls != null) outbound['tls'] = tls;
+    final transport = transportBlock(meta.transport);
+    if (transport != null) outbound['transport'] = transport;
+    return outbound;
+  }
+
+  static Map<String, Object?>? tlsBlock({
+    required TlsSecurity security,
+    required String server,
+    required String? sni,
+    required String? fingerprint,
+    required List<String> alpn,
+    required String? realityPublicKey,
+    required String? realityShortID,
+    required bool allowInsecure,
+  }) {
+    if (security == TlsSecurity.none) return null;
+    final tls = <String, Object?>{
+      'enabled': true,
+      'server_name': sni ?? server,
+      'insecure': allowInsecure,
+      if (alpn.isNotEmpty) 'alpn': alpn,
+      if (fingerprint != null)
+        'utls': {'enabled': true, 'fingerprint': fingerprint},
+    };
+    if (security == TlsSecurity.reality) {
+      tls['reality'] = {
         'enabled': true,
-        'server_name': meta.sni ?? meta.server,
-        'insecure': meta.allowInsecure,
-        if (meta.alpn.isNotEmpty) 'alpn': meta.alpn,
-        if (meta.fingerprint != null)
-          'utls': {'enabled': true, 'fingerprint': meta.fingerprint},
+        'public_key': realityPublicKey ?? '',
+        'short_id': realityShortID ?? '',
       };
-      if (meta.security == VLESSSecurity.reality) {
-        tls['reality'] = {
-          'enabled': true,
-          'public_key': meta.realityPublicKey ?? '',
-          'short_id': meta.realityShortID ?? '',
-        };
-      }
-      outbound['tls'] = tls;
     }
-    switch (meta.transport) {
-      case VLESSTransportTCP():
-        break;
-      case VLESSTransportWS(:final path, :final host):
-        outbound['transport'] = <String, Object?>{
+    return tls;
+  }
+
+  static Map<String, Object?>? transportBlock(ProxyTransport transport) =>
+      switch (transport) {
+        ProxyTransportTCP() => null,
+        ProxyTransportWS(:final path, :final host) => <String, Object?>{
           'type': 'ws',
           'path': path,
           if (host != null) 'headers': <String, Object?>{'Host': host},
-        };
-      case VLESSTransportGRPC(:final serviceName):
-        outbound['transport'] = {'type': 'grpc', 'service_name': serviceName};
-    }
-    return outbound;
-  }
+        },
+        ProxyTransportGRPC(:final serviceName) => {
+          'type': 'grpc',
+          'service_name': serviceName,
+        },
+      };
 }
 
 Map<String, Object?> _map(Object? value, String name) {
@@ -508,6 +776,12 @@ String _string(Map<String, Object?> json, String key) {
   final value = json[key];
   if (value is String) return value;
   throw FormatException('$key must be a string');
+}
+
+String? _optionalString(Map<String, Object?> json, String key) {
+  final value = json[key];
+  if (value == null || value is String) return value as String?;
+  throw FormatException('$key must be a string or null');
 }
 
 List<String> _stringList(Object? value, String name) {
@@ -527,6 +801,27 @@ Map<String, String> _stringMap(Object? value, String name) {
     return MapEntry(key.toLowerCase(), item);
   });
 }
+
+Map<String, String> _optionalStringMap(Object? value, String name) =>
+    value == null ? const {} : _stringMap(value, name);
+
+Map<String, WireGuardSecrets> _wireGuardKeys(Object? value, String name) {
+  if (value == null) return const {};
+  if (value is! Map<String, Object?>) {
+    throw FormatException('$name must be an object');
+  }
+  return value.map(
+    (key, item) => MapEntry(
+      key.toLowerCase(),
+      WireGuardSecrets.fromJson(_map(item, '$name.$key')),
+    ),
+  );
+}
+
+Map<String, String> _lowercaseMap(Map<String, String> values) =>
+    Map.unmodifiable(
+      values.map((key, value) => MapEntry(key.toLowerCase(), value)),
+    );
 
 Map<String, List<String>> _stringListMap(Object? value, String name) {
   if (value is! Map<String, Object?>) {

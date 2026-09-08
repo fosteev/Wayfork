@@ -5,7 +5,9 @@ import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:wayfork/app/model/app_alert.dart';
 import 'package:wayfork/app/model/app_model.dart';
-import 'package:wayfork/app/ui/add_vless_dialog.dart';
+import 'package:wayfork/app/services/file_picker.dart';
+import 'package:wayfork/app/ui/add_link_dialog.dart';
+import 'package:wayfork/app/ui/add_wireguard_dialog.dart';
 import 'package:wayfork/app/ui/app_navigation.dart';
 import 'package:wayfork/app/ui/app_scope.dart';
 import 'package:wayfork/app/ui/tunnel_import.dart';
@@ -37,16 +39,12 @@ class _OpenVPNDetailState extends State<OpenVPNDetail> {
   final _username = TextEditingController();
   final _password = TextEditingController();
   final _passphrase = TextEditingController();
-  final _dns = TextEditingController();
   final _nameFocus = FocusNode();
   final _usernameFocus = FocusNode();
   final _passwordFocus = FocusNode();
   final _passphraseFocus = FocusNode();
-  final _dnsFocus = FocusNode();
 
   String? _nameError;
-  String? _dnsError;
-  bool _customDNS = false;
   Credentials? _storedCredentials;
   String _storedPassphrase = '';
 
@@ -75,15 +73,12 @@ class _OpenVPNDetailState extends State<OpenVPNDetail> {
     _passphraseFocus.addListener(() {
       if (!_passphraseFocus.hasFocus) unawaited(_commitPassphrase());
     });
-    _dnsFocus.addListener(() {
-      if (!_dnsFocus.hasFocus) _commitDNS();
-    });
     WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_load()));
   }
 
   @override
   void dispose() {
-    for (final controller in [_name, _username, _password, _passphrase, _dns]) {
+    for (final controller in [_name, _username, _password, _passphrase]) {
       controller.dispose();
     }
     for (final focus in [
@@ -91,7 +86,6 @@ class _OpenVPNDetailState extends State<OpenVPNDetail> {
       _usernameFocus,
       _passwordFocus,
       _passphraseFocus,
-      _dnsFocus,
     ]) {
       focus.dispose();
     }
@@ -109,13 +103,6 @@ class _OpenVPNDetailState extends State<OpenVPNDetail> {
       _password.text = credentials?.password ?? '';
       _storedPassphrase = passphrase ?? '';
       _passphrase.text = _storedPassphrase;
-      switch (_meta.dns) {
-        case TunnelDNSAuto():
-          _customDNS = false;
-        case TunnelDNSCustom(:final servers):
-          _customDNS = true;
-          _dns.text = servers.join(', ');
-      }
     });
     _takeFocus();
   }
@@ -173,39 +160,6 @@ class _OpenVPNDetailState extends State<OpenVPNDetail> {
     await _model.setKeyPassphrase(widget.tunnel.id, _passphrase.text);
     if (!mounted) return;
     _storedPassphrase = _passphrase.text;
-  }
-
-  void _commitDNS() {
-    if (!_customDNS) return;
-    final servers = _dns.text
-        .split(RegExp('[, ]'))
-        .map((server) => server.trim())
-        .where((server) => server.isNotEmpty)
-        .toList();
-    if (servers.isEmpty ||
-        servers.any((server) => InternetAddress.tryParse(server) == null)) {
-      setState(() {
-        _dnsError = servers.isEmpty
-            ? 'Enter at least one resolver address'
-            : 'Not an IP address';
-      });
-      return;
-    }
-    setState(() => _dnsError = null);
-    final dns = TunnelDNSCustom(servers);
-    if (_meta.dns != dns) unawaited(_model.setDNS(widget.tunnel.id, dns));
-  }
-
-  void _setCustomDNS(bool custom) {
-    setState(() {
-      _customDNS = custom;
-      if (!custom) _dnsError = null;
-    });
-    if (custom) {
-      _commitDNS();
-    } else {
-      unawaited(_model.setDNS(widget.tunnel.id, const TunnelDNSAuto()));
-    }
   }
 
   @override
@@ -283,41 +237,10 @@ class _OpenVPNDetailState extends State<OpenVPNDetail> {
           ),
         DetailRow(
           label: 'DNS',
-          child: FieldWithError(
-            error: _dnsError,
-            child: Row(
-              children: [
-                RadioGroup<bool>(
-                  groupValue: _customDNS,
-                  onChanged: (custom) => _setCustomDNS(custom ?? false),
-                  child: Row(
-                    children: [
-                      RadioButton(
-                        value: false,
-                        content: Text(
-                          discovered.isEmpty
-                              ? 'Automatic'
-                              : 'Automatic (${discovered.join(', ')})',
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      const RadioButton(value: true, content: Text('Custom')),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 160,
-                  child: TextBox(
-                    controller: _dns,
-                    focusNode: _dnsFocus,
-                    enabled: _customDNS,
-                    placeholder: '10.8.0.1',
-                    onSubmitted: (_) => _commitDNS(),
-                  ),
-                ),
-              ],
-            ),
+          child: TunnelDnsEditor(
+            dns: meta.dns,
+            discovered: discovered,
+            onChanged: (dns) => unawaited(model.setDNS(tunnel.id, dns)),
           ),
         ),
         DetailRow(
@@ -375,17 +298,18 @@ class _OpenVPNDetailState extends State<OpenVPNDetail> {
   static String _two(int value) => value.toString().padLeft(2, '0');
 }
 
-/// The expanded VLESS row: name, the URI with its UUID masked, footer.
-class VLESSDetail extends StatefulWidget {
-  const VLESSDetail({required this.tunnel, super.key});
+/// The expanded row of a link kind (VLESS, Shadowsocks, Trojan, VMess): name,
+/// the link with its secret masked, footer.
+class LinkDetail extends StatefulWidget {
+  const LinkDetail({required this.tunnel, super.key});
 
   final Tunnel tunnel;
 
   @override
-  State<VLESSDetail> createState() => _VLESSDetailState();
+  State<LinkDetail> createState() => _LinkDetailState();
 }
 
-class _VLESSDetailState extends State<VLESSDetail> {
+class _LinkDetailState extends State<LinkDetail> {
   final _name = TextEditingController();
   final _nameFocus = FocusNode();
   String? _nameError;
@@ -399,7 +323,6 @@ class _VLESSDetailState extends State<VLESSDetail> {
     _nameFocus.addListener(() {
       if (!_nameFocus.hasFocus) unawaited(_commitName());
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _takeFocus());
   }
 
   @override
@@ -409,40 +332,25 @@ class _VLESSDetailState extends State<VLESSDetail> {
     super.dispose();
   }
 
-  void _takeFocus() {
-    if (!mounted) return;
-    final model = _model;
-    if (model.expandedTunnelID != widget.tunnel.id) return;
-    final pending = model.pendingFocus;
-    if (pending == null) return;
-    model.pendingFocus = null;
-    if (pending == TunnelField.url) {
-      unawaited(_replace());
-    } else {
-      _nameFocus.requestFocus();
-    }
-  }
-
   Future<void> _commitName() async {
-    if (_name.text == widget.tunnel.name) return;
     final error = await _model.rename(widget.tunnel.id, _name.text);
     if (!mounted) return;
     setState(() => _nameError = error);
   }
 
   Future<void> _copy() async {
-    final uri = await _model.vlessURI(widget.tunnel);
+    final uri = await _model.linkURI(widget.tunnel);
     if (uri == null) return;
     await Clipboard.setData(ClipboardData(text: uri));
   }
 
   Future<void> _replace() async {
-    final result = await showAddVLESSDialog(context, replacing: true);
-    if (result == null) return;
-    final error = await _model.replaceVLESS(widget.tunnel.id, result);
+    final link = await showAddLinkDialog(context, replacing: true);
+    if (link == null) return;
+    final error = await _model.replaceLink(widget.tunnel.id, link);
     if (error != null && mounted) {
       _model.showAlert(
-        AppAlert(title: 'Cannot replace the URL', message: error),
+        AppAlert(title: 'Cannot replace the link', message: error),
       );
     }
   }
@@ -468,10 +376,10 @@ class _VLESSDetailState extends State<VLESSDetail> {
           ),
         ),
         DetailRow(
-          label: 'URL',
+          label: 'Link',
           child: Row(
             children: [
-              Expanded(child: MonoText(model.maskedVLESSURI(tunnel))),
+              Expanded(child: MonoText(model.maskedLinkURI(tunnel))),
               const SizedBox(width: 8),
               Button(
                 onPressed: model.missingSecrets.contains(tunnel.id)
@@ -482,11 +390,149 @@ class _VLESSDetailState extends State<VLESSDetail> {
               const SizedBox(width: 8),
               Button(
                 onPressed: () => unawaited(_replace()),
-                child: const Text('Replace URL…'),
+                child: const Text('Replace Link…'),
               ),
             ],
           ),
         ),
+        DetailRow(
+          label: '',
+          child: DefaultTunnelToggle(tunnel: tunnel),
+        ),
+        DetailRow(
+          label: '',
+          child: TunnelFooter(tunnel: tunnel),
+        ),
+      ],
+    );
+  }
+}
+
+/// The expanded WireGuard row: name, the peer and address the conf carries,
+/// the DNS choice, and the warning when `AllowedIPs` is narrower than
+/// everything (docs/design/02-ux.md).
+class WireGuardDetail extends StatefulWidget {
+  const WireGuardDetail({
+    required this.tunnel,
+    required this.picker,
+    super.key,
+  });
+
+  final Tunnel tunnel;
+  final FilePicker picker;
+
+  @override
+  State<WireGuardDetail> createState() => _WireGuardDetailState();
+}
+
+class _WireGuardDetailState extends State<WireGuardDetail> {
+  final _name = TextEditingController();
+  final _nameFocus = FocusNode();
+  String? _nameError;
+
+  AppModel get _model => AppScope.of(context);
+  WireGuardMeta get _meta => widget.tunnel.kind.wireGuard!;
+
+  @override
+  void initState() {
+    super.initState();
+    _name.text = widget.tunnel.name;
+    _nameFocus.addListener(() {
+      if (!_nameFocus.hasFocus) unawaited(_commitName());
+    });
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _nameFocus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _commitName() async {
+    final error = await _model.rename(widget.tunnel.id, _name.text);
+    if (!mounted) return;
+    setState(() => _nameError = error);
+  }
+
+  Future<void> _replace() async {
+    final imported = await showAddWireGuardDialog(
+      context,
+      picker: widget.picker,
+      replacing: true,
+    );
+    if (imported == null) return;
+    final error = await _model.replaceWireGuardConfig(
+      widget.tunnel.id,
+      imported.result,
+    );
+    if (error != null && mounted) {
+      _model.showAlert(
+        AppAlert(title: 'Cannot replace the config', message: error),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final model = _model;
+    final tunnel = widget.tunnel;
+    final meta = _meta;
+    final peer = meta.peers.isEmpty ? null : meta.peers.first;
+    final warning = allowedIPsWarning(meta);
+    return DetailPane(
+      children: [
+        DetailRow(
+          label: 'Name',
+          child: FieldWithError(
+            error: _nameError,
+            child: SizedBox(
+              width: 240,
+              child: TextBox(
+                controller: _name,
+                focusNode: _nameFocus,
+                onSubmitted: (_) => unawaited(_commitName()),
+              ),
+            ),
+          ),
+        ),
+        DetailRow(
+          label: 'Peer',
+          child: SecondaryText(
+            peer == null ? '—' : '${peer.host}:${peer.port}',
+          ),
+        ),
+        DetailRow(
+          label: 'Address',
+          child: SecondaryText(meta.addresses.join(', ')),
+        ),
+        DetailRow(
+          label: 'DNS',
+          child: TunnelDnsEditor(
+            dns: meta.dns,
+            discovered: meta.discoveredDNS,
+            onChanged: (dns) => unawaited(model.setDNS(tunnel.id, dns)),
+          ),
+        ),
+        if (meta.mtu case final mtu?)
+          DetailRow(label: 'MTU', child: SecondaryText('$mtu')),
+        DetailRow(
+          label: 'Config',
+          child: Button(
+            onPressed: () => unawaited(_replace()),
+            child: const Text('Replace Config…'),
+          ),
+        ),
+        if (warning != null)
+          DetailRow(
+            label: '',
+            child: SecondaryText(
+              warning,
+              color: FluentTheme.of(context).resources.systemFillColorCaution,
+              maxLines: 3,
+              overflow: TextOverflow.clip,
+            ),
+          ),
         DetailRow(
           label: '',
           child: DefaultTunnelToggle(tunnel: tunnel),
@@ -633,6 +679,125 @@ class DetailRow extends StatelessWidget {
           ),
         ),
         Expanded(child: child),
+      ],
+    ),
+  );
+}
+
+/// The per-tunnel resolver choice, shared by the two kinds that resolve names
+/// themselves — OpenVPN and WireGuard (docs/design/03-routing.md). Automatic
+/// means the pushed / conf-supplied servers, Custom the typed ones.
+class TunnelDnsEditor extends StatefulWidget {
+  const TunnelDnsEditor({
+    required this.dns,
+    required this.discovered,
+    required this.onChanged,
+    super.key,
+  });
+
+  final TunnelDNS dns;
+  final List<String> discovered;
+  final ValueChanged<TunnelDNS> onChanged;
+
+  @override
+  State<TunnelDnsEditor> createState() => _TunnelDnsEditorState();
+}
+
+class _TunnelDnsEditorState extends State<TunnelDnsEditor> {
+  final _servers = TextEditingController();
+  final _focus = FocusNode();
+  String? _error;
+  bool _custom = false;
+
+  @override
+  void initState() {
+    super.initState();
+    switch (widget.dns) {
+      case TunnelDNSAuto():
+        _custom = false;
+      case TunnelDNSCustom(:final servers):
+        _custom = true;
+        _servers.text = servers.join(', ');
+    }
+    _focus.addListener(() {
+      if (!_focus.hasFocus) _commit();
+    });
+  }
+
+  @override
+  void dispose() {
+    _servers.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _commit() {
+    if (!_custom) return;
+    final servers = _servers.text
+        .split(RegExp('[, ]'))
+        .map((server) => server.trim())
+        .where((server) => server.isNotEmpty)
+        .toList();
+    if (servers.isEmpty ||
+        servers.any((server) => InternetAddress.tryParse(server) == null)) {
+      setState(() {
+        _error = servers.isEmpty
+            ? 'Enter at least one resolver address'
+            : 'Not an IP address';
+      });
+      return;
+    }
+    setState(() => _error = null);
+    final dns = TunnelDNSCustom(servers);
+    if (widget.dns != dns) widget.onChanged(dns);
+  }
+
+  void _setCustom(bool custom) {
+    setState(() {
+      _custom = custom;
+      if (!custom) _error = null;
+    });
+    if (custom) {
+      _commit();
+    } else {
+      widget.onChanged(const TunnelDNSAuto());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => FieldWithError(
+    error: _error,
+    child: Row(
+      children: [
+        RadioGroup<bool>(
+          groupValue: _custom,
+          onChanged: (custom) => _setCustom(custom ?? false),
+          child: Row(
+            children: [
+              RadioButton(
+                value: false,
+                content: Text(
+                  widget.discovered.isEmpty
+                      ? 'Automatic'
+                      : 'Automatic (${widget.discovered.join(', ')})',
+                ),
+              ),
+              const SizedBox(width: 14),
+              const RadioButton(value: true, content: Text('Custom')),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 160,
+          child: TextBox(
+            controller: _servers,
+            focusNode: _focus,
+            enabled: _custom,
+            placeholder: '10.8.0.1',
+            onSubmitted: (_) => _commit(),
+          ),
+        ),
       ],
     ),
   );

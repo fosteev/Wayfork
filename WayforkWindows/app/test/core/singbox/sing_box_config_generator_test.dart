@@ -365,10 +365,10 @@ void main() {
     final ws = VLESSMeta(
       server: 's',
       port: 443,
-      security: VLESSSecurity.tls,
+      security: TlsSecurity.tls,
       sni: 'sni',
       alpn: const ['h2', 'http/1.1'],
-      transport: const VLESSTransportWS(path: '/x', host: 'h'),
+      transport: const ProxyTransportWS(path: '/x', host: 'h'),
       allowInsecure: true,
     );
     final out = SingBoxConfigGenerator.vlessOutbound(ws, tag: 't', uuid: 'u');
@@ -383,8 +383,8 @@ void main() {
       VLESSMeta(
         server: 's',
         port: 80,
-        security: VLESSSecurity.none,
-        transport: const VLESSTransportGRPC(serviceName: 'svc'),
+        security: TlsSecurity.none,
+        transport: const ProxyTransportGRPC(serviceName: 'svc'),
       ),
       tag: 't',
       uuid: 'u',
@@ -837,10 +837,10 @@ Map<String, SingBoxInput> _configVariants({
       VLESSMeta(
         server: 's.example',
         port: 443,
-        security: VLESSSecurity.tls,
+        security: TlsSecurity.tls,
         fingerprint: 'safari',
         alpn: const ['h2'],
-        transport: const VLESSTransportWS(path: '/x', host: 'h.example'),
+        transport: const ProxyTransportWS(path: '/x', host: 'h.example'),
       ),
     ),
   );

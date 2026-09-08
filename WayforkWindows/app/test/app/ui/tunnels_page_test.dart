@@ -71,7 +71,7 @@ void main() {
     await tester.tap(find.text('Home').first);
     await tester.pumpAndSettle();
     expect(find.byType(OpenVPNDetail), findsNothing);
-    expect(find.byType(VLESSDetail), findsOneWidget);
+    expect(find.byType(LinkDetail), findsOneWidget);
 
     await tester.tap(find.text('Home').first);
     await tester.pumpAndSettle();
@@ -197,7 +197,7 @@ void main() {
     expect(view.picker.openCalls, 1);
   });
 
-  testWidgets('Add VLESS from URL… previews the link before storing it', (
+  testWidgets('Add from link… previews the link before storing it', (
     tester,
   ) async {
     final app = await boot(tester, store: Store.empty);
@@ -207,11 +207,12 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Add'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Add VLESS from URL…'));
+    await tester.tap(find.text('Add from link…'));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextBox).last, vlessURI);
     await tester.pumpAndSettle();
+    expect(find.text('VLESS'), findsOneWidget);
     expect(find.text('example.com:443'), findsOneWidget);
     expect(
       find.text('REALITY · SNI example.com · fingerprint chrome'),
@@ -229,5 +230,59 @@ void main() {
     final tunnel = app.model.store.tunnels.single;
     expect(tunnel.name, 'Reality');
     expect(tunnel.kind.vless?.server, 'example.com');
+  });
+
+  testWidgets('Add from link… names the kind in a parse error', (tester) async {
+    final app = await boot(tester, store: Store.empty);
+    final view = page(app, AppNavigator());
+
+    await tester.pumpWidget(view.widget);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add from link…'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byType(TextBox).last,
+      'ss://aes-256-cfb:p@legacy.example.net:8388',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('method "aes-256-cfb" is not supported'), findsOneWidget);
+    expect(app.model.store.tunnels, isEmpty);
+  });
+
+  testWidgets('Add WireGuard… warns about a narrow AllowedIPs', (tester) async {
+    final app = await boot(tester, store: Store.empty);
+    final view = page(app, AppNavigator());
+
+    await tester.pumpWidget(view.widget);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add WireGuard…'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextBox).last, '''
+[Interface]
+PrivateKey = AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
+Address = 10.9.0.2/32
+[Peer]
+PublicKey = ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=
+Endpoint = wg.example.net:51820
+AllowedIPs = 10.0.0.0/8
+''');
+    await tester.pumpAndSettle();
+    expect(find.text('wg.example.net:51820'), findsOneWidget);
+    expect(find.textContaining('Routes only 10.0.0.0/8'), findsOneWidget);
+
+    await tester.tap(find.text('Add').last);
+    await pumpUntil(
+      tester,
+      () => app.model.store.tunnels.isNotEmpty,
+      what: 'the added tunnel',
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(app.model.store.tunnels.single.kind.wireGuard, isNotNull);
   });
 }
