@@ -6,6 +6,37 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Four more tunnel kinds, on both platforms.** Next to OpenVPN and VLESS, Wayfork now
+  takes a WireGuard `.conf` (file, drag & drop, or pasted) and `ss://`, `trojan://` and
+  `vmess://` links. They cost nothing at runtime: like VLESS, each is a few lines in the
+  sing-box config — no extra process, no adapter, ready whenever routing is on. WireGuard
+  runs inside sing-box's own userspace stack, so it needs no driver and leaves nothing
+  behind.
+- **One Add-from-link sheet.** *+ Add › Add from link…* recognises the scheme itself and
+  previews what it parsed, so a pasted link no longer has to match a menu item; *+ Add ›
+  Add WireGuard…* takes a file or pasted config with the same preview. Every link kind
+  offers **Copy** with its secret masked in the UI and restored from the Keychain / DPAPI.
+- **WireGuard resolvers.** A WireGuard tunnel gets the same per-tunnel DNS choice OpenVPN
+  has: *Automatic* uses the `DNS =` line from the conf, and as the default tunnel it
+  resolves everything through the tunnel instead of a public DoT server.
+
+### Changed
+
+- A config whose `AllowedIPs` covers less than everything is imported as written and
+  flagged: traffic Wayfork sends into that tunnel outside the list is dropped by the peer.
+- What sing-box would carry but misroute or silently weaken is still refused at import,
+  with the reason named: pre-AEAD Shadowsocks ciphers, SIP003 `plugin=`, VMess `alterId`
+  above 0 and non-V2RayN `vmess://` forms.
+
+### Fixed
+
+- Server hostnames are no longer resolved to Wayfork's own fake IPs while it is running —
+  a lookup that went through the running tunnel could return an address that routes back
+  into the TUN. Only WireGuard peers would have been misconfigured by it, but the fix is in
+  the shared resolver.
+
 ## [0.4.0] — 2026-09-02
 
 Hardening from a day of field debugging (Discord voice through a UDP-filtering VPS,

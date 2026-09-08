@@ -123,6 +123,56 @@ Written as user scenarios. Technical details belong to Phase 2.
 - Setting "Use Wayfork as the system resolver while On" (on by default) turns it off for
   people who run their own resolver setup.
 
+**F13. More tunnel types** *(added 2026-09-07, promoted from L3; approved 2026-09-07)*
+- A tunnel can be anything the pinned sing-box carries natively, imported the way a
+  `vless://` link is today: a WireGuard `.conf` file (picked or pasted), and `ss://`,
+  `trojan://`, `vmess://` links. Same set on both platforms; secrets land in Keychain /
+  DPAPI like every other tunnel credential, and an export carries them only through the
+  existing "export with secrets" path.
+- The list stops where live testing stops: a kind ships only if there is a real server to
+  check it against. Today that fence is the maintainer's Xray panel, which serves exactly
+  WireGuard, Shadowsocks, Trojan and VMess. Anything else — Hysteria2, TUIC, AnyTLS — is the
+  same recipe on the day a server exists, not a redesign.
+- All of these follow the **VLESS model**: a native sing-box outbound (WireGuard: an
+  `endpoints[]` entry), no process of its own, no interface to bring up — the tunnel is
+  ready whenever sing-box runs. No new bundled binary: the pinned sing-box 1.13.19 already
+  carries `with_wireguard`, `with_quic` and `with_utls` on both platforms. A WireGuard
+  endpoint tag works as a route target and as a DNS detour like any outbound — verified
+  2026-09-07 before the design was written.
+- Everything a tunnel already has applies unchanged: domain / application / IP rules, the
+  default tunnel and its exceptions, traffic rates and the dead-UDP hint, import/export.
+- Scope of F13:
+
+| Kind | Input | Secret(s) | In F13 |
+|------|-------|-----------|--------|
+| WireGuard | `.conf` file / pasted INI (`[Interface]`, `[Peer]`) | private key, preshared key | yes, first |
+| Shadowsocks | `ss://` SIP002 (base64 userinfo, `plugin=`) | password | yes; AEAD + 2022 methods only, `plugin` → unsupported |
+| Trojan | `trojan://pw@host:port?sni&fp&alpn&type&path&host&serviceName` | password | yes; shares the VLESS TLS/transport code |
+| VMess | `vmess://` base64 JSON (V2RayN) | uuid | yes; `aid>0` → unsupported |
+| Subscriptions (URL → base64 list of links) | URL | — | optional follow-up, after the four kinds |
+| Hysteria2, TUIC, AnyTLS, SOCKS/HTTP upstream, NaiveProxy | links / fields | password | no — no server to test against; same recipe on request |
+| XHTTP via Xray-core | `vless://…type=xhttp` | uuid | no — separate approval (below) |
+| IKEv2 / L2TP / other per-process VPNs | — | — | no — own process + system NE, outside the architecture |
+
+- What sing-box would misroute or silently degrade is **refused at import with a reason**,
+  never guessed: Shadowsocks legacy ciphers and `plugin=`, VMess `aid > 0` and non-V2RayN
+  link forms. The VLESS parser set the precedent.
+- A WireGuard conf whose `AllowedIPs` is narrower than `0.0.0.0/0` is imported as written
+  and flagged: traffic Wayfork routes into it outside that list is dropped by the peer.
+- Subscription URLs are an optional follow-up on the same parser: paste a URL, fetch,
+  decode, pick servers from a checklist. One-shot import, no auto-refresh — refreshing a
+  server list belongs with L4 tunnel health.
+- **VLESS over XHTTP stays out of F13** and keeps its own shape: sing-box has no XHTTP
+  transport (1.13.19 rejects `xhttp`/`splithttp`; upstream declined it), so each XHTTP
+  tunnel runs its own bundled `xray` process with a local SOCKS5 inbound that sing-box
+  reaches through a `socks` outbound — the OpenVPN per-process model with a port instead of
+  a `utun`. Needs a pinned, signed `xray` binary (`com.wayfork.bin.xray`), an `XrayRuntime`
+  entry in the plan, an xray config generator, `type=xhttp` in the URI parser and a
+  process-path direct rule for xray's own traffic. Separate approval, its own roadmap file.
+- Plan, decisions and per-step progress:
+  [roadmap/more-tunnel-types.md](roadmap/more-tunnel-types.md); design in
+  [design/04-tunnels.md](design/04-tunnels.md).
+
 ### Later
 
 **L1. Rule sources beyond a single domain**
@@ -134,16 +184,8 @@ Written as user scenarios. Technical details belong to Phase 2.
   [design/07-rule-testing.md](design/07-rule-testing.md) (2026-08-25, not scheduled).
 - Live connection view: active connections with domain, tunnel, bytes.
 
-**L3. More tunnel types**
-- WireGuard configs, Shadowsocks, Trojan, Hysteria2 (all native to sing-box).
-- Subscription URLs that yield a list of servers.
-- VLESS over XHTTP via a bundled Xray-core: sing-box has no XHTTP transport (1.13.19
-  rejects `xhttp`/`splithttp`; upstream declined it), so each XHTTP tunnel runs its own
-  `xray` process with a local SOCKS5 inbound and sing-box reaches it through a `socks`
-  outbound — the OpenVPN per-process model with a port instead of a `utun`. Needs a pinned,
-  signed `xray` binary (`com.wayfork.bin.xray`), an `XrayRuntime` entry in the plan, an
-  xray config generator, `type=xhttp` in the URI parser and a process-path direct rule for
-  xray's own traffic. See [design/04-tunnels.md](design/04-tunnels.md).
+**L3. More tunnel types** — promoted to **F13** (2026-09-07). WireGuard, Shadowsocks,
+Trojan, VMess, subscription URLs and XHTTP-via-Xray are all tracked there.
 
 **L4. Tunnel health**
 - Periodic latency/availability checks per tunnel.
@@ -198,6 +240,17 @@ unrelated domain, sending the investigation sideways (H4).
   CDN ranges) attach an unrelated domain to raw-IP flows in Traffic.
 - Drop `reverse_mapping` from the generator (routing does not need it: tunnel domains go
   through fake-ip), or at minimum show the IP next to the mapped name.
+
+**H5. Actionable dead-UDP hint** *(approved 2026-09-02, follow-up of H3)*
+- H3's ⚠ says a tunnel is dropping UDP but not *what* is dying, so the user still has to
+  read the Clash API by hand to find the process and the address — which is exactly what
+  the maintainer did on 2026-09-02 before adding two Direct rules that fixed Discord voice.
+- Clicking the ⚠ lists the one-way flows (process, destination, bytes sent with no reply)
+  and offers **Try Direct**: a prefilled, editable `/32` IP rule through the normal add
+  path. Suggest only — never auto-apply, never widen the prefix automatically.
+- This reopens the F9 privacy boundary on purpose: per-flow hosts and processes leave the
+  daemon only on an explicit click, as a one-shot pull, never streamed.
+- Plan and stages: [roadmap/dead-udp-suggestions.md](roadmap/dead-udp-suggestions.md).
 
 ## Phase 2 — Design
 
@@ -488,3 +541,46 @@ is tracked in [ROADMAP-windows.md](ROADMAP-windows.md) § WM7 and lands together
       TUN and watch the log); with another VPN holding the interface, the menu bar goes to
       error, one notification arrives, and Wayfork comes back on its own once that VPN is
       off; Turn Off during a failing start answers immediately.
+
+### M7 — Actionable dead-UDP hint (H5)
+
+Phase 1 above, § "Hardening", H5. Stages, decisions and per-step checkboxes live in
+[roadmap/dead-udp-suggestions.md](roadmap/dead-udp-suggestions.md); this milestone tracks
+only the shipped outcome. The Windows half is [ROADMAP-windows.md](ROADMAP-windows.md)
+§ WM8 and lands together with it.
+
+- [ ] Design notes: the details request in [design/05-daemon.md](design/05-daemon.md)
+      (amending the F9 privacy note), the flyout and its wording in
+      [design/02-ux.md](design/02-ux.md).
+- [ ] Daemon: a user-initiated `oneWayUDPDetails(tunnelID)` over XPC — aggregated rows,
+      capped, nothing streamed and nothing logged.
+- [ ] App: the ⚠ opens the details, each row offers **Try Direct** with an editable `/32`
+      prefill; the affordance disappears when the request fails or comes back empty.
+- [ ] Manual check: with a tunnel whose server drops UDP, the hint names the process and
+      the destination, and **Try Direct** lands a working rule.
+
+### M8 — More tunnel types (F13)
+
+Phase 1 above, § F13. Stages, decisions and per-step checkboxes live in
+[roadmap/more-tunnel-types.md](roadmap/more-tunnel-types.md); this milestone tracks only
+the shipped outcome. The Windows half is [ROADMAP-windows.md](ROADMAP-windows.md) § WM9
+and follows kind by kind, on the fixtures this milestone produces.
+
+- [ ] Design notes: per-kind sections (grammar → meta → sing-box JSON → validation) in
+      [design/04-tunnels.md](design/04-tunnels.md), DNS per kind in
+      [design/03-routing.md](design/03-routing.md), kinds and secret keys in
+      [design/01-data-model.md](design/01-data-model.md), the add flows and per-kind card
+      fields in [design/02-ux.md](design/02-ux.md).
+- [x] Core: `TunnelKind` cases and metas, `WireGuardConfParser` and `ProxyLinkParser` with
+      their fixtures, the shared TLS/transport helpers split out of `vlessOutbound`,
+      generator builders (WireGuard as an `endpoints[]` entry), the golden variants
+      `wireguard`, `default-wireguard` and `proxy-links`, `RuntimePlanBuilder` secrets,
+      `wayforkctl --link` / `--wireguard`. Also new: `everyReferencedTagIsDefined`, which
+      catches the dangling tags `sing-box check` silently accepts.
+- [x] App: **Add** menu with *Add WireGuard…* and *Add from link…*, `.conf` accepted by the
+      drop target and the seed importer, per-kind card fields and badges, masked link
+      **Copy** for every link kind (`AddLinkSheet` replaces the VLESS-only sheet;
+      `AddWireGuardSheet` takes a file or pasted text and warns on a narrow `AllowedIPs`).
+- [ ] Manual check: one tunnel per kind the maintainer has a server for carries traffic
+      through a domain rule; WireGuard as the default tunnel resolves DNS through the
+      endpoint with no leak.

@@ -4,10 +4,11 @@
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11%20·%20x64%20%7C%20arm64-0078D4?logo=windows11&logoColor=white)](#windows)
 [![OpenVPN](https://img.shields.io/badge/OpenVPN-EA7E20?logo=openvpn&logoColor=white)](#tunnels)
 [![VLESS / REALITY](https://img.shields.io/badge/VLESS-REALITY-6E56CF)](#tunnels)
+[![WireGuard](https://img.shields.io/badge/WireGuard-88171A?logo=wireguard&logoColor=white)](#tunnels)
 [![Release](https://img.shields.io/github/v/release/fosteev/Wayfork?include_prereleases&color=2ea043)](https://github.com/fosteev/Wayfork/releases)
 
 **Per-domain split tunneling across several VPNs at once.** Add your tunnels (OpenVPN
-`.ovpn`, VLESS `vless://`), write rules like `*.example.com → Work`, `Telegram → Home`,
+`.ovpn`, WireGuard `.conf`, `vless://`, `ss://`, `trojan://`, `vmess://`), write rules like `*.example.com → Work`, `Telegram → Home`,
 `10.8.0.0/24 → Office`, and pick which tunnel takes everything else — or none. All tunnels
 stay up simultaneously; there is no switching.
 
@@ -20,9 +21,9 @@ Windows**, one repository, one rule model, one export format.
 
 ## Features
 
-- **Tunnels** — OpenVPN profiles (inline certs, credentials asked once) and VLESS URIs
-  (TCP, WebSocket, gRPC; TLS and REALITY). Secrets go to the Keychain (macOS) or DPAPI
-  (Windows), never to disk in the clear.
+- **Tunnels** — OpenVPN profiles (inline certs, credentials asked once), WireGuard configs,
+  and VLESS / Shadowsocks / Trojan / VMess links (TCP, WebSocket, gRPC; TLS and REALITY).
+  Secrets go to the Keychain (macOS) or DPAPI (Windows), never to disk in the clear.
 - **Rules** — `domain → tunnel`, first match wins. Exact (`api.example.com`), suffix
   (`example.com` covers subdomains), wildcard (`*.cdn.example.com`).
 - **Application rules** — route an app, and every process inside it, through a tunnel or
@@ -111,8 +112,14 @@ under `%LOCALAPPDATA%\Wayfork` are kept.
   `<ca>`/`<cert>`/`<key>` blocks work as they are; a profile that needs a username/password
   asks once. `up`/`down` scripts are never executed, and routes pushed by the server are
   ignored (`--route-nopull`) — Wayfork decides what goes where.
-- **VLESS** — *+ Add › VLESS…* and paste a `vless://` URI; the sheet shows what was parsed.
-  REALITY over TCP is supported, XHTTP is not (see the roadmap).
+- **WireGuard** — *+ Add › Add WireGuard…*, or drop a `.conf` onto the window; the config
+  can also be pasted. It runs inside sing-box's userspace stack: no driver, no adapter, and
+  the `DNS =` line becomes the tunnel's own resolver. A conf whose `AllowedIPs` is narrower
+  than `0.0.0.0/0` is kept as written and flagged — the peer drops whatever falls outside.
+- **Links** — *+ Add › Add from link…* takes `vless://`, `ss://`, `trojan://` and
+  `vmess://`; the scheme picks the parser and the sheet shows what it understood. REALITY
+  over TCP is supported, XHTTP is not (see the roadmap). Refused with a reason rather than
+  guessed: pre-AEAD Shadowsocks ciphers, SIP003 `plugin=`, VMess `alterId` above 0.
 - *Route everything else through this tunnel* makes it the default exit.
 
 ## Rules

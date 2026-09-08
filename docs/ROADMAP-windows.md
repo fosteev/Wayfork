@@ -81,6 +81,13 @@ adapters through `GetAdaptersAddresses`.
   and an NRPT catch-all rule; the design doc records the outcome.
 - Same setting, same default (on).
 
+**F13. More tunnel types** — same kinds and the same inputs as on macOS (WireGuard `.conf`,
+`ss://`, `trojan://`, `vmess://`), parsed by the Dart twins of the Swift
+parsers against the shared fixtures. Secrets go to DPAPI-protected `secrets.dat`; WireGuard
+runs inside sing-box's own userspace stack, so wintun is not involved and the Go service —
+to which the sing-box config is opaque — needs no change. An export from either platform
+still imports on the other.
+
 ### Windows-only notes
 
 - IPv4-only while On, as on macOS: no AAAA answers, IPv6 stays outside the TUN.
@@ -516,3 +523,40 @@ while debugging Discord voice on the maintainer's PC, plus one Windows-only item
       the rule. Normalize `app-<version>` path segments to a version pattern when a rule
       is created from the picker, and warn in Rules when a rule matches no installed
       binary.
+
+### WM8 — Actionable dead-UDP hint (H5)
+
+Windows half of ROADMAP.md § "Hardening", H5, and of its § M7. Stages and decisions:
+[roadmap/dead-udp-suggestions.md](roadmap/dead-udp-suggestions.md); design deltas go to
+[design/08-windows.md](design/08-windows.md) § "Hardening".
+
+- [ ] Service: the details request over the named pipe (`wire.go` + dispatcher), the
+      sampler retaining the last sample's metadata; Dart client method.
+- [ ] App: a `fluent_ui` flyout on the dashboard tunnel row with the one-way flows and
+      **Try Direct** into `QuickAddBar`; degrade to the plain H3 tooltip when the service
+      predates the request (MSI upgrade skew).
+- [ ] PC run (`ssh wf-pc`): with the Discord Direct rules temporarily removed, joining
+      voice lights the ⚠, the flyout names `Discord.exe` and the `104.29.x` destination,
+      and **Try Direct** restores voice; put the permanent rules back afterwards.
+
+### WM9 — More tunnel types (F13)
+
+Windows half of ROADMAP.md § F13 and of its § M8. Stages and decisions:
+[roadmap/more-tunnel-types.md](roadmap/more-tunnel-types.md); design deltas go to
+[design/08-windows.md](design/08-windows.md). Depends only on the fixtures from M8's core
+step, so it can follow kind by kind rather than wait for all of macOS.
+
+- [x] Core (Dart): kinds and metas with the one-key JSON envelope identical to Swift, the
+      WireGuard INI parser and the link parser replaying `fixtures/wireguard/*` and
+      `fixtures/links/*.json`, generator builders replaying the new `singbox/*` goldens byte
+      for byte, new DPAPI secret keys, `export_document.dart`.
+- [x] App (Flutter): **Add** flyout entries, the generalized add dialog with scheme
+      detection and per-kind parse errors, the WireGuard file/paste dialog with its
+      `AllowedIPs` warning, per-kind fields in `tunnel_details.dart` (`LinkDetail` /
+      `WireGuardDetail`, sharing a new `TunnelDnsEditor`), kind labels in `status_text.dart`.
+- [x] Service (Go): untouched, `go test ./...` and `GOOS=windows go build ./...` green.
+      `core/validate.go` has no outbound-type whitelist, so `endpoints[]` passes through it
+      unnoticed — the sing-box config really is opaque to the service.
+- [ ] PC run (`ssh wf-pc`): a tunnel of each kind imported from the same links as on macOS
+      carries traffic, and an MSI upgrade over a store written by the older build still
+      loads (new → old is knowingly forward-only, old → new must work).
