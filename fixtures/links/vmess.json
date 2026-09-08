@@ -1,0 +1,165 @@
+{
+  "accepted" : [
+    {
+      "expected" : {
+        "meta" : {
+          "allowInsecure" : false,
+          "alpn" : [
+
+          ],
+          "port" : 443,
+          "security" : "auto",
+          "server" : "tcp.example.net",
+          "sni" : "tls.example.net",
+          "tlsSecurity" : "tls",
+          "transport" : {
+            "tcp" : {
+
+            }
+          }
+        },
+        "name" : "TCP TLS",
+        "uuid" : "00000000-0000-4000-8000-000000000021"
+      },
+      "name" : "tcp-tls",
+      "uri" : "vmess://eyJ2IjoiMiIsInBzIjoiVENQIFRMUyIsImFkZCI6InRjcC5leGFtcGxlLm5ldCIsInBvcnQiOjQ0MywiaWQiOiIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMjEiLCJhaWQiOjAsInNjeSI6ImF1dG8iLCJuZXQiOiJ0Y3AiLCJ0eXBlIjoibm9uZSIsInRscyI6InRscyIsInNuaSI6InRscy5leGFtcGxlLm5ldCJ9"
+    },
+    {
+      "expected" : {
+        "meta" : {
+          "allowInsecure" : false,
+          "alpn" : [
+
+          ],
+          "port" : 8443,
+          "security" : "auto",
+          "server" : "ws.example.net",
+          "sni" : "ws.example.net",
+          "tlsSecurity" : "tls",
+          "transport" : {
+            "ws" : {
+              "host" : "host.example.net",
+              "path" : "/socket"
+            }
+          }
+        },
+        "name" : "WebSocket",
+        "uuid" : "00000000-0000-4000-8000-000000000022"
+      },
+      "name" : "websocket",
+      "uri" : "vmess://eyJ2IjoiMiIsInBzIjoiV2ViU29ja2V0IiwiYWRkIjoid3MuZXhhbXBsZS5uZXQiLCJwb3J0IjoiODQ0MyIsImlkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDIyIiwiYWlkIjoiMCIsInNjeSI6ImF1dG8iLCJuZXQiOiJ3cyIsInR5cGUiOiJub25lIiwiaG9zdCI6Imhvc3QuZXhhbXBsZS5uZXQiLCJwYXRoIjoiL3NvY2tldCIsInRscyI6InRscyJ9"
+    },
+    {
+      "expected" : {
+        "meta" : {
+          "allowInsecure" : false,
+          "alpn" : [
+
+          ],
+          "port" : 443,
+          "security" : "auto",
+          "server" : "grpc.example.net",
+          "sni" : "grpc.example.net",
+          "tlsSecurity" : "tls",
+          "transport" : {
+            "grpc" : {
+              "serviceName" : "wayfork"
+            }
+          }
+        },
+        "name" : "gRPC",
+        "uuid" : "00000000-0000-4000-8000-000000000023"
+      },
+      "name" : "grpc",
+      "uri" : "vmess://eyJ2IjoiMiIsInBzIjoiZ1JQQyIsImFkZCI6ImdycGMuZXhhbXBsZS5uZXQiLCJwb3J0Ijo0NDMsImlkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDIzIiwiYWlkIjowLCJuZXQiOiJncnBjIiwidHlwZSI6Im5vbmUiLCJwYXRoIjoid2F5Zm9yayIsInRscyI6InRscyJ9"
+    },
+    {
+      "expected" : {
+        "meta" : {
+          "allowInsecure" : false,
+          "alpn" : [
+
+          ],
+          "port" : 80,
+          "security" : "none",
+          "server" : "none.example.net",
+          "tlsSecurity" : "none",
+          "transport" : {
+            "tcp" : {
+
+            }
+          }
+        },
+        "name" : "No Cipher",
+        "uuid" : "00000000-0000-4000-8000-000000000024"
+      },
+      "name" : "security-none-no-tls",
+      "uri" : "vmess://eyJ2IjoiMiIsInBzIjoiTm8gQ2lwaGVyIiwiYWRkIjoibm9uZS5leGFtcGxlLm5ldCIsInBvcnQiOjgwLCJpZCI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAyNCIsImFpZCI6MCwic2N5Ijoibm9uZSIsIm5ldCI6InRjcCIsInR5cGUiOiJub25lIiwidGxzIjoiIn0="
+    },
+    {
+      "expected" : {
+        "meta" : {
+          "allowInsecure" : false,
+          "alpn" : [
+
+          ],
+          "port" : 443,
+          "security" : "chacha20-poly1305",
+          "server" : "strings.example.net",
+          "tlsSecurity" : "none",
+          "transport" : {
+            "tcp" : {
+
+            }
+          }
+        },
+        "name" : "Numeric Strings",
+        "uuid" : "00000000-0000-4000-8000-000000000025"
+      },
+      "name" : "numeric-strings",
+      "uri" : "vmess://eyJ2IjoiMiIsInBzIjoiTnVtZXJpYyBTdHJpbmdzIiwiYWRkIjoic3RyaW5ncy5leGFtcGxlLm5ldCIsInBvcnQiOiI0NDMiLCJpZCI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAyNSIsImFpZCI6IjAiLCJzY3kiOiJjaGFjaGEyMC1wb2x5MTMwNSIsIm5ldCI6InRjcCIsInR5cGUiOiJub25lIiwidGxzIjoiIn0="
+    }
+  ],
+  "rejected" : [
+    {
+      "error" : {
+        "case" : "unsupported",
+        "message" : "alterId other than 0 is not supported"
+      },
+      "name" : "alter-id",
+      "uri" : "vmess://eyJ2IjoiMiIsImFkZCI6ImJhZC1haWQuZXhhbXBsZS5uZXQiLCJwb3J0Ijo0NDMsImlkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDI2IiwiYWlkIjoxLCJuZXQiOiJ0Y3AiLCJ0bHMiOiIifQ=="
+    },
+    {
+      "error" : {
+        "case" : "invalid",
+        "message" : "UUID is invalid"
+      },
+      "name" : "invalid-uuid",
+      "uri" : "vmess://eyJ2IjoiMiIsImFkZCI6ImJhZC1pZC5leGFtcGxlLm5ldCIsInBvcnQiOjQ0MywiaWQiOiJub3QtYS11dWlkIiwiYWlkIjowLCJuZXQiOiJ0Y3AiLCJ0bHMiOiIifQ=="
+    },
+    {
+      "error" : {
+        "case" : "unsupported",
+        "message" : "Transport \"h2\" is not supported yet."
+      },
+      "name" : "h2",
+      "uri" : "vmess://eyJ2IjoiMiIsImFkZCI6ImgyLmV4YW1wbGUubmV0IiwicG9ydCI6NDQzLCJpZCI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAyNyIsImFpZCI6MCwibmV0IjoiaDIiLCJ0bHMiOiJ0bHMifQ=="
+    },
+    {
+      "error" : {
+        "case" : "unsupported",
+        "message" : "only the V2RayN vmess:// form is supported"
+      },
+      "name" : "shadowrocket",
+      "uri" : "vmess://00000000-0000-4000-8000-000000000028@shadowrocket.example.net:443?tls=1"
+    },
+    {
+      "error" : {
+        "case" : "unsupported",
+        "message" : "only the V2RayN vmess:// form is supported"
+      },
+      "name" : "not-base64",
+      "uri" : "vmess://not-base64-json"
+    }
+  ]
+}

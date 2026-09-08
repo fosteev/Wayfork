@@ -1,0 +1,26 @@
+{
+  "bad-key-length" : {
+    "case" : "invalid",
+    "message" : "PrivateKey must be base64 encoding of 32 bytes"
+  },
+  "ipv6-only-address" : {
+    "case" : "invalid",
+    "message" : "Address must contain an IPv4 prefix"
+  },
+  "no-address" : {
+    "case" : "invalid",
+    "message" : "Address must contain an IPv4 prefix"
+  },
+  "no-private-key" : {
+    "case" : "invalid",
+    "message" : "PrivateKey is missing"
+  },
+  "peer-without-allowed-ips" : {
+    "case" : "invalid",
+    "message" : "peer 1 AllowedIPs must contain IPv4"
+  },
+  "peer-without-endpoint" : {
+    "case" : "invalid",
+    "message" : "peer 1 Endpoint is missing"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "meta" : {
+    "addresses" : [
+      "10.8.0.2/32"
+    ],
+    "discoveredDNS" : [
+
+    ],
+    "dns" : {
+      "auto" : {
+
+      }
+    },
+    "peers" : [
+      {
+        "allowedIPs" : [
+          "10.0.0.0/8",
+          "192.168.0.0/16",
+          "172.16.5.4/32"
+        ],
+        "hasPresharedKey" : false,
+        "host" : "203.0.113.7",
+        "port" : 51820,
+        "publicKey" : "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8="
+      }
+    ]
+  },
+  "name" : "203.0.113.7",
+  "privateKey" : "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+}

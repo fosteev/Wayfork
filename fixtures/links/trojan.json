@@ -1,0 +1,157 @@
+{
+  "accepted" : [
+    {
+      "expected" : {
+        "meta" : {
+          "allowInsecure" : false,
+          "alpn" : [
+
+          ],
+          "port" : 443,
+          "security" : "tls",
+          "server" : "tls.example.net",
+          "sni" : "tls.example.net",
+          "transport" : {
+            "tcp" : {
+
+            }
+          }
+        },
+        "name" : "TLS",
+        "password" : "fake-password"
+      },
+      "name" : "plain-tls",
+      "uri" : "trojan://fake-password@tls.example.net:443#TLS"
+    },
+    {
+      "expected" : {
+        "meta" : {
+          "allowInsecure" : false,
+          "alpn" : [
+
+          ],
+          "port" : 443,
+          "security" : "tls",
+          "server" : "ws.example.net",
+          "sni" : "ws.example.net",
+          "transport" : {
+            "ws" : {
+              "host" : "host.example.net",
+              "path" : "/socket"
+            }
+          }
+        },
+        "name" : "WebSocket",
+        "password" : "fake-password"
+      },
+      "name" : "tls-websocket",
+      "uri" : "trojan://fake-password@ws.example.net:443?security=tls&type=ws&path=%2Fsocket&host=host.example.net#WebSocket"
+    },
+    {
+      "expected" : {
+        "meta" : {
+          "allowInsecure" : false,
+          "alpn" : [
+
+          ],
+          "fingerprint" : "firefox",
+          "port" : 443,
+          "realityPublicKey" : "fake-public-key",
+          "realityShortID" : "0123abcd",
+          "security" : "reality",
+          "server" : "reality.example.net",
+          "sni" : "reality.example.net",
+          "transport" : {
+            "tcp" : {
+
+            }
+          }
+        },
+        "name" : "Reality",
+        "password" : "fake-password"
+      },
+      "name" : "reality",
+      "uri" : "trojan://fake-password@reality.example.net:443?security=reality&pbk=fake-public-key&sid=0123abcd&fp=firefox#Reality"
+    },
+    {
+      "expected" : {
+        "meta" : {
+          "allowInsecure" : false,
+          "alpn" : [
+
+          ],
+          "port" : 443,
+          "security" : "tls",
+          "server" : "grpc.example.net",
+          "sni" : "grpc.example.net",
+          "transport" : {
+            "grpc" : {
+              "serviceName" : "wayfork"
+            }
+          }
+        },
+        "name" : "gRPC",
+        "password" : "fake-password"
+      },
+      "name" : "grpc",
+      "uri" : "trojan://fake-password@grpc.example.net:443?type=grpc&serviceName=wayfork#gRPC"
+    },
+    {
+      "expected" : {
+        "meta" : {
+          "allowInsecure" : true,
+          "alpn" : [
+
+          ],
+          "port" : 443,
+          "security" : "tls",
+          "server" : "insecure.example.net",
+          "sni" : "insecure.example.net",
+          "transport" : {
+            "tcp" : {
+
+            }
+          }
+        },
+        "name" : "Insecure",
+        "password" : "fake password"
+      },
+      "name" : "allow-insecure",
+      "uri" : "trojan://fake%20password@insecure.example.net:443?allowInsecure=1#Insecure"
+    }
+  ],
+  "rejected" : [
+    {
+      "error" : {
+        "case" : "unsupported",
+        "message" : "security=none is not supported"
+      },
+      "name" : "no-security",
+      "uri" : "trojan://fake-password@plain.example.net:80?security=none"
+    },
+    {
+      "error" : {
+        "case" : "invalid",
+        "message" : "password is missing"
+      },
+      "name" : "empty-password",
+      "uri" : "trojan://@empty.example.net:443"
+    },
+    {
+      "error" : {
+        "case" : "unsupported",
+        "message" : "Transport \"kcp\" is not supported yet."
+      },
+      "name" : "kcp",
+      "uri" : "trojan://fake-password@kcp.example.net:443?type=kcp"
+    },
+    {
+      "error" : {
+        "case" : "invalid",
+        "message" : "REALITY requires pbk"
+      },
+      "name" : "reality-without-pbk",
+      "uri" : "trojan://fake-password@reality.example.net:443?security=reality"
+    }
+  ]
+}

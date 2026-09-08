@@ -6,10 +6,17 @@ public enum SecretKey: Sendable, Hashable {
     case credentials(UUID)
     case keyPassphrase(UUID)
     case uuid(UUID)
+    case privateKey(UUID)
+    case presharedKey(UUID)
+    case password(UUID)
 
     public var tunnelID: UUID {
         switch self {
-        case .ovpn(let id), .credentials(let id), .keyPassphrase(let id), .uuid(let id): id
+        case .ovpn(let id), .credentials(let id), .keyPassphrase(let id), .uuid(let id),
+            .privateKey(let id), .presharedKey(let id):
+            id
+        case .password(let id):
+            id
         }
     }
 
@@ -21,6 +28,9 @@ public enum SecretKey: Sendable, Hashable {
         case .credentials: return "tunnel/\(id)/credentials"
         case .keyPassphrase: return "tunnel/\(id)/keyPassphrase"
         case .uuid: return "tunnel/\(id)/uuid"
+        case .privateKey: return "tunnel/\(id)/privateKey"
+        case .presharedKey: return "tunnel/\(id)/presharedKey"
+        case .password: return "tunnel/\(id)/password"
         }
     }
 
@@ -36,12 +46,19 @@ public enum SecretKey: Sendable, Hashable {
         case "credentials": self = .credentials(id)
         case "keyPassphrase": self = .keyPassphrase(id)
         case "uuid": self = .uuid(id)
+        case "privateKey": self = .privateKey(id)
+        case "presharedKey": self = .presharedKey(id)
+        case "password": self = .password(id)
         default: return nil
         }
     }
 
     public static func all(for tunnelID: UUID) -> [SecretKey] {
-        [.ovpn(tunnelID), .credentials(tunnelID), .keyPassphrase(tunnelID), .uuid(tunnelID)]
+        [
+            .ovpn(tunnelID), .credentials(tunnelID), .keyPassphrase(tunnelID), .uuid(tunnelID),
+            .privateKey(tunnelID), .presharedKey(tunnelID),
+            .password(tunnelID),
+        ]
     }
 }
 

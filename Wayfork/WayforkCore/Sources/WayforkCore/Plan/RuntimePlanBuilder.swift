@@ -3,17 +3,26 @@ import Foundation
 /// Secrets needed to turn a `Store` into a `RuntimePlan`, keyed by tunnel id.
 public struct PlanSecrets: Sendable, Equatable {
     public var vlessUUIDs: [UUID: String]
+    public var wireGuardKeys: [UUID: WireGuardSecrets]
+    public var passwords: [UUID: String]
+    public var vmessUUIDs: [UUID: String]
     public var openVPNConfigs: [UUID: String]
     public var credentials: [UUID: Credentials]
     public var keyPassphrases: [UUID: String]
 
     public init(
         vlessUUIDs: [UUID: String] = [:],
+        wireGuardKeys: [UUID: WireGuardSecrets] = [:],
+        passwords: [UUID: String] = [:],
+        vmessUUIDs: [UUID: String] = [:],
         openVPNConfigs: [UUID: String] = [:],
         credentials: [UUID: Credentials] = [:],
         keyPassphrases: [UUID: String] = [:]
     ) {
         self.vlessUUIDs = vlessUUIDs
+        self.wireGuardKeys = wireGuardKeys
+        self.passwords = passwords
+        self.vmessUUIDs = vmessUUIDs
         self.openVPNConfigs = openVPNConfigs
         self.credentials = credentials
         self.keyPassphrases = keyPassphrases
@@ -45,6 +54,20 @@ public struct PlanSecrets: Sendable, Equatable {
                 if let uuid = try secretStore.read(.uuid(tunnel.id)) {
                     secrets.vlessUUIDs[tunnel.id] = uuid
                 }
+            case .wireGuard:
+                if let privateKey = try secretStore.read(.privateKey(tunnel.id)) {
+                    secrets.wireGuardKeys[tunnel.id] = WireGuardSecrets(
+                        privateKey: privateKey,
+                        presharedKey: try secretStore.read(.presharedKey(tunnel.id)))
+                }
+            case .shadowsocks, .trojan:
+                if let password = try secretStore.read(.password(tunnel.id)) {
+                    secrets.passwords[tunnel.id] = password
+                }
+            case .vmess:
+                if let uuid = try secretStore.read(.uuid(tunnel.id)) {
+                    secrets.vmessUUIDs[tunnel.id] = uuid
+                }
             }
         }
         return secrets
@@ -53,8 +76,8 @@ public struct PlanSecrets: Sendable, Equatable {
 
 /// Why an enabled tunnel was left out of the plan.
 public enum PlanWarning: Sendable, Equatable, Hashable {
-    /// The OpenVPN config body or the VLESS UUID is missing from Keychain (e.g. imported
-    /// without secrets). The UI flags the tunnel as needing its secret re-attached.
+    /// The OpenVPN config body, VLESS UUID or WireGuard private key is missing from Keychain
+    /// (e.g. imported without secrets). The UI flags the tunnel as needing its secret.
     case missingSecret(tunnelID: UUID)
 }
 
@@ -71,8 +94,8 @@ public enum RuntimePlanBuilder {
         bundlePath + "/Contents/Resources/bin/openvpn"
     }
 
-    /// `resolvedServerAddresses`: IPv4 addresses of the OpenVPN `remote` hostnames from
-    /// `HostResolver.resolveIPv4(HostResolver.openVPNHosts(in: store))`; empty when the
+    /// `resolvedServerAddresses`: IPv4 addresses of OpenVPN and WireGuard server hosts from
+    /// `HostResolver.resolveIPv4(HostResolver.serverHosts(in: store))`; empty when the
     /// caller could not resolve (the servers are then matched by name only).
     /// `systemDNSServers`: `SystemDNS.Snapshot.routable(override:)`, routed into the TUN by
     /// the generator. `networkResolvers`: `Snapshot.networkServers`, named as `dns-direct`.
@@ -111,6 +134,21 @@ public enum RuntimePlanBuilder {
                     warnings.append(.missingSecret(tunnelID: tunnel.id))
                     effectiveStore.tunnels[index].isEnabled = false
                 }
+            case .wireGuard:
+                if secrets.wireGuardKeys[tunnel.id] == nil {
+                    warnings.append(.missingSecret(tunnelID: tunnel.id))
+                    effectiveStore.tunnels[index].isEnabled = false
+                }
+            case .shadowsocks, .trojan:
+                if secrets.passwords[tunnel.id] == nil {
+                    warnings.append(.missingSecret(tunnelID: tunnel.id))
+                    effectiveStore.tunnels[index].isEnabled = false
+                }
+            case .vmess:
+                if secrets.vmessUUIDs[tunnel.id] == nil {
+                    warnings.append(.missingSecret(tunnelID: tunnel.id))
+                    effectiveStore.tunnels[index].isEnabled = false
+                }
             }
         }
 
@@ -118,6 +156,9 @@ public enum RuntimePlanBuilder {
             SingBoxConfigGenerator.Input(
                 store: effectiveStore,
                 vlessUUIDs: secrets.vlessUUIDs,
+                wireGuardKeys: secrets.wireGuardKeys,
+                passwords: secrets.passwords,
+                vmessUUIDs: secrets.vmessUUIDs,
                 openVPNBinaryPath: openVPNBinaryPath(bundlePath: bundlePath),
                 resolvedServerAddresses: resolvedServerAddresses,
                 systemDNSServers: systemDNSServers,

@@ -6,6 +6,7 @@ import Testing
 private let importDate = Date(timeIntervalSince1970: 1_787_659_200)
 private let importedOpenVPNID = UUID(uuidString: "10000000-0000-4000-8000-000000000001")!
 private let importedVLESSID = UUID(uuidString: "10000000-0000-4000-8000-000000000002")!
+private let importedWireGuardID = UUID(uuidString: "10000000-0000-4000-8000-000000000003")!
 
 private func openVPNTunnel(
     id: UUID = importedOpenVPNID, name: String = "Work", slot: Int = 17
@@ -32,6 +33,23 @@ private func vlessTunnel(
         slot: slot,
         kind: .vless(
             VLESSMeta(server: "proxy.example.com", port: 443, security: .tls)),
+        createdAt: importDate)
+}
+
+private func wireGuardTunnel() -> Tunnel {
+    Tunnel(
+        id: importedWireGuardID,
+        name: "WireGuard",
+        slot: 9,
+        kind: .wireGuard(
+            WireGuardMeta(
+                addresses: ["10.9.0.2/32"],
+                peers: [
+                    WireGuardPeer(
+                        host: "wg.example.net", port: 51820,
+                        publicKey: "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=",
+                        hasPresharedKey: true, allowedIPs: ["0.0.0.0/0"])
+                ])),
         createdAt: importDate)
 }
 
@@ -200,6 +218,60 @@ private func document(
         store: store, secretStore: secretStore, includeSecrets: false, exportedAt: importDate)
     #expect(sanitized.includesSecrets == false)
     #expect(sanitized.tunnels.map(\.secrets.isEmpty) == [true, true])
+}
+
+@Test func wireGuardSecretsRoundTripThroughExportAndImport() throws {
+    let store = Store(tunnels: [wireGuardTunnel()])
+    let privateKey = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+    let presharedKey = "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8="
+    let secretStore = InMemorySecretStore([
+        .privateKey(importedWireGuardID): privateKey,
+        .presharedKey(importedWireGuardID): presharedKey,
+    ])
+
+    let document = try StoreExporter.document(
+        store: store, secretStore: secretStore, includeSecrets: true, exportedAt: importDate)
+    let decoded = try ExportDocument.decode(document.encode())
+    let imported = StoreImporter.apply(decoded, to: .empty, mode: .replace)
+
+    #expect(imported.store.tunnels.map(\.kind) == store.tunnels.map(\.kind))
+    #expect(imported.secrets[.privateKey(importedWireGuardID)] == privateKey)
+    #expect(imported.secrets[.presharedKey(importedWireGuardID)] == presharedKey)
+}
+
+@Test func proxySecretsRoundTripThroughExportAndImport() throws {
+    let shadowsocksID = UUID(uuidString: "10000000-0000-4000-8000-000000000011")!
+    let trojanID = UUID(uuidString: "10000000-0000-4000-8000-000000000012")!
+    let vmessID = UUID(uuidString: "10000000-0000-4000-8000-000000000013")!
+    let store = Store(tunnels: [
+        Tunnel(
+            id: shadowsocksID, name: "SS", slot: 0,
+            kind: .shadowsocks(
+                ShadowsocksMeta(server: "ss.example.net", port: 8388, method: "aes-256-gcm"))),
+        Tunnel(
+            id: trojanID, name: "Trojan", slot: 1,
+            kind: .trojan(
+                TrojanMeta(server: "trojan.example.net", port: 443, security: .tls))),
+        Tunnel(
+            id: vmessID, name: "VMess", slot: 2,
+            kind: .vmess(
+                VMessMeta(
+                    server: "vmess.example.net", port: 443, security: "auto",
+                    tlsSecurity: .tls))),
+    ])
+    let secretStore = InMemorySecretStore([
+        .password(shadowsocksID): "fake-ss-password",
+        .password(trojanID): "fake-trojan-password",
+        .uuid(vmessID): "00000000-0000-4000-8000-000000000014",
+    ])
+
+    let document = try StoreExporter.document(
+        store: store, secretStore: secretStore, includeSecrets: true, exportedAt: importDate)
+    let imported = StoreImporter.apply(document, to: .empty, mode: .replace)
+
+    #expect(imported.secrets[.password(shadowsocksID)] == "fake-ss-password")
+    #expect(imported.secrets[.password(trojanID)] == "fake-trojan-password")
+    #expect(imported.secrets[.uuid(vmessID)] == "00000000-0000-4000-8000-000000000014")
 }
 
 // MARK: - F8

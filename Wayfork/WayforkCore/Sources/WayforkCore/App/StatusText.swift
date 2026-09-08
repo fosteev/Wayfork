@@ -191,7 +191,14 @@ public enum StatusText {
                 glyph: .idle, detail: "disabled · \(rules)", isDimmed: true, action: .enable)
         }
         if missingSecret {
-            let what = tunnel.kind.isOpenVPN ? "config" : "UUID"
+            let what: String
+            switch tunnel.kind {
+            case .openVPN: what = "config"
+            case .vless: what = "UUID"
+            case .wireGuard: what = "private key"
+            case .shadowsocks, .trojan: what = "password"
+            case .vmess: what = "UUID"
+            }
             return TunnelPresentation(
                 glyph: .failed, detail: "\(what) missing · \(rules)", isError: true,
                 action: .edit(tunnel.kind.isOpenVPN ? .replaceConfig : .replaceConfig))
@@ -206,7 +213,20 @@ public enum StatusText {
             break
         }
         guard tunnel.kind.isOpenVPN else {
-            let host = tunnel.kind.vless?.server ?? ""
+            let host: String
+            if let vless = tunnel.kind.vless {
+                host = vless.server
+            } else if let peer = tunnel.kind.wireGuard?.peers.first {
+                host = "\(peer.host):\(peer.port)"
+            } else if let shadowsocks = tunnel.kind.shadowsocks {
+                host = shadowsocks.server
+            } else if let trojan = tunnel.kind.trojan {
+                host = trojan.server
+            } else if let vmess = tunnel.kind.vmess {
+                host = vmess.server
+            } else {
+                host = ""
+            }
             return TunnelPresentation(glyph: .up, detail: "ready · \(host) · \(rules)")
         }
         switch state {
@@ -241,7 +261,14 @@ public enum StatusText {
         let endpoint = endpointDescription(tunnel.kind) + (isDefault ? defaultSuffix : "")
         if !tunnel.isEnabled { return ("disabled · \(endpoint)", .idle, false) }
         if missingSecret {
-            let what = tunnel.kind.isOpenVPN ? "config missing" : "UUID missing"
+            let what: String
+            switch tunnel.kind {
+            case .openVPN: what = "config missing"
+            case .vless: what = "UUID missing"
+            case .wireGuard: what = "private key missing"
+            case .shadowsocks, .trojan: what = "password missing"
+            case .vmess: what = "UUID missing"
+            }
             return ("\(what) · \(endpoint)", .failed, true)
         }
         guard global.isRunning || global == .starting else {
@@ -290,11 +317,47 @@ public enum StatusText {
             }
             if meta.flow == "xtls-rprx-vision" { parts.append("vision") }
             return parts.joined(separator: " · ")
+        case .wireGuard(let meta):
+            guard let first = meta.peers.first else { return "no peer" }
+            return "\(first.host):\(first.port)"
+        case .shadowsocks(let meta):
+            return "\(meta.server):\(meta.port) · \(meta.method)"
+        case .trojan(let meta):
+            var parts = ["\(meta.server):\(meta.port)", securityDescription(meta.security)]
+            appendTransport(meta.transport, to: &parts)
+            return parts.joined(separator: " · ")
+        case .vmess(let meta):
+            var parts = ["\(meta.server):\(meta.port)", meta.security]
+            appendTransport(meta.transport, to: &parts)
+            return parts.joined(separator: " · ")
         }
     }
 
     public static func typeBadge(_ kind: TunnelKind) -> String {
-        kind.isOpenVPN ? "OpenVPN" : "VLESS"
+        switch kind {
+        case .openVPN: "OpenVPN"
+        case .vless: "VLESS"
+        case .wireGuard: "WireGuard"
+        case .shadowsocks: "Shadowsocks"
+        case .trojan: "Trojan"
+        case .vmess: "VMess"
+        }
+    }
+
+    private static func securityDescription(_ security: TLSSecurity) -> String {
+        switch security {
+        case .reality: "REALITY"
+        case .tls: "TLS"
+        case .none: "no TLS"
+        }
+    }
+
+    private static func appendTransport(_ transport: ProxyTransport, to parts: inout [String]) {
+        switch transport {
+        case .tcp: break
+        case .ws: parts.append("ws")
+        case .grpc: parts.append("gRPC")
+        }
     }
 
     /// `1 rule`, `3 rules`.

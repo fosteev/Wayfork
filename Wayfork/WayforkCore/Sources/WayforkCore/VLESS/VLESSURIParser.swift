@@ -48,7 +48,7 @@ public enum VLESSURIParser {
                 "headerType \"\(headerType)\" is not supported yet.")
         }
 
-        let security: VLESSSecurity
+        let security: TLSSecurity
         switch query["security"] {
         case nil, "none": security = .none
         case "tls": security = .tls
@@ -57,7 +57,7 @@ public enum VLESSURIParser {
             throw VLESSImportError.invalid("security must be none, tls, or reality")
         }
 
-        let transport: VLESSTransport
+        let transport: ProxyTransport
         switch query["type"] {
         case nil, "tcp": transport = .tcp
         case "ws": transport = .ws(path: query["path"] ?? "/", host: query["host"])

@@ -1,0 +1,214 @@
+{
+  "networkResolvers" : [
+
+  ],
+  "openVPNBinaryPath" : "/Applications/Wayfork.app/Contents/Resources/bin/openvpn",
+  "passwords" : {
+    "00000000-0000-4000-8000-000000000011" : "fake-shadowsocks-password",
+    "00000000-0000-4000-8000-000000000012" : "fake-trojan-password"
+  },
+  "resolvedServerAddresses" : {
+
+  },
+  "store" : {
+    "rules" : [
+      {
+        "id" : "00000000-0000-4000-8000-000000000100",
+        "isEnabled" : true,
+        "match" : "suffix",
+        "pattern" : "example.com",
+        "tunnelID" : "00000000-0000-4000-8000-000000000001"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000101",
+        "isEnabled" : true,
+        "match" : "exact",
+        "pattern" : "api.other.com",
+        "tunnelID" : "00000000-0000-4000-8000-000000000001"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000102",
+        "isEnabled" : true,
+        "match" : "wildcard",
+        "pattern" : "*.cdn.example.com",
+        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000103",
+        "isEnabled" : false,
+        "match" : "suffix",
+        "pattern" : "disabled.example",
+        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000104",
+        "isEnabled" : true,
+        "match" : "suffix",
+        "pattern" : "ss.example",
+        "tunnelID" : "00000000-0000-4000-8000-000000000011"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000105",
+        "isEnabled" : true,
+        "match" : "suffix",
+        "pattern" : "trojan.example",
+        "tunnelID" : "00000000-0000-4000-8000-000000000012"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000106",
+        "isEnabled" : true,
+        "match" : "suffix",
+        "pattern" : "vmess.example",
+        "tunnelID" : "00000000-0000-4000-8000-000000000013"
+      }
+    ],
+    "schemaVersion" : 2,
+    "settings" : {
+      "autoReconnect" : true,
+      "connectOnLaunch" : false,
+      "directDNS" : {
+        "system" : {
+
+        }
+      },
+      "launchAtLogin" : false,
+      "logLevel" : "info",
+      "logRetentionDays" : 7,
+      "notifyOnTunnelFailure" : true,
+      "overrideSystemDNS" : true
+    },
+    "tunnels" : [
+      {
+        "createdAt" : "2026-08-25T12:00:00Z",
+        "id" : "00000000-0000-4000-8000-000000000001",
+        "isEnabled" : true,
+        "kind" : {
+          "openVPN" : {
+            "configHash" : "abc",
+            "discoveredDNS" : [
+              "10.8.0.1"
+            ],
+            "dns" : {
+              "auto" : {
+
+              }
+            },
+            "needsCredentials" : true,
+            "needsKeyPassphrase" : false,
+            "remotes" : [
+              {
+                "host" : "vpn.example.org",
+                "port" : 1194,
+                "proto" : "udp"
+              }
+            ]
+          }
+        },
+        "name" : "Work",
+        "slot" : 0
+      },
+      {
+        "createdAt" : "2026-08-25T12:00:00Z",
+        "id" : "00000000-0000-4000-8000-000000000002",
+        "isEnabled" : true,
+        "kind" : {
+          "vless" : {
+            "allowInsecure" : false,
+            "alpn" : [
+
+            ],
+            "fingerprint" : "chrome",
+            "flow" : "xtls-rprx-vision",
+            "port" : 443,
+            "realityPublicKey" : "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+            "realityShortID" : "0123abcd",
+            "security" : "reality",
+            "server" : "home.example.net",
+            "sni" : "www.apple.com",
+            "transport" : {
+              "tcp" : {
+
+              }
+            }
+          }
+        },
+        "name" : "Home",
+        "slot" : 1
+      },
+      {
+        "createdAt" : "2026-08-25T12:00:00Z",
+        "id" : "00000000-0000-4000-8000-000000000011",
+        "isEnabled" : true,
+        "kind" : {
+          "shadowsocks" : {
+            "method" : "aes-256-gcm",
+            "port" : 8388,
+            "server" : "ss.example.net"
+          }
+        },
+        "name" : "Shadowsocks",
+        "slot" : 2
+      },
+      {
+        "createdAt" : "2026-08-25T12:00:00Z",
+        "id" : "00000000-0000-4000-8000-000000000012",
+        "isEnabled" : true,
+        "kind" : {
+          "trojan" : {
+            "allowInsecure" : false,
+            "alpn" : [
+              "h2"
+            ],
+            "fingerprint" : "chrome",
+            "port" : 443,
+            "security" : "tls",
+            "server" : "trojan.example.net",
+            "sni" : "sni.example.net",
+            "transport" : {
+              "ws" : {
+                "host" : "host.example.net",
+                "path" : "/socket"
+              }
+            }
+          }
+        },
+        "name" : "Trojan",
+        "slot" : 3
+      },
+      {
+        "createdAt" : "2026-08-25T12:00:00Z",
+        "id" : "00000000-0000-4000-8000-000000000013",
+        "isEnabled" : true,
+        "kind" : {
+          "vmess" : {
+            "allowInsecure" : false,
+            "alpn" : [
+
+            ],
+            "port" : 443,
+            "security" : "auto",
+            "server" : "vmess.example.net",
+            "sni" : "vmess.example.net",
+            "tlsSecurity" : "tls",
+            "transport" : {
+              "grpc" : {
+                "serviceName" : "wayfork"
+              }
+            }
+          }
+        },
+        "name" : "VMess",
+        "slot" : 4
+      }
+    ]
+  },
+  "systemDNSServers" : [
+
+  ],
+  "vlessUUIDs" : {
+    "00000000-0000-4000-8000-000000000002" : "00000000-0000-4000-8000-0000000000aa"
+  },
+  "vmessUUIDs" : {
+    "00000000-0000-4000-8000-000000000013" : "00000000-0000-4000-8000-000000000014"
+  }
+}

@@ -17,23 +17,33 @@ public struct TunnelSecrets: Codable, Sendable, Hashable {
     public var credentials: Credentials?
     public var keyPassphrase: String?
     public var uuid: String?
+    public var password: String?
+    public var privateKey: String?
+    public var presharedKey: String?
 
     public init(
         ovpn: String? = nil,
         credentials: Credentials? = nil,
         keyPassphrase: String? = nil,
-        uuid: String? = nil
+        uuid: String? = nil,
+        password: String? = nil,
+        privateKey: String? = nil,
+        presharedKey: String? = nil
     ) {
         self.ovpn = ovpn
         self.credentials = credentials
         self.keyPassphrase = keyPassphrase
         self.uuid = uuid
+        self.password = password
+        self.privateKey = privateKey
+        self.presharedKey = presharedKey
     }
 
     public static let none = TunnelSecrets()
 
     public var isEmpty: Bool {
         ovpn == nil && credentials == nil && keyPassphrase == nil && uuid == nil
+            && password == nil && privateKey == nil && presharedKey == nil
     }
 }
 

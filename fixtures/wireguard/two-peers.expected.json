@@ -1,0 +1,37 @@
+{
+  "meta" : {
+    "addresses" : [
+      "10.10.0.2/32"
+    ],
+    "discoveredDNS" : [
+      "10.10.0.1"
+    ],
+    "dns" : {
+      "auto" : {
+
+      }
+    },
+    "peers" : [
+      {
+        "allowedIPs" : [
+          "10.20.0.0/16"
+        ],
+        "hasPresharedKey" : false,
+        "host" : "first.example.net",
+        "port" : 51820,
+        "publicKey" : "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8="
+      },
+      {
+        "allowedIPs" : [
+          "10.30.0.0/16"
+        ],
+        "hasPresharedKey" : false,
+        "host" : "second.example.net",
+        "port" : 51821,
+        "publicKey" : "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8="
+      }
+    ]
+  },
+  "name" : "first.example.net",
+  "privateKey" : "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+}

@@ -4,7 +4,8 @@ import WayforkCore
 // wayforkctl — developer helper, not shipped in the app.
 //
 //   wayforkctl plan --bundle <Wayfork.app> [--ovpn <file> [--user u --pass p] [--pass-key pp]]…
-//                   [--vless <uri>]… [--rule <pattern>=<tunnel name>]… [--log-level info]
+//                   [--link <uri>]… [--wireguard <file>]… [--rule <pattern>=<tunnel name>]…
+//                   [--log-level info]
 //                   [--no-auto-reconnect] > plan.json
 //
 // Tunnels are named after the .ovpn file (without extension) or the VLESS URI fragment;
@@ -65,12 +66,38 @@ func buildPlan(_ arguments: ArraySlice<String>) throws -> RuntimePlan {
         case "--pass-key":
             guard let id = lastOpenVPN else { throw Usage(description: "--pass-key before --ovpn") }
             secrets.keyPassphrases[id] = try value(flag)
-        case "--vless":
-            let result = try VLESSURIParser.parse(try value(flag))
-            let tunnel = Tunnel(name: result.name, slot: slot, kind: .vless(result.meta))
+        case "--vless", "--link":
+            // `--link` takes any supported scheme; `--vless` is kept for older scripts.
+            let uri = try value(flag)
+            let tunnel: Tunnel
+            switch try ProxyLinkParser.parse(uri) {
+            case .vless(let result):
+                tunnel = Tunnel(name: result.name, slot: slot, kind: .vless(result.meta))
+                secrets.vlessUUIDs[tunnel.id] = result.uuid
+            case .shadowsocks(let result):
+                tunnel = Tunnel(name: result.name, slot: slot, kind: .shadowsocks(result.meta))
+                secrets.passwords[tunnel.id] = result.password
+            case .trojan(let result):
+                tunnel = Tunnel(name: result.name, slot: slot, kind: .trojan(result.meta))
+                secrets.passwords[tunnel.id] = result.password
+            case .vmess(let result):
+                tunnel = Tunnel(name: result.name, slot: slot, kind: .vmess(result.meta))
+                secrets.vmessUUIDs[tunnel.id] = result.uuid
+            }
             slot += 1
             store.tunnels.append(tunnel)
-            secrets.vlessUUIDs[tunnel.id] = result.uuid
+        case "--wireguard":
+            let path = try value(flag)
+            let result = try WireGuardConfParser.parse(
+                try String(contentsOfFile: path, encoding: .utf8))
+            let name = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+            let tunnel = Tunnel(
+                name: name.isEmpty ? result.name : name, slot: slot,
+                kind: .wireGuard(result.meta))
+            slot += 1
+            store.tunnels.append(tunnel)
+            secrets.wireGuardKeys[tunnel.id] = WireGuardSecrets(
+                privateKey: result.privateKey, presharedKey: result.presharedKey)
         case "--rule":
             let spec = try value(flag)
             guard let separator = spec.firstIndex(of: "=") else {
@@ -102,7 +129,7 @@ func buildPlan(_ arguments: ArraySlice<String>) throws -> RuntimePlan {
                 pattern: try RulePattern.normalize(pattern, match: match), match: match,
                 tunnelID: tunnel.id))
     }
-    let resolved = HostResolver.resolveIPv4(HostResolver.openVPNHosts(in: store))
+    let resolved = HostResolver.resolveIPv4(HostResolver.serverHosts(in: store))
     let built = RuntimePlanBuilder.build(
         store: store, secrets: secrets, bundlePath: bundlePath, resolvedServerAddresses: resolved)
     for warning in built.warnings {
@@ -114,7 +141,7 @@ func buildPlan(_ arguments: ArraySlice<String>) throws -> RuntimePlan {
 let arguments = CommandLine.arguments.dropFirst()
 guard arguments.first == "plan" else {
     fail(
-        "usage: wayforkctl plan --bundle <Wayfork.app> [--ovpn <file> …] [--vless <uri>] [--rule <pattern>=<tunnel>] …"
+        "usage: wayforkctl plan --bundle <Wayfork.app> [--ovpn <file> …] [--link <uri>] [--wireguard <file>] [--rule <pattern>=<tunnel>] …"
     )
 }
 do {

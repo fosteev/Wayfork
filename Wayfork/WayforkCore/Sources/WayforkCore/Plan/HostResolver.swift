@@ -3,6 +3,25 @@ import Foundation
 /// Resolves the OpenVPN servers' hostnames for the plan (docs/design/03-routing.md, "Notes on
 /// specific choices"). Blocking `getaddrinfo`: call it off the main actor.
 public enum HostResolver {
+    /// Non-literal OpenVPN and WireGuard server hosts, lowercased, unique, in store order.
+    public static func serverHosts(in store: Store) -> [String] {
+        var hosts: [String] = []
+        for tunnel in store.tunnels where tunnel.isEnabled {
+            let candidates: [String]
+            switch tunnel.kind {
+            case .openVPN(let meta): candidates = meta.remotes.map(\.host)
+            case .wireGuard(let meta): candidates = meta.peers.map(\.host)
+            case .vless, .shadowsocks, .trojan, .vmess: candidates = []
+            }
+            for candidate in candidates
+            where candidate.contains("/") || IPv4Prefix(candidate)?.isHost != true {
+                let host = candidate.lowercased()
+                if !host.isEmpty, !hosts.contains(host) { hosts.append(host) }
+            }
+        }
+        return hosts
+    }
+
     /// Non-literal `remote` hosts of the enabled OpenVPN tunnels, lowercased, unique, in
     /// store order.
     public static func openVPNHosts(in store: Store) -> [String] {
@@ -21,7 +40,13 @@ public enum HostResolver {
     public static func resolveIPv4(_ hosts: [String]) -> [String: [String]] {
         var result: [String: [String]] = [:]
         for host in hosts {
-            let addresses = resolveIPv4(host)
+            // A lookup made while Wayfork is already On goes through Wayfork's own resolver
+            // (F12), which answers with a fake IP for every name that is not yet in the
+            // config's "server hosts → dns-direct" rule — the case on the first apply after
+            // a tunnel is added. Such an answer is a name in disguise, never a server
+            // address: pinning it as a WireGuard peer would dial the TUN in circles. The
+            // Dart client has always filtered them; this is the Swift twin.
+            let addresses = resolveIPv4(host).filter { !FakeIPIndex.isFakeIP($0) }
             if !addresses.isEmpty { result[host] = addresses }
         }
         return result

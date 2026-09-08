@@ -78,6 +78,25 @@ enum Fixtures {
     #expect(json.contains("\"createdAt\" : \"2026-08-25T12:00:00Z\""))
 }
 
+@Test func wireGuardTunnelKindRoundTripsAndExposesPeers() throws {
+    let meta = WireGuardMeta(
+        addresses: ["10.9.0.2/32"],
+        peers: [
+            WireGuardPeer(
+                host: "wg.example.net", port: 51820,
+                publicKey: "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=",
+                allowedIPs: ["0.0.0.0/0"])
+        ])
+    let tunnel = Tunnel(
+        name: "WireGuard", slot: 2, kind: .wireGuard(meta), createdAt: Fixtures.date)
+    let decoded = try JSONCoding.decoder.decode(
+        Tunnel.self, from: JSONCoding.compactEncoder.encode(tunnel))
+    #expect(decoded == tunnel)
+    #expect(decoded.kind.wireGuard == meta)
+    #expect(decoded.kind.serverHosts == ["wg.example.net"])
+    #expect(decoded.interfaceName == nil)
+}
+
 @Test func storeRefusesNewerSchema() throws {
     let data = Data("{\"schemaVersion\": 99, \"tunnels\": [], \"rules\": []}".utf8)
     #expect(throws: StoreCodec.Error.newerSchema(found: 99, supported: Store.currentSchemaVersion))

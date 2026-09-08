@@ -80,6 +80,15 @@ private func temporaryDirectory() -> URL {
         SecretKey.keyPassphrase(id).account
             == "tunnel/00000000-0000-4000-8000-000000000001/keyPassphrase")
     #expect(SecretKey.uuid(id).account == "tunnel/00000000-0000-4000-8000-000000000001/uuid")
+    #expect(
+        SecretKey.privateKey(id).account
+            == "tunnel/00000000-0000-4000-8000-000000000001/privateKey")
+    #expect(
+        SecretKey.presharedKey(id).account
+            == "tunnel/00000000-0000-4000-8000-000000000001/presharedKey")
+    #expect(
+        SecretKey.password(id).account
+            == "tunnel/00000000-0000-4000-8000-000000000001/password")
     for key in SecretKey.all(for: id) {
         #expect(SecretKey(account: key.account) == key)
     }
@@ -122,4 +131,67 @@ private func temporaryDirectory() -> URL {
     store.tunnels[1].isEnabled = false
     let partial = try PlanSecrets.load(for: store, from: secrets)
     #expect(partial.vlessUUIDs.isEmpty)
+}
+
+@Test func planSecretsLoadWireGuardKeys() throws {
+    var store = Fixtures.store()
+    store.tunnels = [
+        Tunnel(
+            id: Fixtures.homeID, name: "WireGuard", slot: 1,
+            kind: .wireGuard(
+                WireGuardMeta(
+                    addresses: ["10.9.0.2/32"],
+                    peers: [
+                        WireGuardPeer(
+                            host: "wg.example.net", port: 51820,
+                            publicKey: "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=",
+                            hasPresharedKey: true, allowedIPs: ["0.0.0.0/0"])
+                    ])))
+    ]
+    let secrets = InMemorySecretStore([
+        .privateKey(Fixtures.homeID): "private",
+        .presharedKey(Fixtures.homeID): "preshared",
+    ])
+
+    let loaded = try PlanSecrets.load(for: store, from: secrets)
+    #expect(
+        loaded.wireGuardKeys[Fixtures.homeID]
+            == WireGuardSecrets(privateKey: "private", presharedKey: "preshared"))
+
+    let plan = RuntimePlanBuilder.build(store: store, secrets: loaded, bundlePath: "/App")
+    #expect(plan.plan.openVPN.isEmpty)
+    #expect(plan.routedTunnels.map(\.id) == [Fixtures.homeID])
+}
+
+@Test func planSecretsLoadProxyPasswordsAndVMessUUIDSeparately() throws {
+    let shadowsocksID = UUID(uuidString: "00000000-0000-4000-8000-000000000041")!
+    let trojanID = UUID(uuidString: "00000000-0000-4000-8000-000000000042")!
+    let vmessID = UUID(uuidString: "00000000-0000-4000-8000-000000000043")!
+    let store = Store(tunnels: [
+        Tunnel(
+            id: shadowsocksID, name: "SS", slot: 0,
+            kind: .shadowsocks(
+                ShadowsocksMeta(server: "ss.example.net", port: 8388, method: "aes-256-gcm"))),
+        Tunnel(
+            id: trojanID, name: "Trojan", slot: 1,
+            kind: .trojan(
+                TrojanMeta(server: "trojan.example.net", port: 443, security: .tls))),
+        Tunnel(
+            id: vmessID, name: "VMess", slot: 2,
+            kind: .vmess(
+                VMessMeta(
+                    server: "vmess.example.net", port: 443, security: "auto",
+                    tlsSecurity: .tls))),
+    ])
+    let secretStore = InMemorySecretStore([
+        .password(shadowsocksID): "fake-ss-password",
+        .password(trojanID): "fake-trojan-password",
+        .uuid(vmessID): "00000000-0000-4000-8000-000000000044",
+    ])
+
+    let loaded = try PlanSecrets.load(for: store, from: secretStore)
+    #expect(loaded.passwords[shadowsocksID] == "fake-ss-password")
+    #expect(loaded.passwords[trojanID] == "fake-trojan-password")
+    #expect(loaded.vmessUUIDs[vmessID] == "00000000-0000-4000-8000-000000000044")
+    #expect(loaded.vlessUUIDs.isEmpty)
 }

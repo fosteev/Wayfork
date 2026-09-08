@@ -162,6 +162,11 @@ public enum StoreImporter {
             secrets[.keyPassphrase(id)] = passphrase
         }
         if let uuid = tunnelSecrets.uuid { secrets[.uuid(id)] = uuid }
+        if let password = tunnelSecrets.password { secrets[.password(id)] = password }
+        if let privateKey = tunnelSecrets.privateKey { secrets[.privateKey(id)] = privateKey }
+        if let presharedKey = tunnelSecrets.presharedKey {
+            secrets[.presharedKey(id)] = presharedKey
+        }
     }
 }
 
@@ -182,6 +187,14 @@ public enum StoreExporter {
                     credentials: secretStore.readCredentials(for: tunnel.id),
                     keyPassphrase: secretStore.read(.keyPassphrase(tunnel.id)))
             case .vless:
+                secrets = try TunnelSecrets(uuid: secretStore.read(.uuid(tunnel.id)))
+            case .wireGuard:
+                secrets = try TunnelSecrets(
+                    privateKey: secretStore.read(.privateKey(tunnel.id)),
+                    presharedKey: secretStore.read(.presharedKey(tunnel.id)))
+            case .shadowsocks, .trojan:
+                secrets = try TunnelSecrets(password: secretStore.read(.password(tunnel.id)))
+            case .vmess:
                 secrets = try TunnelSecrets(uuid: secretStore.read(.uuid(tunnel.id)))
             }
             return ExportedTunnel(tunnel: tunnel, secrets: secrets)

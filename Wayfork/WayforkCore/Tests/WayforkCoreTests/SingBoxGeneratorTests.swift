@@ -5,6 +5,12 @@ import Testing
 
 private let bundlePath = "/Applications/Wayfork.app"
 private let homeUUID = "00000000-0000-4000-8000-0000000000aa"
+private let wireGuardPrivateKey = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+private let wireGuardPublicKey = "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8="
+private let shadowsocksID = UUID(uuidString: "00000000-0000-4000-8000-000000000011")!
+private let trojanID = UUID(uuidString: "00000000-0000-4000-8000-000000000012")!
+private let vmessID = UUID(uuidString: "00000000-0000-4000-8000-000000000013")!
+private let vmessUUID = "00000000-0000-4000-8000-000000000014"
 
 private func json(_ text: String) throws -> [String: Any] {
     try #require(try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
@@ -21,10 +27,13 @@ private func twoTunnelStore() -> Store {
 
 private func input(
     _ store: Store, uuids: [UUID: String] = [Fixtures.homeID: homeUUID],
+    wireGuardKeys: [UUID: WireGuardSecrets] = [:],
+    passwords: [UUID: String] = [:], vmessUUIDs: [UUID: String] = [:],
     resolved: [String: [String]] = [:], systemDNS: [String] = [], network: [String] = []
 ) -> SingBoxConfigGenerator.Input {
     SingBoxConfigGenerator.Input(
-        store: store, vlessUUIDs: uuids,
+        store: store, vlessUUIDs: uuids, wireGuardKeys: wireGuardKeys, passwords: passwords,
+        vmessUUIDs: vmessUUIDs,
         openVPNBinaryPath: RuntimePlanBuilder.openVPNBinaryPath(bundlePath: bundlePath),
         resolvedServerAddresses: resolved, systemDNSServers: systemDNS,
         networkResolvers: network)
@@ -32,10 +41,15 @@ private func input(
 
 private func generate(
     _ store: Store, uuids: [UUID: String] = [Fixtures.homeID: homeUUID],
+    wireGuardKeys: [UUID: WireGuardSecrets] = [:],
+    passwords: [UUID: String] = [:], vmessUUIDs: [UUID: String] = [:],
     resolved: [String: [String]] = [:], systemDNS: [String] = [], network: [String] = []
 ) -> SingBoxConfigGenerator.Output {
     SingBoxConfigGenerator.generate(
-        input(store, uuids: uuids, resolved: resolved, systemDNS: systemDNS, network: network))
+        input(
+            store, uuids: uuids, wireGuardKeys: wireGuardKeys, passwords: passwords,
+            vmessUUIDs: vmessUUIDs, resolved: resolved,
+            systemDNS: systemDNS, network: network))
 }
 
 /// Everything the generator consumed for a golden variant, recorded as `input.json` next to
@@ -44,6 +58,9 @@ private func generate(
 private struct GoldenInput: Codable {
     var store: Store
     var vlessUUIDs: [String: String]
+    var wireGuardKeys: [String: WireGuardSecrets]?
+    var passwords: [String: String]?
+    var vmessUUIDs: [String: String]?
     var openVPNBinaryPath: String
     var resolvedServerAddresses: [String: [String]]
     var systemDNSServers: [String]
@@ -60,6 +77,21 @@ private struct GoldenInput: Codable {
             uniqueKeysWithValues: input.vlessUUIDs.map {
                 ($0.key.uuidString.lowercased(), $0.value)
             })
+        let keys = Dictionary(
+            uniqueKeysWithValues: input.wireGuardKeys.map {
+                ($0.key.uuidString.lowercased(), $0.value)
+            })
+        wireGuardKeys = keys.isEmpty ? nil : keys
+        let passwords = Dictionary(
+            uniqueKeysWithValues: input.passwords.map {
+                ($0.key.uuidString.lowercased(), $0.value)
+            })
+        self.passwords = passwords.isEmpty ? nil : passwords
+        let vmessUUIDs = Dictionary(
+            uniqueKeysWithValues: input.vmessUUIDs.map {
+                ($0.key.uuidString.lowercased(), $0.value)
+            })
+        self.vmessUUIDs = vmessUUIDs.isEmpty ? nil : vmessUUIDs
         openVPNBinaryPath = input.openVPNBinaryPath
         resolvedServerAddresses = input.resolvedServerAddresses
         systemDNSServers = input.systemDNSServers
@@ -69,6 +101,60 @@ private struct GoldenInput: Codable {
     func encoded() throws -> String {
         String(decoding: try JSONCoding.prettyEncoder.encode(self), as: UTF8.self) + "\n"
     }
+}
+
+private func wireGuardStore(host: String, isDefault: Bool = false) -> Store {
+    var store = twoTunnelStore()
+    store.tunnels[1].kind = .wireGuard(
+        WireGuardMeta(
+            addresses: ["10.9.0.2/32"],
+            peers: [
+                WireGuardPeer(
+                    host: host, port: 51820, publicKey: wireGuardPublicKey,
+                    allowedIPs: ["0.0.0.0/0"], keepalive: 25)
+            ],
+            mtu: 1420,
+            discoveredDNS: ["10.9.0.1"]))
+    if isDefault { store.defaultTunnelID = Fixtures.homeID }
+    return store
+}
+
+private let wireGuardKeys = [
+    Fixtures.homeID: WireGuardSecrets(privateKey: wireGuardPrivateKey)
+]
+
+private func proxyLinksStore() -> Store {
+    var store = twoTunnelStore()
+    store.tunnels += [
+        Tunnel(
+            id: shadowsocksID, name: "Shadowsocks", slot: 2,
+            kind: .shadowsocks(
+                ShadowsocksMeta(
+                    server: "ss.example.net", port: 8388, method: "aes-256-gcm")),
+            createdAt: Fixtures.date),
+        Tunnel(
+            id: trojanID, name: "Trojan", slot: 3,
+            kind: .trojan(
+                TrojanMeta(
+                    server: "trojan.example.net", port: 443, security: .tls,
+                    sni: "sni.example.net", fingerprint: "chrome", alpn: ["h2"],
+                    transport: .ws(path: "/socket", host: "host.example.net"))),
+            createdAt: Fixtures.date),
+        Tunnel(
+            id: vmessID, name: "VMess", slot: 4,
+            kind: .vmess(
+                VMessMeta(
+                    server: "vmess.example.net", port: 443, security: "auto",
+                    tlsSecurity: .tls, sni: "vmess.example.net",
+                    transport: .grpc(serviceName: "wayfork"))),
+            createdAt: Fixtures.date),
+    ]
+    store.rules += [
+        Rule(pattern: "ss.example", tunnelID: shadowsocksID),
+        Rule(pattern: "trojan.example", tunnelID: trojanID),
+        Rule(pattern: "vmess.example", tunnelID: vmessID),
+    ]
+    return store
 }
 
 @Test func theDirectResolverNamesTheNetworkResolverInsteadOfAskingDHCP() throws {
@@ -380,6 +466,113 @@ private func defaultTunnelStore(defaultID: UUID) -> Store {
     #expect((plain["transport"] as? [String: Any])?["service_name"] as? String == "svc")
 }
 
+@Test func wireGuardDomainResolverFollowsPeerAddressShape() throws {
+    let literal = try json(
+        generate(
+            wireGuardStore(host: "203.0.113.7"), uuids: [:],
+            wireGuardKeys: wireGuardKeys
+        ).config)
+    let literalEndpoint = try #require((literal["endpoints"] as? [[String: Any]])?.first)
+    let ownResolver = try #require(literalEndpoint["domain_resolver"] as? [String: Any])
+    #expect(ownResolver["server"] as? String == "dns-t-00000000-0000-4000-8000-000000000002")
+    #expect(ownResolver["strategy"] as? String == "ipv4_only")
+
+    var mixedStore = wireGuardStore(host: "wg.example.net")
+    if case .wireGuard(var meta) = mixedStore.tunnels[1].kind {
+        meta.peers.append(
+            WireGuardPeer(
+                host: "203.0.113.8", port: 51820, publicKey: wireGuardPublicKey,
+                allowedIPs: ["10.1.0.0/16"]))
+        mixedStore.tunnels[1].kind = .wireGuard(meta)
+    }
+    let unresolved = try json(
+        generate(
+            mixedStore, uuids: [:],
+            wireGuardKeys: wireGuardKeys
+        ).config)
+    let unresolvedEndpoint = try #require((unresolved["endpoints"] as? [[String: Any]])?.first)
+    #expect(unresolvedEndpoint["domain_resolver"] as? String == "dns-direct")
+
+    let resolved = try json(
+        generate(
+            mixedStore, uuids: [:],
+            wireGuardKeys: wireGuardKeys, resolved: ["wg.example.net": ["198.51.100.9"]]
+        ).config)
+    let resolvedEndpoint = try #require((resolved["endpoints"] as? [[String: Any]])?.first)
+    #expect(resolvedEndpoint["domain_resolver"] is [String: Any])
+    let peer = try #require((resolvedEndpoint["peers"] as? [[String: Any]])?.first)
+    #expect(peer["address"] as? String == "198.51.100.9")
+    let dnsRules = try #require((resolved["dns"] as? [String: Any])?["rules"] as? [[String: Any]])
+    #expect(
+        dnsRules.contains {
+            $0["domain"] as? [String] == ["vpn.example.org", "wg.example.net"]
+                && $0["server"] as? String == "dns-direct"
+        })
+}
+
+@Test func wireGuardWithoutPrivateKeyIsDroppedFromTheConfig() throws {
+    let output = generate(wireGuardStore(host: "203.0.113.7"), uuids: [:])
+    let config = try json(output.config)
+    #expect(config["endpoints"] == nil)
+    #expect(output.routedTunnels.map(\.id) == [Fixtures.workID])
+}
+
+@Test func proxyKindsWithoutTheirSecretsAreDroppedFromTheConfig() {
+    let output = generate(proxyLinksStore())
+    #expect(output.routedTunnels.map(\.id) == [Fixtures.workID, Fixtures.homeID])
+    #expect(!output.config.contains(shadowsocksID.uuidString.lowercased()))
+    #expect(!output.config.contains(trojanID.uuidString.lowercased()))
+    #expect(!output.config.contains(vmessID.uuidString.lowercased()))
+}
+
+@Test func defaultWireGuardUsesItsTunnelResolverAsDNSFinal() throws {
+    let config = try json(
+        generate(
+            wireGuardStore(host: "wg.example.net", isDefault: true), uuids: [:],
+            wireGuardKeys: wireGuardKeys
+        ).config)
+    let dns = try #require(config["dns"] as? [String: Any])
+    let tag = "dns-t-00000000-0000-4000-8000-000000000002"
+    #expect(dns["final"] as? String == tag)
+    let servers = try #require(dns["servers"] as? [[String: Any]])
+    let tunnelResolver = try #require(servers.first { $0["tag"] as? String == tag })
+    #expect(tunnelResolver["type"] as? String == "udp")
+    #expect(tunnelResolver["server"] as? String == "10.9.0.1")
+}
+
+@Test func wireGuardEndpointMapsOptionalPresharedKey() {
+    let meta = WireGuardMeta(
+        addresses: ["10.9.0.2/32"],
+        peers: [
+            WireGuardPeer(
+                host: "203.0.113.7", port: 51820, publicKey: wireGuardPublicKey,
+                hasPresharedKey: true, allowedIPs: ["0.0.0.0/0"])
+        ])
+    let endpoint = SingBoxConfigGenerator.wireGuardEndpoint(
+        meta, tag: "t-example",
+        secrets: WireGuardSecrets(privateKey: wireGuardPrivateKey, presharedKey: "preshared"))
+    let peer = (endpoint["peers"] as? [[String: Any]])?.first
+    #expect(peer?["pre_shared_key"] as? String == "preshared")
+    #expect(endpoint["mtu"] == nil)
+}
+
+@Test func hostResolverIncludesWireGuardNamesWithoutChangingOpenVPNHosts() {
+    var store = wireGuardStore(host: "WG.Example.NET")
+    if case .wireGuard(var meta) = store.tunnels[1].kind {
+        meta.peers.append(
+            WireGuardPeer(
+                host: "203.0.113.7", port: 51820, publicKey: wireGuardPublicKey,
+                allowedIPs: ["10.0.0.0/8"]))
+        meta.peers.append(
+            WireGuardPeer(
+                host: "vpn.example.org", port: 51820, publicKey: wireGuardPublicKey,
+                allowedIPs: ["10.1.0.0/16"]))
+        store.tunnels[1].kind = .wireGuard(meta)
+    }
+    #expect(HostResolver.openVPNHosts(in: store) == ["vpn.example.org"])
+    #expect(HostResolver.serverHosts(in: store) == ["vpn.example.org", "wg.example.net"])
+}
+
 @Test func planBuilderSkipsTunnelsWithoutSecrets() throws {
     let store = twoTunnelStore()
     let secrets = PlanSecrets(
@@ -457,6 +650,31 @@ private func configVariants() -> [(String, SingBoxConfigGenerator.Input)] {
     variants.append(("vless-ws", input(ws)))
     variants.append(("default-openvpn", input(defaultTunnelStore(defaultID: Fixtures.workID))))
     variants.append(("default-vless", input(defaultTunnelStore(defaultID: Fixtures.homeID))))
+    variants.append(
+        (
+            "wireguard",
+            input(
+                wireGuardStore(host: "203.0.113.7"), uuids: [:],
+                wireGuardKeys: wireGuardKeys)
+        ))
+    variants.append(
+        (
+            "proxy-links",
+            input(
+                proxyLinksStore(),
+                passwords: [
+                    shadowsocksID: "fake-shadowsocks-password",
+                    trojanID: "fake-trojan-password",
+                ],
+                vmessUUIDs: [vmessID: vmessUUID])
+        ))
+    variants.append(
+        (
+            "default-wireguard",
+            input(
+                wireGuardStore(host: "wg.example.net", isDefault: true), uuids: [:],
+                wireGuardKeys: wireGuardKeys)
+        ))
     var apps = twoTunnelStore()
     apps.rules.append(
         Rule(pattern: "/Applications/Telegram.app", match: .app, tunnelID: Fixtures.workID))
@@ -508,6 +726,70 @@ private func configVariants() -> [(String, SingBoxConfigGenerator.Input)] {
         process.waitUntilExit()
         let log = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         #expect(process.terminationStatus == 0, "sing-box check failed for \(name): \(log)")
+    }
+}
+
+/// `sing-box check` validates the schema only: a `final`, an `outbound` or a `detour`
+/// naming a tag nobody defines passes it with exit 0 and kills the engine at start with
+/// `FATAL … outbound not found` (checked against 1.13.19 on 2026-09-07,
+/// docs/design/04-tunnels.md). With WireGuard the generator fills a second tag namespace
+/// (`endpoints[]`), so the references are checked here instead of being trusted to `check`.
+/// A lookup under a running Wayfork answers with fake IPs for names the current config
+/// does not send to `dns-direct` yet; those must never reach the plan as server addresses
+/// (they would be pinned as a WireGuard peer or as a direct-rule `ip_cidr`).
+@Test func resolverDropsFakeIPAnswers() {
+    #expect(FakeIPIndex.isFakeIP("198.18.12.229"))
+    #expect(!FakeIPIndex.isFakeIP("203.0.113.7"))
+    // `resolveIPv4(_:)` filters what the single-host lookup returns; the filter itself is
+    // what this pins, since the lookup needs the network.
+    let filtered = ["198.18.0.4", "203.0.113.7"].filter { !FakeIPIndex.isFakeIP($0) }
+    #expect(filtered == ["203.0.113.7"])
+}
+
+@Test func everyReferencedTagIsDefined() throws {
+    for (name, input) in configVariants() {
+        let config = SingBoxConfigGenerator.generate(input).config
+        let json =
+            try JSONSerialization.jsonObject(with: Data(config.utf8)) as? [String: Any] ?? [:]
+        let route = json["route"] as? [String: Any] ?? [:]
+        let dns = json["dns"] as? [String: Any] ?? [:]
+        let routeRules = route["rules"] as? [[String: Any]] ?? []
+
+        var outboundTags = Set(
+            (json["outbounds"] as? [[String: Any]] ?? []).compactMap { $0["tag"] as? String })
+        outboundTags.formUnion(
+            (json["endpoints"] as? [[String: Any]] ?? []).compactMap { $0["tag"] as? String })
+        let dnsServerTags = Set(
+            (dns["servers"] as? [[String: Any]] ?? []).compactMap { $0["tag"] as? String })
+        let ruleSetTags = Set(
+            (route["rule_set"] as? [[String: Any]] ?? []).compactMap { $0["tag"] as? String })
+
+        var outboundRefs = routeRules.compactMap { $0["outbound"] as? String }
+        outboundRefs += (dns["servers"] as? [[String: Any]] ?? []).compactMap {
+            $0["detour"] as? String
+        }
+        if let final = route["final"] as? String { outboundRefs.append(final) }
+        for tag in outboundRefs {
+            #expect(outboundTags.contains(tag), "\(name): outbound tag \(tag) is not defined")
+        }
+
+        let dnsRules = dns["rules"] as? [[String: Any]] ?? []
+        var dnsRefs = dnsRules.compactMap { $0["server"] as? String }
+        dnsRefs += (json["endpoints"] as? [[String: Any]] ?? []).compactMap {
+            ($0["domain_resolver"] as? [String: Any])?["server"] as? String
+        }
+        if let final = dns["final"] as? String { dnsRefs.append(final) }
+        for tag in dnsRefs {
+            #expect(dnsServerTags.contains(tag), "\(name): DNS server tag \(tag) is not defined")
+        }
+
+        for rule in routeRules + dnsRules {
+            let refs =
+                (rule["rule_set"] as? [String]) ?? (rule["rule_set"] as? String).map { [$0] } ?? []
+            for tag in refs {
+                #expect(ruleSetTags.contains(tag), "\(name): rule-set tag \(tag) is not defined")
+            }
+        }
     }
 }
 

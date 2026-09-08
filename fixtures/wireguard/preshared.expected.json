@@ -1,0 +1,29 @@
+{
+  "meta" : {
+    "addresses" : [
+      "10.9.0.2/32"
+    ],
+    "discoveredDNS" : [
+
+    ],
+    "dns" : {
+      "auto" : {
+
+      }
+    },
+    "peers" : [
+      {
+        "allowedIPs" : [
+          "0.0.0.0/0"
+        ],
+        "hasPresharedKey" : true,
+        "host" : "preshared.example.net",
+        "port" : 51820,
+        "publicKey" : "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8="
+      }
+    ]
+  },
+  "name" : "preshared.example.net",
+  "presharedKey" : "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8=",
+  "privateKey" : "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+}

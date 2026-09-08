@@ -233,6 +233,35 @@ private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased()
     #expect(off.glyph == .idle)
 }
 
+@Test func proxyKindStatusText() {
+    let shadowsocks = TunnelKind.shadowsocks(
+        ShadowsocksMeta(server: "ss.example.net", port: 8388, method: "aes-256-gcm"))
+    let trojan = TunnelKind.trojan(
+        TrojanMeta(
+            server: "trojan.example.net", port: 443, security: .reality,
+            transport: .ws(path: "/", host: nil)))
+    let vmess = TunnelKind.vmess(
+        VMessMeta(
+            server: "vmess.example.net", port: 443, security: "auto", tlsSecurity: .tls,
+            transport: .grpc(serviceName: "wayfork")))
+
+    #expect(StatusText.typeBadge(shadowsocks) == "Shadowsocks")
+    #expect(StatusText.typeBadge(trojan) == "Trojan")
+    #expect(StatusText.typeBadge(vmess) == "VMess")
+    #expect(StatusText.endpointDescription(shadowsocks) == "ss.example.net:8388 · aes-256-gcm")
+    #expect(StatusText.endpointDescription(trojan) == "trojan.example.net:443 · REALITY · ws")
+    #expect(StatusText.endpointDescription(vmess) == "vmess.example.net:443 · auto · gRPC")
+
+    let passwordMissing = StatusText.rowSummary(
+        tunnel: Tunnel(name: "Trojan", slot: 0, kind: trojan), state: nil, global: .off,
+        missingSecret: true)
+    #expect(passwordMissing.text.hasPrefix("password missing ·"))
+    let uuidMissing = StatusText.rowSummary(
+        tunnel: Tunnel(name: "VMess", slot: 1, kind: vmess), state: nil, global: .off,
+        missingSecret: true)
+    #expect(uuidMissing.text.hasPrefix("UUID missing ·"))
+}
+
 // MARK: - Rule editing and quick add
 
 @Test func quickAddNormalizesAndInfersMatch() {

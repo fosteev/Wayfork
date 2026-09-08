@@ -1,0 +1,103 @@
+{
+  "accepted" : [
+    {
+      "expected" : {
+        "meta" : {
+          "method" : "aes-256-gcm",
+          "port" : 8388,
+          "server" : "aead.example.net"
+        },
+        "name" : "aead.example.net",
+        "password" : "fake-password"
+      },
+      "name" : "sip002-aead",
+      "uri" : "ss://YWVzLTI1Ni1nY206ZmFrZS1wYXNzd29yZA@aead.example.net:8388"
+    },
+    {
+      "expected" : {
+        "meta" : {
+          "method" : "2022-blake3-aes-256-gcm",
+          "port" : 443,
+          "server" : "modern.example.net"
+        },
+        "name" : "modern.example.net",
+        "password" : "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+      },
+      "name" : "sip002-2022",
+      "uri" : "ss://MjAyMi1ibGFrZTMtYWVzLTI1Ni1nY206QUFFQ0F3UUZCZ2NJQ1FvTERBME9EeEFSRWhNVUZSWVhHQmthR3h3ZEhoOD0@modern.example.net:443"
+    },
+    {
+      "expected" : {
+        "meta" : {
+          "method" : "chacha20-ietf-poly1305",
+          "port" : 8388,
+          "server" : "legacy.example.net"
+        },
+        "name" : "legacy.example.net",
+        "password" : "legacy-fake-password"
+      },
+      "name" : "legacy-whole-uri",
+      "uri" : "ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpsZWdhY3ktZmFrZS1wYXNzd29yZEBsZWdhY3kuZXhhbXBsZS5uZXQ6ODM4OA"
+    },
+    {
+      "expected" : {
+        "meta" : {
+          "method" : "none",
+          "port" : 80,
+          "server" : "plain.example.net"
+        },
+        "name" : "plain.example.net",
+        "password" : "plain fake password"
+      },
+      "name" : "plain-percent-encoded-userinfo",
+      "uri" : "ss://none:plain%20fake%20password@plain.example.net:80"
+    },
+    {
+      "expected" : {
+        "meta" : {
+          "method" : "aes-256-gcm",
+          "port" : 8388,
+          "server" : "named.example.net"
+        },
+        "name" : "My Proxy",
+        "password" : "fake-password"
+      },
+      "name" : "fragment-name",
+      "uri" : "ss://YWVzLTI1Ni1nY206ZmFrZS1wYXNzd29yZA@named.example.net:8388#My%20Proxy"
+    }
+  ],
+  "rejected" : [
+    {
+      "error" : {
+        "case" : "unsupported",
+        "message" : "method \"aes-256-cfb\" is not supported"
+      },
+      "name" : "legacy-cipher",
+      "uri" : "ss://aes-256-cfb:fake-password@legacy-cipher.example.net:8388"
+    },
+    {
+      "error" : {
+        "case" : "unsupported",
+        "message" : "SIP003 plugins are not supported"
+      },
+      "name" : "plugin",
+      "uri" : "ss://YWVzLTI1Ni1nY206ZmFrZS1wYXNzd29yZA@plugin.example.net:8388/?plugin=v2ray-plugin"
+    },
+    {
+      "error" : {
+        "case" : "invalid",
+        "message" : "password for \"2022-blake3-aes-256-gcm\" must be base64 encoding of 32 bytes"
+      },
+      "name" : "short-2022-key",
+      "uri" : "ss://2022-blake3-aes-256-gcm:c2hvcnQ=@short-key.example.net:443"
+    },
+    {
+      "error" : {
+        "case" : "invalid",
+        "message" : "port is missing"
+      },
+      "name" : "missing-port",
+      "uri" : "ss://YWVzLTI1Ni1nY206ZmFrZS1wYXNzd29yZA@missing-port.example.net"
+    }
+  ]
+}

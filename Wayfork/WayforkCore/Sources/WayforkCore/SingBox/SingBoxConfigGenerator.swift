@@ -1,5 +1,15 @@
 import Foundation
 
+public struct WireGuardSecrets: Codable, Sendable, Equatable {
+    public var privateKey: String
+    public var presharedKey: String?
+
+    public init(privateKey: String, presharedKey: String? = nil) {
+        self.privateKey = privateKey
+        self.presharedKey = presharedKey
+    }
+}
+
 /// Generates `sing-box.json` and the rule-set files from the store
 /// (docs/design/03-routing.md). Pure function of its input; the output is deterministic.
 public enum SingBoxConfigGenerator {
@@ -8,15 +18,18 @@ public enum SingBoxConfigGenerator {
         /// VLESS UUID per tunnel id (from Keychain). Enabled VLESS tunnels without an entry
         /// are left out of the config — they cannot connect without their secret.
         public var vlessUUIDs: [UUID: String]
+        /// WireGuard keys per tunnel id. Enabled tunnels without an entry are left out.
+        public var wireGuardKeys: [UUID: WireGuardSecrets]
+        /// Shadowsocks and Trojan passwords per tunnel id.
+        public var passwords: [UUID: String]
+        /// VMess UUID per tunnel id.
+        public var vmessUUIDs: [UUID: String]
         /// Absolute path of the bundled `openvpn`, matched by `process_path` so that the
         /// tunnels' own control traffic always goes direct.
         public var openVPNBinaryPath: String
-        /// IPv4 addresses of the OpenVPN `remote` hostnames (lowercased host → addresses),
-        /// resolved by the caller (`HostResolver`). A route rule can only match a hostname
-        /// when sing-box knows the flow's domain, which it never does for openvpn's own UDP
-        /// packets (its resolver query is answered with a real address, and sing-box only
-        /// learns a flow's domain through fake-ip or sniffing), so the servers' addresses go
-        /// into the `ip_cidr` half of the direct rule as well.
+        /// IPv4 addresses of OpenVPN and WireGuard server hostnames (lowercased host →
+        /// addresses), resolved by the caller (`HostResolver`). OpenVPN server addresses
+        /// also enter the `ip_cidr` half of the direct rule; WireGuard peer addresses do not.
         public var resolvedServerAddresses: [String: [String]]
         /// IPv4 addresses of the system resolvers (`SystemDNS.Snapshot.routable`). Those
         /// inside the LAN ranges are carved out of `route_exclude_address` so that the system
@@ -33,12 +46,17 @@ public enum SingBoxConfigGenerator {
         public var networkResolvers: [String]
 
         public init(
-            store: Store, vlessUUIDs: [UUID: String], openVPNBinaryPath: String,
+            store: Store, vlessUUIDs: [UUID: String],
+            wireGuardKeys: [UUID: WireGuardSecrets] = [:], passwords: [UUID: String] = [:],
+            vmessUUIDs: [UUID: String] = [:], openVPNBinaryPath: String,
             resolvedServerAddresses: [String: [String]] = [:], systemDNSServers: [String] = [],
             networkResolvers: [String] = []
         ) {
             self.store = store
             self.vlessUUIDs = vlessUUIDs
+            self.wireGuardKeys = wireGuardKeys
+            self.passwords = passwords
+            self.vmessUUIDs = vmessUUIDs
             self.openVPNBinaryPath = openVPNBinaryPath
             self.resolvedServerAddresses = resolvedServerAddresses
             self.systemDNSServers = systemDNSServers
@@ -91,6 +109,9 @@ public enum SingBoxConfigGenerator {
             switch tunnel.kind {
             case .openVPN: return true
             case .vless: return input.vlessUUIDs[tunnel.id] != nil
+            case .wireGuard: return input.wireGuardKeys[tunnel.id] != nil
+            case .shadowsocks, .trojan: return input.passwords[tunnel.id] != nil
+            case .vmess: return input.vmessUUIDs[tunnel.id] != nil
             }
         }
         let activeRules = RuleValidator.activeRules(store)
@@ -103,6 +124,7 @@ public enum SingBoxConfigGenerator {
             directDNSServer(store.settings.directDNS, networkResolvers: input.networkResolvers)
         ]
         var outbounds: [[String: Any]] = [["type": "direct", "tag": "direct"]]
+        var endpoints: [[String: Any]] = []
         // Exceptions (plus the built-in local names) come first so that they beat both the
         // tunnel rule-sets and the default tunnel; the file always exists, so adding an
         // exception is a rule-set rewrite, never a restart.
@@ -162,6 +184,32 @@ public enum SingBoxConfigGenerator {
                 outbounds.append(
                     vlessOutbound(
                         meta, tag: tunnel.outboundTag, uuid: input.vlessUUIDs[tunnel.id] ?? ""))
+            case .wireGuard(let meta):
+                let dnsTag = "dns-\(tunnel.outboundTag)"
+                dnsServers.append([
+                    "type": "udp",
+                    "tag": dnsTag,
+                    "server": resolver(for: meta),
+                    "detour": tunnel.outboundTag,
+                ])
+                if let keys = input.wireGuardKeys[tunnel.id] {
+                    endpoints.append(
+                        wireGuardEndpoint(
+                            meta, tag: tunnel.outboundTag, secrets: keys,
+                            resolved: input.resolvedServerAddresses))
+                }
+            case .shadowsocks(let meta):
+                outbounds.append(
+                    shadowsocksOutbound(
+                        meta, tag: tunnel.outboundTag, password: input.passwords[tunnel.id] ?? ""))
+            case .trojan(let meta):
+                outbounds.append(
+                    trojanOutbound(
+                        meta, tag: tunnel.outboundTag, password: input.passwords[tunnel.id] ?? ""))
+            case .vmess(let meta):
+                outbounds.append(
+                    vmessOutbound(
+                        meta, tag: tunnel.outboundTag, uuid: input.vmessUUIDs[tunnel.id] ?? ""))
             }
             routeRules.append([
                 "rule_set": [tunnel.ruleSetTag, tunnel.ipRuleSetTag],
@@ -202,10 +250,12 @@ public enum SingBoxConfigGenerator {
             ["domain": [ddrDiscoveryName], "action": "reject"],
             ["rule_set": RuleSetGenerator.directTag, "server": "dns-direct"],
         ]
-        if !servers.hosts.isEmpty {
-            // OpenVPN resolves its `remote` through the system resolver: answer with real
-            // addresses, never a fake IP (the dial goes direct anyway).
-            dnsRules.append(["domain": servers.hosts, "server": "dns-direct"])
+        let directDNSHosts = uniqueHosts(
+            servers.hosts + wireGuardPeerHosts(routed))
+        if !directDNSHosts.isEmpty {
+            // OpenVPN remotes and WireGuard peers must resolve to real addresses, never
+            // fake IPs. Only OpenVPN's control flow also gets a direct route rule above.
+            dnsRules.append(["domain": directDNSHosts, "server": "dns-direct"])
         }
         if !routed.isEmpty {
             dnsRules.append([
@@ -221,7 +271,7 @@ public enum SingBoxConfigGenerator {
         if let defaultTunnel {
             dnsRules.append(["query_type": ["A", "AAAA"], "server": "fakeip"])
             let tag = "dns-\(defaultTunnel.outboundTag)"
-            if !defaultTunnel.kind.isOpenVPN {
+            if !defaultTunnel.kind.hasOwnResolver {
                 dnsServers.append([
                     "type": "tls",
                     "tag": tag,
@@ -263,7 +313,7 @@ public enum SingBoxConfigGenerator {
             "find_process": true,
         ]
 
-        let config: [String: Any] = [
+        var config: [String: Any] = [
             "log": ["level": store.settings.logLevel.singBoxLevel, "timestamp": true],
             "dns": dns,
             "inbounds": [tunInbound(carving: carved)],
@@ -273,6 +323,9 @@ public enum SingBoxConfigGenerator {
                 "cache_file": ["enabled": true, "path": "cache.db", "store_fakeip": true]
             ],
         ]
+        if !endpoints.isEmpty {
+            config["endpoints"] = endpoints
+        }
 
         return Output(
             config: JSONText.render(config),
@@ -350,12 +403,87 @@ public enum SingBoxConfigGenerator {
     }
 
     static func resolver(for meta: OpenVPNMeta) -> String {
-        switch meta.dns {
+        resolver(dns: meta.dns, discoveredDNS: meta.discoveredDNS)
+    }
+
+    static func resolver(for meta: WireGuardMeta) -> String {
+        resolver(dns: meta.dns, discoveredDNS: meta.discoveredDNS)
+    }
+
+    private static func resolver(dns: TunnelDNS, discoveredDNS: [String]) -> String {
+        switch dns {
         case .custom(let servers):
             return servers.first ?? fallbackTunnelDNS
         case .auto:
-            return meta.discoveredDNS.first ?? fallbackTunnelDNS
+            return discoveredDNS.first ?? fallbackTunnelDNS
         }
+    }
+
+    static func wireGuardEndpoint(
+        _ meta: WireGuardMeta, tag: String, secrets: WireGuardSecrets,
+        resolved: [String: [String]] = [:]
+    ) -> [String: Any] {
+        var everyPeerIsLiteral = true
+        let peers = meta.peers.map { peer -> [String: Any] in
+            let hostIsLiteral = isIPv4Literal(peer.host)
+            let address: String
+            if hostIsLiteral {
+                address = peer.host
+            } else if let first =
+                (resolved[peer.host] ?? resolved[peer.host.lowercased()])?.first,
+                isIPv4Literal(first)
+            {
+                address = first
+            } else {
+                address = peer.host
+                everyPeerIsLiteral = false
+            }
+            var result: [String: Any] = [
+                "address": address,
+                "port": peer.port,
+                "public_key": peer.publicKey,
+                "allowed_ips": peer.allowedIPs,
+            ]
+            if peer.hasPresharedKey, let presharedKey = secrets.presharedKey {
+                result["pre_shared_key"] = presharedKey
+            }
+            if let keepalive = peer.keepalive {
+                result["persistent_keepalive_interval"] = keepalive
+            }
+            return result
+        }
+        var endpoint: [String: Any] = [
+            "type": "wireguard",
+            "tag": tag,
+            "system": false,
+            "address": meta.addresses,
+            "private_key": secrets.privateKey,
+            "domain_resolver":
+                everyPeerIsLiteral
+                ? ["server": "dns-\(tag)", "strategy": "ipv4_only"] : "dns-direct",
+            "peers": peers,
+        ]
+        if let mtu = meta.mtu { endpoint["mtu"] = mtu }
+        return endpoint
+    }
+
+    private static func wireGuardPeerHosts(_ routed: [Tunnel]) -> [String] {
+        routed.flatMap { tunnel -> [String] in
+            guard case .wireGuard(let meta) = tunnel.kind else { return [] }
+            return meta.peers.compactMap { peer in
+                isIPv4Literal(peer.host) ? nil : peer.host.lowercased()
+            }
+        }
+    }
+
+    private static func uniqueHosts(_ hosts: [String]) -> [String] {
+        var result: [String] = []
+        for host in hosts where !host.isEmpty && !result.contains(host) { result.append(host) }
+        return result
+    }
+
+    private static func isIPv4Literal(_ host: String) -> Bool {
+        !host.contains("/") && IPv4Prefix(host)?.isHost == true
     }
 
     /// `route_exclude_address` for the TUN inbound: `lanRanges` with the TUN's own subnet
@@ -405,39 +533,125 @@ public enum SingBoxConfigGenerator {
         if let flow = meta.flow {
             outbound["flow"] = flow
         }
-        if meta.security != .none {
-            var tls: [String: Any] = [
-                "enabled": true,
-                "server_name": meta.sni ?? meta.server,
-                "insecure": meta.allowInsecure,
-            ]
-            if !meta.alpn.isEmpty {
-                tls["alpn"] = meta.alpn
-            }
-            if let fingerprint = meta.fingerprint {
-                tls["utls"] = ["enabled": true, "fingerprint": fingerprint]
-            }
-            if meta.security == .reality {
-                tls["reality"] = [
-                    "enabled": true,
-                    "public_key": meta.realityPublicKey ?? "",
-                    "short_id": meta.realityShortID ?? "",
-                ]
-            }
+        if let tls = tlsBlock(
+            security: meta.security, server: meta.server, sni: meta.sni,
+            fingerprint: meta.fingerprint, alpn: meta.alpn,
+            realityPublicKey: meta.realityPublicKey, realityShortID: meta.realityShortID,
+            allowInsecure: meta.allowInsecure)
+        {
             outbound["tls"] = tls
         }
-        switch meta.transport {
-        case .tcp:
-            break
-        case .ws(let path, let host):
-            var transport: [String: Any] = ["type": "ws", "path": path]
-            if let host {
-                transport["headers"] = ["Host": host]
-            }
+        if let transport = transportBlock(meta.transport) {
             outbound["transport"] = transport
-        case .grpc(let serviceName):
-            outbound["transport"] = ["type": "grpc", "service_name": serviceName]
         }
         return outbound
+    }
+
+    static func shadowsocksOutbound(
+        _ meta: ShadowsocksMeta, tag: String, password: String
+    ) -> [String: Any] {
+        [
+            "type": "shadowsocks",
+            "tag": tag,
+            "server": meta.server,
+            "server_port": meta.port,
+            "method": meta.method,
+            "password": password,
+        ]
+    }
+
+    static func trojanOutbound(
+        _ meta: TrojanMeta, tag: String, password: String
+    ) -> [String: Any] {
+        var outbound: [String: Any] = [
+            "type": "trojan",
+            "tag": tag,
+            "server": meta.server,
+            "server_port": meta.port,
+            "password": password,
+        ]
+        if let tls = tlsBlock(
+            security: meta.security, server: meta.server, sni: meta.sni,
+            fingerprint: meta.fingerprint, alpn: meta.alpn,
+            realityPublicKey: meta.realityPublicKey, realityShortID: meta.realityShortID,
+            allowInsecure: meta.allowInsecure)
+        {
+            outbound["tls"] = tls
+        }
+        if let transport = transportBlock(meta.transport) {
+            outbound["transport"] = transport
+        }
+        return outbound
+    }
+
+    static func vmessOutbound(_ meta: VMessMeta, tag: String, uuid: String) -> [String: Any] {
+        var outbound: [String: Any] = [
+            "type": "vmess",
+            "tag": tag,
+            "server": meta.server,
+            "server_port": meta.port,
+            "uuid": uuid,
+            "security": meta.security,
+            "alter_id": 0,
+        ]
+        if let tls = tlsBlock(
+            security: meta.tlsSecurity, server: meta.server, sni: meta.sni,
+            fingerprint: meta.fingerprint, alpn: meta.alpn,
+            realityPublicKey: meta.realityPublicKey, realityShortID: meta.realityShortID,
+            allowInsecure: meta.allowInsecure)
+        {
+            outbound["tls"] = tls
+        }
+        if let transport = transportBlock(meta.transport) {
+            outbound["transport"] = transport
+        }
+        return outbound
+    }
+
+    /// The `tls` block shared by VLESS, Trojan and VMess (docs/design/04-tunnels.md,
+    /// "Shared TLS and transport"). nil when the tunnel carries no TLS layer.
+    static func tlsBlock(
+        security: TLSSecurity, server: String, sni: String?, fingerprint: String?,
+        alpn: [String], realityPublicKey: String?, realityShortID: String?,
+        allowInsecure: Bool
+    ) -> [String: Any]? {
+        guard security != .none else { return nil }
+        var tls: [String: Any] = [
+            "enabled": true,
+            "server_name": sni ?? server,
+            "insecure": allowInsecure,
+        ]
+        if !alpn.isEmpty {
+            tls["alpn"] = alpn
+        }
+        if let fingerprint {
+            tls["utls"] = ["enabled": true, "fingerprint": fingerprint]
+        }
+        if security == .reality {
+            // sing-box refuses REALITY without uTLS ("uTLS is required by reality client"),
+            // so the parsers default the fingerprint to `chrome` when the link omits `fp`.
+            tls["reality"] = [
+                "enabled": true,
+                "public_key": realityPublicKey ?? "",
+                "short_id": realityShortID ?? "",
+            ]
+        }
+        return tls
+    }
+
+    /// The `transport` block shared by VLESS, Trojan and VMess; nil for plain TCP.
+    static func transportBlock(_ transport: ProxyTransport) -> [String: Any]? {
+        switch transport {
+        case .tcp:
+            return nil
+        case .ws(let path, let host):
+            var block: [String: Any] = ["type": "ws", "path": path]
+            if let host {
+                block["headers"] = ["Host": host]
+            }
+            return block
+        case .grpc(let serviceName):
+            return ["type": "grpc", "service_name": serviceName]
+        }
     }
 }

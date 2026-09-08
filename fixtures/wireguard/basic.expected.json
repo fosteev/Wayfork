@@ -1,0 +1,30 @@
+{
+  "meta" : {
+    "addresses" : [
+      "10.7.0.2/32"
+    ],
+    "discoveredDNS" : [
+      "10.7.0.1"
+    ],
+    "dns" : {
+      "auto" : {
+
+      }
+    },
+    "mtu" : 1420,
+    "peers" : [
+      {
+        "allowedIPs" : [
+          "0.0.0.0/0"
+        ],
+        "hasPresharedKey" : false,
+        "host" : "basic.example.net",
+        "keepalive" : 25,
+        "port" : 51820,
+        "publicKey" : "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8="
+      }
+    ]
+  },
+  "name" : "basic.example.net",
+  "privateKey" : "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+}
