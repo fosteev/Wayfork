@@ -7,6 +7,7 @@ import WayforkCore
 
 extension AppModel {
     static let ovpnType = UTType(filenameExtension: "ovpn") ?? .data
+    static let wireGuardType = UTType(filenameExtension: "conf") ?? .data
 
     // MARK: - OpenVPN
 
@@ -164,62 +165,191 @@ extension AppModel {
 
     func setDNS(tunnelID: UUID, dns: TunnelDNS) {
         update { store in
-            guard let index = store.tunnels.firstIndex(where: { $0.id == tunnelID }),
-                case .openVPN(var meta) = store.tunnels[index].kind
-            else { return }
-            meta.dns = dns
-            store.tunnels[index].kind = .openVPN(meta)
+            guard let index = store.tunnels.firstIndex(where: { $0.id == tunnelID }) else {
+                return
+            }
+            switch store.tunnels[index].kind {
+            case .openVPN(var meta):
+                meta.dns = dns
+                store.tunnels[index].kind = .openVPN(meta)
+            case .wireGuard(var meta):
+                meta.dns = dns
+                store.tunnels[index].kind = .wireGuard(meta)
+            case .vless, .shadowsocks, .trojan, .vmess:
+                return
+            }
         }
     }
 
-    // MARK: - VLESS
+    // MARK: - WireGuard
 
-    /// Adds a tunnel from an already validated `vless://` URI.
-    func addVLESS(_ result: VLESSImportResult) {
+    func importWireGuardFromPicker() async {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [AppModel.wireGuardType, .text, .plainText]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.message = "Choose a WireGuard config (.conf)"
+        NSApp.activate(ignoringOtherApps: true)
+        guard await panel.begin() == .OK, let url = panel.url else { return }
+        await importWireGuard(from: url)
+    }
+
+    func importWireGuard(from url: URL) async {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessed { url.stopAccessingSecurityScopedResource() }
+        }
+        let text: String
+        do {
+            text = try String(contentsOf: url, encoding: .utf8)
+        } catch {
+            Alerts.show(title: "Cannot read file", message: error.localizedDescription)
+            return
+        }
+        do {
+            let result = try WireGuardConfParser.parse(text)
+            addWireGuard(result, name: url.deletingPathExtension().lastPathComponent)
+        } catch WireGuardImportError.invalid(let reason) {
+            Alerts.show(
+                title: "Invalid config", message: "Not a valid WireGuard config: \(reason)")
+        } catch WireGuardImportError.unsupported(let reason) {
+            Alerts.show(
+                title: "Invalid config", message: "Not a valid WireGuard config: \(reason)")
+        } catch {
+            Alerts.show(
+                title: "Invalid config", message: "Not a valid WireGuard config: \(error)")
+        }
+    }
+
+    func addWireGuard(_ result: WireGuardImportResult, name rawName: String) {
         guard let slot = store.nextFreeSlot() else {
             Alerts.show(
                 title: "Tunnel limit reached",
                 message: "Wayfork supports up to \(Tunnel.maxSlots) tunnels.")
             return
         }
-        let name = uniqueName(result.name.isEmpty ? result.meta.server : result.name)
-        let tunnel = Tunnel(name: name, slot: slot, kind: .vless(result.meta))
+        let name = uniqueName(rawName.isEmpty ? result.name : rawName)
+        let tunnel = Tunnel(name: name, slot: slot, kind: .wireGuard(result.meta))
         do {
-            try secrets.write(result.uuid, for: .uuid(tunnel.id))
+            try secrets.write(result.privateKey, for: .privateKey(tunnel.id))
+            if let presharedKey = result.presharedKey {
+                try secrets.write(presharedKey, for: .presharedKey(tunnel.id))
+            }
         } catch {
-            Alerts.show(title: "Keychain error", message: "Cannot store the UUID: \(error)")
+            Alerts.show(title: "Keychain error", message: "Cannot store the keys: \(error)")
             return
         }
         update { $0.tunnels.append(tunnel) }
-        logs.app(.info, "added VLESS tunnel \(name)")
+        logs.app(.info, "added WireGuard tunnel \(name)")
         settingsSection = .tunnels
         expandedTunnelID = tunnel.id
     }
 
-    func replaceVLESS(tunnelID: UUID, with result: VLESSImportResult) {
-        guard let index = store.tunnels.firstIndex(where: { $0.id == tunnelID }) else { return }
+    func replaceWireGuardConfig(tunnelID: UUID, with result: WireGuardImportResult) {
+        guard let index = store.tunnels.firstIndex(where: { $0.id == tunnelID }),
+            case .wireGuard(let old) = store.tunnels[index].kind
+        else { return }
+        var meta = result.meta
+        meta.dns = old.dns
         do {
-            try secrets.write(result.uuid, for: .uuid(tunnelID))
+            try secrets.write(result.privateKey, for: .privateKey(tunnelID))
+            if let presharedKey = result.presharedKey {
+                try secrets.write(presharedKey, for: .presharedKey(tunnelID))
+            } else {
+                try secrets.delete(.presharedKey(tunnelID))
+            }
         } catch {
-            Alerts.show(title: "Keychain error", message: "Cannot store the UUID: \(error)")
+            Alerts.show(title: "Keychain error", message: "Cannot store the keys: \(error)")
             return
         }
-        update { $0.tunnels[index].kind = .vless(result.meta) }
+        update { $0.tunnels[index].kind = .wireGuard(meta) }
         secretsChanged()
-        logs.app(.info, "replaced URL of \(store.tunnels[index].name)")
+        logs.app(.info, "replaced config of \(store.tunnels[index].name)")
     }
 
-    /// Full `vless://` URI with the UUID from Keychain (for Copy); nil when it is missing.
-    func vlessURI(for tunnel: Tunnel) -> String? {
-        guard let meta = tunnel.kind.vless, let uuid = (try? secrets.read(.uuid(tunnel.id))) ?? nil
-        else { return nil }
-        return VLESSURIParser.uri(meta: meta, uuid: uuid, name: tunnel.name)
+    // MARK: - Proxy links
+
+    func addLink(_ link: ProxyLink) {
+        guard let slot = store.nextFreeSlot() else {
+            Alerts.show(
+                title: "Tunnel limit reached",
+                message: "Wayfork supports up to \(Tunnel.maxSlots) tunnels.")
+            return
+        }
+        let name = uniqueName(link.name.isEmpty ? link.server : link.name)
+        let tunnel = Tunnel(name: name, slot: slot, kind: link.tunnelKind)
+        do {
+            try secrets.write(link.secret, for: link.secretKey(tunnel.id))
+        } catch {
+            Alerts.show(
+                title: "Keychain error", message: "Cannot store the \(link.secretName): \(error)")
+            return
+        }
+        update { $0.tunnels.append(tunnel) }
+        logs.app(.info, "added \(link.kindName) tunnel \(name)")
+        settingsSection = .tunnels
+        expandedTunnelID = tunnel.id
     }
 
-    /// The URI with the UUID masked, for display.
-    func maskedVLESSURI(for tunnel: Tunnel) -> String {
-        guard let meta = tunnel.kind.vless else { return "" }
-        return VLESSURIParser.uri(meta: meta, uuid: "••••••••", name: tunnel.name)
+    func replaceLink(tunnelID: UUID, with link: ProxyLink) {
+        guard let index = store.tunnels.firstIndex(where: { $0.id == tunnelID }) else { return }
+        // Identity by case, not by the badge text: this guard is what keeps a pasted link
+        // from overwriting a tunnel of another kind, so it must not depend on a label.
+        guard link.matches(store.tunnels[index].kind) else {
+            Alerts.show(
+                title: "Wrong link kind",
+                message: "That link is a \(link.kindName) link; this tunnel is "
+                    + "\(StatusText.typeBadge(store.tunnels[index].kind)).")
+            return
+        }
+        do {
+            try secrets.write(link.secret, for: link.secretKey(tunnelID))
+        } catch {
+            Alerts.show(
+                title: "Keychain error", message: "Cannot store the \(link.secretName): \(error)")
+            return
+        }
+        update { $0.tunnels[index].kind = link.tunnelKind }
+        secretsChanged()
+        logs.app(.info, "replaced link of \(store.tunnels[index].name)")
+    }
+
+    func linkURI(for tunnel: Tunnel) -> String? {
+        switch tunnel.kind {
+        case .vless(let meta):
+            guard let uuid = (try? secrets.read(.uuid(tunnel.id))) ?? nil else { return nil }
+            return VLESSURIParser.uri(meta: meta, uuid: uuid, name: tunnel.name)
+        case .shadowsocks(let meta):
+            guard let password = (try? secrets.read(.password(tunnel.id))) ?? nil else {
+                return nil
+            }
+            return ProxyLinkParser.uri(meta: meta, password: password, name: tunnel.name)
+        case .trojan(let meta):
+            guard let password = (try? secrets.read(.password(tunnel.id))) ?? nil else {
+                return nil
+            }
+            return ProxyLinkParser.uri(meta: meta, password: password, name: tunnel.name)
+        case .vmess(let meta):
+            guard let uuid = (try? secrets.read(.uuid(tunnel.id))) ?? nil else { return nil }
+            return ProxyLinkParser.uri(meta: meta, uuid: uuid, name: tunnel.name)
+        case .openVPN, .wireGuard:
+            return nil
+        }
+    }
+
+    func maskedLinkURI(for tunnel: Tunnel) -> String {
+        switch tunnel.kind {
+        case .vless(let meta):
+            VLESSURIParser.uri(meta: meta, uuid: "••••••••", name: tunnel.name)
+        case .shadowsocks(let meta):
+            ProxyLinkParser.uri(meta: meta, password: "••••••••", name: tunnel.name)
+        case .trojan(let meta):
+            ProxyLinkParser.uri(meta: meta, password: "••••••••", name: tunnel.name)
+        case .vmess(let meta):
+            ProxyLinkParser.uri(meta: meta, uuid: "••••••••", name: tunnel.name)
+        case .openVPN, .wireGuard:
+            ""
+        }
     }
 
     // MARK: - Common
@@ -283,6 +413,64 @@ extension AppModel {
             let attempt = trimmed + suffix
             if store.isNameAvailable(attempt) { return attempt }
             n += 1
+        }
+    }
+}
+
+extension ProxyLink {
+    fileprivate var tunnelKind: TunnelKind {
+        switch self {
+        case .vless(let result): .vless(result.meta)
+        case .shadowsocks(let result): .shadowsocks(result.meta)
+        case .trojan(let result): .trojan(result.meta)
+        case .vmess(let result): .vmess(result.meta)
+        }
+    }
+
+    fileprivate var name: String {
+        switch self {
+        case .vless(let result): result.name
+        case .shadowsocks(let result): result.name
+        case .trojan(let result): result.name
+        case .vmess(let result): result.name
+        }
+    }
+
+    fileprivate var server: String { tunnelKind.serverHosts[0] }
+
+    fileprivate var kindName: String { StatusText.typeBadge(tunnelKind) }
+
+    /// Whether this link could replace a tunnel of that kind.
+    fileprivate func matches(_ kind: TunnelKind) -> Bool {
+        switch (self, kind) {
+        case (.vless, .vless), (.shadowsocks, .shadowsocks), (.trojan, .trojan),
+            (.vmess, .vmess):
+            true
+        default:
+            false
+        }
+    }
+
+    fileprivate var secret: String {
+        switch self {
+        case .vless(let result): result.uuid
+        case .shadowsocks(let result): result.password
+        case .trojan(let result): result.password
+        case .vmess(let result): result.uuid
+        }
+    }
+
+    fileprivate var secretName: String {
+        switch self {
+        case .vless, .vmess: "UUID"
+        case .shadowsocks, .trojan: "password"
+        }
+    }
+
+    fileprivate func secretKey(_ tunnelID: UUID) -> SecretKey {
+        switch self {
+        case .vless, .vmess: .uuid(tunnelID)
+        case .shadowsocks, .trojan: .password(tunnelID)
         }
     }
 }

@@ -25,11 +25,17 @@ struct SettingsView: View {
         }
         .frame(minWidth: 700, minHeight: 460)
         .dropDestination(for: URL.self) { urls, _ in
-            let profiles = urls.filter { $0.pathExtension.lowercased() == "ovpn" }
+            let profiles = urls.filter {
+                ["ovpn", "conf"].contains($0.pathExtension.lowercased())
+            }
             guard !profiles.isEmpty else { return false }
             Task {
                 for url in profiles {
-                    await model.importOpenVPN(from: url)
+                    if url.pathExtension.lowercased() == "conf" {
+                        await model.importWireGuard(from: url)
+                    } else {
+                        await model.importOpenVPN(from: url)
+                    }
                 }
             }
             return true

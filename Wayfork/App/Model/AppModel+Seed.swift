@@ -7,8 +7,7 @@ import WayforkCore
 extension AppModel {
     static let seedDirectoryDefaultsKey = "WayforkSeedDirectory"
 
-    /// Imports `*.ovpn` and `vless://` lines from `*.txt` under the seed directory, skipping
-    /// profiles already present (same sanitized OpenVPN body / same VLESS metadata).
+    /// Imports VPN configs and proxy links under the seed directory, skipping duplicates.
     /// Silent: problems go to the log, nothing is shown. No-op without the default.
     func seedFromDirectory() {
         guard !persistenceDisabled,
@@ -33,8 +32,11 @@ extension AppModel {
         for url in files where url.pathExtension.lowercased() == "ovpn" {
             if seedOpenVPN(url) { added += 1 }
         }
+        for url in files where url.pathExtension.lowercased() == "conf" {
+            if seedWireGuard(url) { added += 1 }
+        }
         for url in files where url.pathExtension.lowercased() == "txt" {
-            added += seedVLESSLines(url)
+            added += seedLinkLines(url)
         }
         if added > 0 {
             logs.app(.info, "seeded \(added) new tunnels from \(path)")
@@ -67,20 +69,61 @@ extension AppModel {
         }
     }
 
-    private func seedVLESSLines(_ url: URL) -> Int {
+    private func seedWireGuard(_ url: URL) -> Bool {
+        guard let slot = store.nextFreeSlot() else { return false }
+        do {
+            let result = try WireGuardConfParser.parse(
+                String(contentsOf: url, encoding: .utf8))
+            if store.tunnels.contains(where: { $0.kind.wireGuard == result.meta }) {
+                return false
+            }
+            let tunnel = Tunnel(
+                name: uniqueName(url.deletingPathExtension().lastPathComponent), slot: slot,
+                kind: .wireGuard(result.meta))
+            try secrets.write(result.privateKey, for: .privateKey(tunnel.id))
+            if let presharedKey = result.presharedKey {
+                try secrets.write(presharedKey, for: .presharedKey(tunnel.id))
+            }
+            update { $0.tunnels.append(tunnel) }
+            return true
+        } catch {
+            logs.app(.warning, "seed: skipped \(url.lastPathComponent): \(error)")
+            return false
+        }
+    }
+
+    private func seedLinkLines(_ url: URL) -> Int {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return 0 }
         var added = 0
         for rawLine in text.split(whereSeparator: \.isNewline) {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
-            guard line.lowercased().hasPrefix("vless://") else { continue }
+            guard
+                ["vless://", "ss://", "trojan://", "vmess://"].contains(where: {
+                    line.lowercased().hasPrefix($0)
+                })
+            else { continue }
             guard let slot = store.nextFreeSlot() else { break }
             do {
-                let result = try VLESSURIParser.parse(line)
-                if store.tunnels.contains(where: { $0.kind.vless == result.meta }) { continue }
+                let link = try ProxyLinkParser.parse(line)
+                let values: (TunnelKind, String, String, SecretKeyKind)
+                switch link {
+                case .vless(let result):
+                    values = (.vless(result.meta), result.name, result.uuid, .uuid)
+                case .shadowsocks(let result):
+                    values = (.shadowsocks(result.meta), result.name, result.password, .password)
+                case .trojan(let result):
+                    values = (.trojan(result.meta), result.name, result.password, .password)
+                case .vmess(let result):
+                    values = (.vmess(result.meta), result.name, result.uuid, .uuid)
+                }
+                if store.tunnels.contains(where: { $0.kind == values.0 }) { continue }
+                let server = values.0.serverHosts.first ?? "Tunnel"
                 let tunnel = Tunnel(
-                    name: uniqueName(result.name.isEmpty ? result.meta.server : result.name),
-                    slot: slot, kind: .vless(result.meta))
-                try secrets.write(result.uuid, for: .uuid(tunnel.id))
+                    name: uniqueName(values.1.isEmpty ? server : values.1), slot: slot,
+                    kind: values.0)
+                let key: SecretKey =
+                    values.3 == .uuid ? .uuid(tunnel.id) : .password(tunnel.id)
+                try secrets.write(values.2, for: key)
                 update { $0.tunnels.append(tunnel) }
                 added += 1
             } catch {
@@ -93,4 +136,9 @@ extension AppModel {
         }
         return added
     }
+}
+
+private enum SecretKeyKind {
+    case uuid
+    case password
 }

@@ -256,12 +256,12 @@ final class AppModel {
         return "Overrides tunnel rules; everything unmatched already goes direct"
     }
 
-    /// Discovered DNS for an OpenVPN tunnel (live status first, then the stored value).
+    /// Discovered DNS for an OpenVPN or WireGuard tunnel (live status first).
     func discoveredDNS(for tunnel: Tunnel) -> [String] {
         if let live = status?.discoveredDNS[tunnel.id.uuidString.lowercased()], !live.isEmpty {
             return live
         }
-        return tunnel.kind.openVPN?.discoveredDNS ?? []
+        return tunnel.kind.openVPN?.discoveredDNS ?? tunnel.kind.wireGuard?.discoveredDNS ?? []
     }
 
     // MARK: - Bootstrap
@@ -784,10 +784,13 @@ final class AppModel {
             Alerts.show(title: "Keychain error", message: "Cannot read tunnel secrets: \(error)")
             return
         }
-        let hosts = HostResolver.openVPNHosts(in: store)
+        let hosts = HostResolver.serverHosts(in: store)
         let resolved = await Task.detached { HostResolver.resolveIPv4(hosts) }.value
         for host in hosts where resolved[host] == nil {
-            logs.app(.warning, "cannot resolve \(host): its OpenVPN server is matched by name only")
+            logs.app(
+                .warning,
+                "cannot resolve \(host): its OpenVPN server is matched by name only, and a "
+                    + "WireGuard peer left as a name resolves through dns-direct")
         }
         let systemDNS = SystemDNS.snapshot()
         let override = resolverOverrideAddress

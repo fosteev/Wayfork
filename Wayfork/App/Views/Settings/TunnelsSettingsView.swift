@@ -5,7 +5,8 @@ import WayforkCore
 /// Settings › Tunnels: rows that expand in place (docs/design/02-ux.md, "Tunnels").
 struct TunnelsSettingsView: View {
     @Environment(AppModel.self) private var model
-    @State private var vlessSheet: AddVLESSSheet.Mode?
+    @State private var linkSheet: AddLinkSheet.Mode?
+    @State private var wireGuardSheet: AddWireGuardSheet.Mode?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -16,7 +17,8 @@ struct TunnelsSettingsView: View {
                     Button("Import OpenVPN Config…") {
                         Task { await model.importOpenVPNFromPicker() }
                     }
-                    Button("Add VLESS from URL…") { vlessSheet = .add }
+                    Button("Add WireGuard…") { wireGuardSheet = .add }
+                    Button("Add from link…") { linkSheet = .add }
                 } label: {
                     Label("Add", systemImage: "plus")
                 }
@@ -24,7 +26,7 @@ struct TunnelsSettingsView: View {
             }
             if model.store.tunnels.isEmpty {
                 Text(
-                    "No tunnels yet. Import an OpenVPN config or add a VLESS URL with + Add, or drop a .ovpn file here."
+                    "No tunnels yet. Import an OpenVPN or WireGuard config or add a link with + Add, or drop a .ovpn or .conf file here."
                 )
                 .foregroundStyle(.secondary)
                 .padding(.top, 8)
@@ -36,12 +38,17 @@ struct TunnelsSettingsView: View {
                             if index > 0 { Divider() }
                             TunnelRowView(tunnel: tunnel)
                             if model.expandedTunnelID == tunnel.id {
-                                if tunnel.kind.isOpenVPN {
+                                switch tunnel.kind {
+                                case .openVPN:
                                     OpenVPNDetailView(tunnel: tunnel)
-                                } else {
-                                    VLESSDetailView(
+                                case .wireGuard:
+                                    WireGuardDetailView(
                                         tunnel: tunnel,
-                                        replace: { vlessSheet = .replace(tunnel.id) })
+                                        replace: { wireGuardSheet = .replace(tunnel.id) })
+                                case .vless, .shadowsocks, .trojan, .vmess:
+                                    ProxyLinkDetailView(
+                                        tunnel: tunnel,
+                                        replace: { linkSheet = .replace(tunnel.id) })
                                 }
                             }
                         }
@@ -51,8 +58,11 @@ struct TunnelsSettingsView: View {
             }
         }
         .padding(20)
-        .sheet(item: $vlessSheet) { mode in
-            AddVLESSSheet(mode: mode)
+        .sheet(item: $linkSheet) { mode in
+            AddLinkSheet(mode: mode)
+        }
+        .sheet(item: $wireGuardSheet) { mode in
+            AddWireGuardSheet(mode: mode)
         }
     }
 }
@@ -70,7 +80,7 @@ struct TunnelRowView: View {
             Text(tunnel.name).fontWeight(.semibold).lineLimit(1)
                 .frame(minWidth: 70, alignment: .leading)
             TypeBadge(kind: tunnel.kind)
-            Text(summary.text)
+            Text(displaySummary(summary.text))
                 .font(.system(size: 12))
                 .foregroundStyle(summary.isError ? Color.red : Color.secondary)
                 .lineLimit(1)
@@ -96,6 +106,26 @@ struct TunnelRowView: View {
             withAnimation(.easeInOut(duration: 0.15)) {
                 model.expandedTunnelID = expanded ? nil : tunnel.id
             }
+        }
+    }
+
+    private func displaySummary(_ summary: String) -> String {
+        let suffix = summary.hasSuffix(" · everything else") ? " · everything else" : ""
+        let base = suffix.isEmpty ? summary : String(summary.dropLast(suffix.count))
+        switch tunnel.kind {
+        case .wireGuard:
+            return base + " · WireGuard" + suffix
+        case .vmess(let meta):
+            let status = base.split(separator: " · ", maxSplits: 1).first.map(String.init) ?? base
+            var transport: String
+            switch meta.transport {
+            case .tcp: transport = "tcp"
+            case .ws: transport = "ws"
+            case .grpc: transport = "gRPC"
+            }
+            return "\(status) · \(meta.server):\(meta.port) · \(transport)\(suffix)"
+        case .openVPN, .vless, .shadowsocks, .trojan:
+            return summary
         }
     }
 }
@@ -167,27 +197,9 @@ struct OpenVPNDetailView: View {
             }
             GridRow {
                 label("DNS")
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 14) {
-                        Picker("DNS", selection: $dnsMode) {
-                            Text(automaticLabel).tag(0)
-                            Text("Custom").tag(1)
-                        }
-                        .pickerStyle(.radioGroup)
-                        .horizontalRadioGroupLayout()
-                        .labelsHidden()
-                        TextField("10.8.0.1", text: $customDNS)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 140)
-                            .disabled(dnsMode != 1)
-                            .focused($focus, equals: .config)
-                            .onSubmit(commitDNS)
-                            .invalidOutline(dnsError != nil)
-                    }
-                    if let dnsError {
-                        Text(dnsError).font(.system(size: 11)).foregroundStyle(.red)
-                    }
-                }
+                TunnelDNSEditor(
+                    automaticLabel: automaticLabel, mode: $dnsMode, customDNS: $customDNS,
+                    error: $dnsError, focus: $focus, commit: commitDNS)
             }
             GridRow {
                 label("Config")
@@ -325,8 +337,197 @@ struct OpenVPNDetailView: View {
     }
 }
 
-/// Expanded VLESS tunnel: name, masked URL, footer.
-struct VLESSDetailView: View {
+/// Expanded WireGuard tunnel: peer, addresses, DNS, MTU and config replacement.
+struct WireGuardDetailView: View {
+    @Environment(AppModel.self) private var model
+    let tunnel: Tunnel
+    let replace: () -> Void
+
+    @State private var name = ""
+    @State private var nameError: String?
+    @State private var dnsMode = 0
+    @State private var customDNS = ""
+    @State private var dnsError: String?
+    @FocusState private var focus: AppModel.TunnelField?
+
+    private var meta: WireGuardMeta {
+        tunnel.kind.wireGuard ?? WireGuardMeta(addresses: [], peers: [])
+    }
+
+    var body: some View {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 8) {
+            GridRow {
+                label("Name")
+                VStack(alignment: .leading, spacing: 2) {
+                    TextField("Name", text: $name)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 220)
+                        .focused($focus, equals: .name)
+                        .onSubmit(commitName)
+                        .invalidOutline(nameError != nil)
+                    if let nameError {
+                        Text(nameError).font(.system(size: 11)).foregroundStyle(.red)
+                    }
+                }
+            }
+            if let peer = meta.peers.first {
+                GridRow {
+                    label("Peer")
+                    Text("\(peer.host):\(peer.port) · \(peer.publicKey.prefix(8))…")
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+            GridRow {
+                label("Address")
+                Text(meta.addresses.joined(separator: ", "))
+            }
+            GridRow {
+                label("DNS")
+                TunnelDNSEditor(
+                    automaticLabel: automaticLabel, mode: $dnsMode, customDNS: $customDNS,
+                    error: $dnsError, focus: $focus, commit: commitDNS)
+            }
+            if let mtu = meta.mtu {
+                GridRow {
+                    label("MTU")
+                    Text(String(mtu))
+                }
+            }
+            if let warning = allowedIPsWarning(meta) {
+                GridRow {
+                    Text("")
+                    Text(warning)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            GridRow {
+                label("Config")
+                Button("Replace Config…", action: replace).controlSize(.small)
+            }
+            GridRow {
+                Text("")
+                DefaultTunnelToggle(tunnel: tunnel)
+            }
+            GridRow {
+                Text("")
+                HStack(spacing: 8) {
+                    Text(StatusText.count(model.ruleCount(for: tunnel.id), "rule"))
+                        .foregroundStyle(.secondary)
+                    Button("Show") { model.settingsSection = .rules }.buttonStyle(.link)
+                    Spacer()
+                    Button("Delete…") { model.deleteTunnel(tunnel.id) }
+                        .controlSize(.small)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+        .font(.system(size: 12))
+        .padding(EdgeInsets(top: 10, leading: 12, bottom: 12, trailing: 12))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.025))
+        .onAppear(perform: load)
+        .onChange(of: model.pendingFocus, initial: true) { _, pending in
+            guard let pending, model.expandedTunnelID == tunnel.id else { return }
+            if pending == .config { replace() } else { focus = pending }
+            model.pendingFocus = nil
+        }
+        .onChange(of: focus) { old, _ in
+            if old == .name { commitName() }
+            if old == .config { commitDNS() }
+        }
+        .onChange(of: dnsMode) { _, mode in
+            if mode == 0 {
+                dnsError = nil
+                model.setDNS(tunnelID: tunnel.id, dns: .auto)
+            } else {
+                commitDNS()
+            }
+        }
+    }
+
+    private var automaticLabel: String {
+        let discovered = model.discoveredDNS(for: tunnel)
+        return discovered.isEmpty
+            ? "Automatic" : "Automatic (\(discovered.joined(separator: ", ")))"
+    }
+
+    private func label(_ text: String) -> some View {
+        Text(text)
+            .foregroundStyle(.secondary)
+            .frame(width: 100, alignment: .trailing)
+            .gridColumnAlignment(.trailing)
+    }
+
+    private func load() {
+        name = tunnel.name
+        switch meta.dns {
+        case .auto:
+            dnsMode = 0
+        case .custom(let servers):
+            dnsMode = 1
+            customDNS = servers.joined(separator: ", ")
+        }
+    }
+
+    private func commitName() {
+        guard name != tunnel.name else { return }
+        nameError = model.rename(tunnelID: tunnel.id, to: name)
+    }
+
+    private func commitDNS() {
+        guard dnsMode == 1 else { return }
+        let servers = customDNS.split(whereSeparator: { $0 == "," || $0 == " " })
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        guard !servers.isEmpty, servers.allSatisfy(isIPAddress) else {
+            dnsError = servers.isEmpty ? "Enter at least one resolver address" : "Not an IP address"
+            return
+        }
+        dnsError = nil
+        if meta.dns != .custom(servers: servers) {
+            model.setDNS(tunnelID: tunnel.id, dns: .custom(servers: servers))
+        }
+    }
+}
+
+private struct TunnelDNSEditor: View {
+    let automaticLabel: String
+    @Binding var mode: Int
+    @Binding var customDNS: String
+    @Binding var error: String?
+    let focus: FocusState<AppModel.TunnelField?>.Binding
+    let commit: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 14) {
+                Picker("DNS", selection: $mode) {
+                    Text(automaticLabel).tag(0)
+                    Text("Custom").tag(1)
+                }
+                .pickerStyle(.radioGroup)
+                .horizontalRadioGroupLayout()
+                .labelsHidden()
+                TextField("10.8.0.1", text: $customDNS)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 140)
+                    .disabled(mode != 1)
+                    .focused(focus, equals: .config)
+                    .onSubmit(commit)
+                    .invalidOutline(error != nil)
+            }
+            if let error {
+                Text(error).font(.system(size: 11)).foregroundStyle(.red)
+            }
+        }
+    }
+}
+
+/// Expanded proxy-link tunnel: name, masked link, footer.
+struct ProxyLinkDetailView: View {
     @Environment(AppModel.self) private var model
     let tunnel: Tunnel
     let replace: () -> Void
@@ -352,22 +553,22 @@ struct VLESSDetailView: View {
                 }
             }
             GridRow {
-                label("URL")
+                label("Link")
                 HStack(spacing: 8) {
-                    Text(model.maskedVLESSURI(for: tunnel))
+                    Text(model.maskedLinkURI(for: tunnel))
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Button("Copy") {
-                        if let uri = model.vlessURI(for: tunnel) {
+                        if let uri = model.linkURI(for: tunnel) {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(uri, forType: .string)
                         }
                     }
                     .controlSize(.small)
                     .disabled(model.missingSecrets.contains(tunnel.id))
-                    Button("Replace URL…", action: replace).controlSize(.small)
+                    Button("Replace Link…", action: replace).controlSize(.small)
                 }
             }
             GridRow {
