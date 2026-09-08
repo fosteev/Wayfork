@@ -6,6 +6,11 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-08
+
+Four more tunnel kinds, all native to the bundled sing-box: nothing new runs, nothing new
+is installed, and the same rules, default tunnel and traffic view apply to them.
+
 ### Added
 
 - **Four more tunnel kinds, on both platforms.** Next to OpenVPN and VLESS, Wayfork now
