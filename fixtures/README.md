@@ -12,6 +12,7 @@ reviewed change to the product.
 | `ovpn/*.ovpn`, `*.expected.ovpn` | OpenVPN profile importer samples (placeholder keys only) | `OpenVPNConfigParserTests`, Dart parser tests |
 | `vless/links.json` | VLESS links every client accepts (with the parse result) or rejects | `VLESSURIParserTests`, Dart parser tests |
 | `links/<scheme>.json` | F13: `ss`, `trojan`, `vmess` links every client accepts (expected meta + secret) or rejects (with the reason), one file per scheme so a new kind is a new file rather than a churned golden | `ProxyLinkParserTests`, Dart parser tests |
+| `links/subscription.json` | F13 stage 7: subscription bodies (plain, base64, comments, non-lists) with the links every client extracts, the lines it skips and why, or the error | `SubscriptionDecoderTests`, Dart decoder tests |
 | `wireguard/*.conf`, `*.expected.json` | F13: WireGuard profile importer samples — placeholder keys only, one per shape (full tunnel, split `AllowedIPs`, preshared key, multiple peers, the invalid ones) | `WireGuardConfParserTests`, Dart parser tests |
 | `clash/connections.json` | A `GET /connections` sample from sing-box's Clash API | `TrafficTests`, `RuleSetSelectorsTests`, Go traffic tests |
 

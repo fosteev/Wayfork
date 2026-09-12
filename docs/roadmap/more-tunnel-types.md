@@ -3,7 +3,8 @@
 > Status: in progress · created 2026-09-07 · stages 1–5 done; **released as 0.5.0 on
 > 2026-09-08** (macOS DMG + both MSIs + the bundle on the GitHub release, all three CI runs
 > green) · the two live checks below are still owed and are the only thing between this and
-> "done"; stages 7–8 stay optional
+> "done" for the four kinds; **stage 7 (subscriptions) approved 2026-09-12** and in
+> progress; stage 8 stays optional
 
 ## Goal
 
@@ -73,7 +74,7 @@ through a bundled Xray-core is planned here but scoped as its own follow-up (sta
 | Shadowsocks | `ss://` SIP002 (base64 userinfo, `plugin=`) | password | yes; AEAD + 2022 methods only, `plugin` → unsupported |
 | Trojan | `trojan://pw@host:port?sni&fp&alpn&type&path&host&serviceName` | password | yes; shares the VLESS TLS/transport code |
 | VMess | `vmess://` base64 JSON (V2RayN) | uuid | yes; `aid>0` → unsupported |
-| Subscriptions (URL → base64 list of links) | URL | — | stage 7, optional |
+| Subscriptions (URL → list of links, plain or base64) | URL | — | stage 7, approved 2026-09-12 |
 | Hysteria2 | `hysteria2://` / `hy2://` | password, obfs password | **no** — no live server (not an Xray protocol); parser + generator are an afternoon once one exists |
 | TUIC, AnyTLS, SOCKS/HTTP upstream, NaiveProxy | links / fields | password | **no** — add on request, same recipe |
 | XHTTP via Xray-core | `vless://…type=xhttp` | uuid | stage 8, separate approval |
@@ -329,14 +330,69 @@ that the Swift and Dart generators agree about `endpoints[]` and the three new o
 
 **Done when:** both checks observed by the maintainer; banner flips to "done".
 
-### 7. Subscriptions *(optional, after 6)*
+### 7. Subscriptions *(approved 2026-09-12)*
 
-- [ ] Paste a subscription URL → fetch (app side, plain HTTPS), base64-decode, split into
-      links, run each through `ProxyLinkParser`, offer a checklist of servers to add.
-      Decision: one-shot import, no auto-refresh (refresh belongs with L4 health/failover).
-- [ ] Fixture: `fixtures/links/subscription.txt` + expected list; Dart twin.
+Trigger: a real subscription (an Azure API Management URL whose body is one plain
+`vless://…reality…` line, no base64) — the protocol was already supported, only the
+delivery was not. Feature text in [ROADMAP.md](../ROADMAP.md) § F13; design in
+[design/04-tunnels.md](../design/04-tunnels.md) § Subscriptions and
+[design/02-ux.md](../design/02-ux.md) (the sheet); Windows delta in
+[design/08-windows.md](../design/08-windows.md).
 
-**Done when:** a subscription with mixed kinds adds N tunnels with masked links.
+Decisions:
+- **Same sheet, not a new menu item.** *Add from link…* already tells schemes apart; an
+  `https://` URL is one more thing it recognises. Nothing is fetched until the user asks
+  (**Fetch** button / Enter), so typing a URL never fires requests per keystroke.
+- **The URL is a bearer token.** It is never stored, never logged (the log line names the
+  host only) and never appears in diagnostics; there is nothing to sanitise because
+  nothing is kept. Consequently: one-shot import, no auto-refresh, no "update" button —
+  refresh belongs with L4 health, and would need a stored URL first.
+- **Body decoding is a pure function** (`SubscriptionDecoder`, Dart twin) shared through
+  a fixture: plain lines with supported schemes win; otherwise the whole body is tried as
+  base64 (standard or URL-safe, padding optional, whitespace ignored); anything else
+  ("looks like YAML / JSON / HTML") is refused with a reason. Lines that fail
+  `ProxyLinkParser` (unknown scheme such as `hysteria2://`, invalid, unsupported) are
+  reported per line, not fatal — a list with one bad server still imports the others.
+- **Fetch policy**: `https://` only (`http://` refused — the body carries every secret of
+  every server); redirects followed; 15 s timeout; body capped at 1 MiB; `User-Agent:
+  Wayfork/<version>` and `Accept: text/plain` — the common subscription converters return
+  Clash YAML for a Clash UA and raw links for everything else, so a neutral UA is the
+  right one. Fetched by the app, not the daemon/service — the request needs no privilege.
+- **Checklist rules**: parsed servers pre-checked; a server whose meta equals an existing
+  tunnel's is shown unchecked as *already added*; the count of checked rows may not exceed
+  the free slots (`Tunnel.maxSlots`), the Add button says how many it will add. Names go
+  through `uniqueName` like a single link. Replace-link mode refuses a URL ("paste a
+  single link").
+
+- [x] Design notes (04-tunnels.md § Subscriptions, 02-ux.md sheet paragraph, 08-windows.md
+      delta, fixtures/README.md row). Done 2026-09-12.
+- [x] Core (Swift): `SubscriptionDecoder.decode(_:) -> [SubscriptionEntry]` (`.link` with
+      its line and uri, or `.skipped(line:reason:)`); `SubscriptionFetcher` (URLSession, the
+      policy above); `ProxyLink.tunnelKind/name/server/port` made public for the sheets;
+      `Store.nextFreeSlot(excluding:)` / `freeSlotCount`; fixture
+      `fixtures/links/subscription.json` (ten cases) written by `SubscriptionDecoderTests`.
+      Done 2026-09-12, 229 core tests green.
+- [x] App (macOS): `AddLinkSheet` recognises `http(s)://`, shows **Fetch**, then the
+      checklist; `AppModel.addLinks(_:from:)` adds the checked ones in one store update with
+      batch-aware `uniqueName(_:taken:)`; log line "added N tunnels from <host>". Done
+      2026-09-12, app builds; the sheet itself is checked by the maintainer (below).
+- [x] Core (Dart): `core/links/subscription_decoder.dart` replaying the fixture;
+      `subscription_fetcher.dart` on `dart:io` `HttpClient` (no new dependency);
+      `ProxyLinkInfo` extension moved out of the model into the parser. Done 2026-09-12.
+- [x] App (Flutter): `add_link_dialog.dart` with the same Fetch → checklist flow, returning
+      `AddLinkOutcome` (`AddLinkSingle` / `AddLinkSubscription`; `showReplaceLinkDialog` for
+      the replace path); `AppModel.addLinks`; four widget tests with an injected fetch. Done
+      2026-09-12, 345 tests green, analyze clean.
+- [x] Docs: CHANGELOG § Unreleased, README Tunnels section; M8 / WM9 lines ticked. Done
+      2026-09-12.
+- [ ] Live check (maintainer): the PaperVPN subscription (plain body, one REALITY server)
+      through the macOS sheet and, when convenient, on `ssh wf-pc`; a base64 subscription
+      with mixed kinds if one is at hand.
+
+**Done when:** the PaperVPN-style plain body and a base64 body with mixed kinds each add
+their servers on both platforms, with masked links and a per-line reason for what was
+skipped; the fixture covers plain, base64 standard, base64 URL-safe unpadded, mixed
+good/bad lines, an empty body and a non-list body.
 
 ### 8. XHTTP via bundled Xray-core *(separate approval; gets its own roadmap file)*
 

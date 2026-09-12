@@ -6,6 +6,15 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Subscription URLs, on both platforms.** *+ Add › Add from link…* also takes an
+  `https://` subscription link: *Fetch* loads it, decodes plain link lines or base64 of
+  them, lists every server with a checkbox (servers already added start unchecked) and
+  every line it could not use with the reason — an unsupported scheme or a bad link skips
+  that line, not the import. One-shot by design: the URL is a bearer token for every
+  server on it, so it is never stored, logged or refreshed. `http://` is refused.
+
 ## [0.5.0] — 2026-09-08
 
 Four more tunnel kinds, all native to the bundled sing-box: nothing new runs, nothing new

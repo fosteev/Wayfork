@@ -1,0 +1,245 @@
+{
+  "cases" : [
+    {
+      "body" : "vless://00000000-0000-4000-8000-000000000041@nl.example.net:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=firefox&sni=www.example.com&sid=&pbk=public-key#NL",
+      "expected" : {
+        "links" : [
+          {
+            "kind" : "vless",
+            "line" : 1,
+            "name" : "NL",
+            "port" : 443,
+            "server" : "nl.example.net"
+          }
+        ],
+        "skipped" : [
+
+        ]
+      },
+      "name" : "plain-one"
+    },
+    {
+      "body" : "vless://00000000-0000-4000-8000-000000000041@nl.example.net:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=firefox&sni=www.example.com&sid=&pbk=public-key#NL\nss://YWVzLTI1Ni1nY206ZmFrZS1wYXNzd29yZA@aead.example.net:8388#SS\nhysteria2://fake-password@hy.example.net:443#HY\ntrojan://fake-password@tls.example.net:443#DE\nss://aes-256-cfb:fake-password@legacy.example.net:8388#legacy\nvmess://eyJ2IjoiMiIsInBzIjoiVk0iLCJhZGQiOiJ2bWVzcy5leGFtcGxlLm5ldCIsInBvcnQiOiI0NDMiLCJpZCI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDA0MiIsImFpZCI6IjAiLCJuZXQiOiJ3cyIsInBhdGgiOiIvc29ja2V0IiwiaG9zdCI6InZtZXNzLmV4YW1wbGUubmV0IiwidGxzIjoidGxzIiwic25pIjoidm1lc3MuZXhhbXBsZS5uZXQifQ==",
+      "expected" : {
+        "links" : [
+          {
+            "kind" : "vless",
+            "line" : 1,
+            "name" : "NL",
+            "port" : 443,
+            "server" : "nl.example.net"
+          },
+          {
+            "kind" : "shadowsocks",
+            "line" : 2,
+            "name" : "SS",
+            "port" : 8388,
+            "server" : "aead.example.net"
+          },
+          {
+            "kind" : "trojan",
+            "line" : 4,
+            "name" : "DE",
+            "port" : 443,
+            "server" : "tls.example.net"
+          },
+          {
+            "kind" : "vmess",
+            "line" : 6,
+            "name" : "VM",
+            "port" : 443,
+            "server" : "vmess.example.net"
+          }
+        ],
+        "skipped" : [
+          {
+            "line" : 3,
+            "reason" : "unsupported scheme hysteria2://"
+          },
+          {
+            "line" : 5,
+            "reason" : "method \"aes-256-cfb\" is not supported"
+          }
+        ]
+      },
+      "name" : "plain-mixed"
+    },
+    {
+      "body" : "vless://00000000-0000-4000-8000-000000000041@nl.example.net:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=firefox&sni=www.example.com&sid=&pbk=public-key#NL\r\ntrojan://fake-password@tls.example.net:443#DE\r\n",
+      "expected" : {
+        "links" : [
+          {
+            "kind" : "vless",
+            "line" : 1,
+            "name" : "NL",
+            "port" : 443,
+            "server" : "nl.example.net"
+          },
+          {
+            "kind" : "trojan",
+            "line" : 2,
+            "name" : "DE",
+            "port" : 443,
+            "server" : "tls.example.net"
+          }
+        ],
+        "skipped" : [
+
+        ]
+      },
+      "name" : "plain-crlf"
+    },
+    {
+      "body" : "dmxlc3M6Ly8wMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwNDFAbmwuZXhhbXBsZS5u\nZXQ6NDQzP3R5cGU9dGNwJnNlY3VyaXR5PXJlYWxpdHkmZW5jcnlwdGlvbj1ub25lJmZsb3c9eHRs\ncy1ycHJ4LXZpc2lvbiZmcD1maXJlZm94JnNuaT13d3cuZXhhbXBsZS5jb20mc2lkPSZwYms9cHVi\nbGljLWtleSNOTApzczovL1lXVnpMVEkxTmkxblkyMDZabUZyWlMxd1lYTnpkMjl5WkFAYWVhZC5l\neGFtcGxlLm5ldDo4Mzg4I1NTCmh5c3RlcmlhMjovL2Zha2UtcGFzc3dvcmRAaHkuZXhhbXBsZS5u\nZXQ6NDQzI0hZCnRyb2phbjovL2Zha2UtcGFzc3dvcmRAdGxzLmV4YW1wbGUubmV0OjQ0MyNERQpz\nczovL2Flcy0yNTYtY2ZiOmZha2UtcGFzc3dvcmRAbGVnYWN5LmV4YW1wbGUubmV0OjgzODgjbGVn\nYWN5CnZtZXNzOi8vZXlKMklqb2lNaUlzSW5Ceklqb2lWazBpTENKaFpHUWlPaUoyYldWemN5NWxl\nR0Z0Y0d4bExtNWxkQ0lzSW5CdmNuUWlPaUkwTkRNaUxDSnBaQ0k2SWpBd01EQXdNREF3TFRBd01E\nQXROREF3TUMwNE1EQXdMVEF3TURBd01EQXdNREEwTWlJc0ltRnBaQ0k2SWpBaUxDSnVaWFFpT2lK\nM2N5SXNJbkJoZEdnaU9pSXZjMjlqYTJWMElpd2lhRzl6ZENJNkluWnRaWE56TG1WNFlXMXdiR1V1\nYm1WMElpd2lkR3h6SWpvaWRHeHpJaXdpYzI1cElqb2lkbTFsYzNNdVpYaGhiWEJzWlM1dVpYUWlm\nUT09Cg==\n",
+      "expected" : {
+        "links" : [
+          {
+            "kind" : "vless",
+            "line" : 1,
+            "name" : "NL",
+            "port" : 443,
+            "server" : "nl.example.net"
+          },
+          {
+            "kind" : "shadowsocks",
+            "line" : 2,
+            "name" : "SS",
+            "port" : 8388,
+            "server" : "aead.example.net"
+          },
+          {
+            "kind" : "trojan",
+            "line" : 4,
+            "name" : "DE",
+            "port" : 443,
+            "server" : "tls.example.net"
+          },
+          {
+            "kind" : "vmess",
+            "line" : 6,
+            "name" : "VM",
+            "port" : 443,
+            "server" : "vmess.example.net"
+          }
+        ],
+        "skipped" : [
+          {
+            "line" : 3,
+            "reason" : "unsupported scheme hysteria2://"
+          },
+          {
+            "line" : 5,
+            "reason" : "method \"aes-256-cfb\" is not supported"
+          }
+        ]
+      },
+      "name" : "base64-standard"
+    },
+    {
+      "body" : "dmxlc3M6Ly8wMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwNDFAbmwuZXhhbXBsZS5uZXQ6NDQzP3R5cGU9dGNwJnNlY3VyaXR5PXJlYWxpdHkmZW5jcnlwdGlvbj1ub25lJmZsb3c9eHRscy1ycHJ4LXZpc2lvbiZmcD1maXJlZm94JnNuaT13d3cuZXhhbXBsZS5jb20mc2lkPSZwYms9cHVibGljLWtleSNOTApzczovL1lXVnpMVEkxTmkxblkyMDZabUZyWlMxd1lYTnpkMjl5WkFAYWVhZC5leGFtcGxlLm5ldDo4Mzg4I1NTCmh5c3RlcmlhMjovL2Zha2UtcGFzc3dvcmRAaHkuZXhhbXBsZS5uZXQ6NDQzI0hZCnRyb2phbjovL2Zha2UtcGFzc3dvcmRAdGxzLmV4YW1wbGUubmV0OjQ0MyNERQpzczovL2Flcy0yNTYtY2ZiOmZha2UtcGFzc3dvcmRAbGVnYWN5LmV4YW1wbGUubmV0OjgzODgjbGVnYWN5CnZtZXNzOi8vZXlKMklqb2lNaUlzSW5Ceklqb2lWazBpTENKaFpHUWlPaUoyYldWemN5NWxlR0Z0Y0d4bExtNWxkQ0lzSW5CdmNuUWlPaUkwTkRNaUxDSnBaQ0k2SWpBd01EQXdNREF3TFRBd01EQXROREF3TUMwNE1EQXdMVEF3TURBd01EQXdNREEwTWlJc0ltRnBaQ0k2SWpBaUxDSnVaWFFpT2lKM2N5SXNJbkJoZEdnaU9pSXZjMjlqYTJWMElpd2lhRzl6ZENJNkluWnRaWE56TG1WNFlXMXdiR1V1Ym1WMElpd2lkR3h6SWpvaWRHeHpJaXdpYzI1cElqb2lkbTFsYzNNdVpYaGhiWEJzWlM1dVpYUWlmUT09",
+      "expected" : {
+        "links" : [
+          {
+            "kind" : "vless",
+            "line" : 1,
+            "name" : "NL",
+            "port" : 443,
+            "server" : "nl.example.net"
+          },
+          {
+            "kind" : "shadowsocks",
+            "line" : 2,
+            "name" : "SS",
+            "port" : 8388,
+            "server" : "aead.example.net"
+          },
+          {
+            "kind" : "trojan",
+            "line" : 4,
+            "name" : "DE",
+            "port" : 443,
+            "server" : "tls.example.net"
+          },
+          {
+            "kind" : "vmess",
+            "line" : 6,
+            "name" : "VM",
+            "port" : 443,
+            "server" : "vmess.example.net"
+          }
+        ],
+        "skipped" : [
+          {
+            "line" : 3,
+            "reason" : "unsupported scheme hysteria2://"
+          },
+          {
+            "line" : 5,
+            "reason" : "method \"aes-256-cfb\" is not supported"
+          }
+        ]
+      },
+      "name" : "base64-urlsafe-unpadded"
+    },
+    {
+      "body" : "# exported\n\nvless://00000000-0000-4000-8000-000000000041@nl.example.net:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&fp=firefox&sni=www.example.com&sid=&pbk=public-key#NL\n// note\n   \nss://YWVzLTI1Ni1nY206ZmFrZS1wYXNzd29yZA@aead.example.net:8388#SS\nnot a link at all\n",
+      "expected" : {
+        "links" : [
+          {
+            "kind" : "vless",
+            "line" : 3,
+            "name" : "NL",
+            "port" : 443,
+            "server" : "nl.example.net"
+          },
+          {
+            "kind" : "shadowsocks",
+            "line" : 6,
+            "name" : "SS",
+            "port" : 8388,
+            "server" : "aead.example.net"
+          }
+        ],
+        "skipped" : [
+          {
+            "line" : 7,
+            "reason" : "not a link"
+          }
+        ]
+      },
+      "name" : "comments-and-blank-lines"
+    },
+    {
+      "body" : "  \n\n",
+      "error" : {
+        "case" : "invalid",
+        "message" : "subscription is empty"
+      },
+      "name" : "empty"
+    },
+    {
+      "body" : "proxies:\n  - name: NL\n    type: vless\n    server: nl.example.net\n",
+      "error" : {
+        "case" : "invalid",
+        "message" : "not a list of links"
+      },
+      "name" : "clash-yaml"
+    },
+    {
+      "body" : "<!doctype html><html><body>Not found</body></html>",
+      "error" : {
+        "case" : "invalid",
+        "message" : "not a list of links"
+      },
+      "name" : "html"
+    },
+    {
+      "body" : "aGVsbG8gd29ybGQK",
+      "error" : {
+        "case" : "invalid",
+        "message" : "not a list of links"
+      },
+      "name" : "base64-without-links"
+    }
+  ]
+}

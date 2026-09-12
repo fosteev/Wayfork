@@ -269,6 +269,66 @@ extension AppModelTunnels on AppModel {
     return null;
   }
 
+  /// Adds every link of a subscription in one store update
+  /// (docs/design/04-tunnels.md, "Subscriptions"). Stops at the first secrets
+  /// failure, keeping what was written; returns the message shown for the
+  /// stop, or null. `host` is all the log ever sees of the subscription URL.
+  Future<String?> addLinks(
+    List<ProxyLink> links, {
+    required String host,
+  }) async {
+    final added = <Tunnel>[];
+    final takenNames = <String>{};
+    String? failure;
+    for (final link in links) {
+      final slot = _store.nextFreeSlot(
+        excluding: added.map((tunnel) => tunnel.slot),
+      );
+      if (slot == null) {
+        failure = _limitMessage;
+        break;
+      }
+      final kind = link.tunnelKind;
+      final name = uniqueName(
+        link.linkName.isEmpty ? kind.serverHosts.first : link.linkName,
+        taken: takenNames,
+      );
+      final tunnel = Tunnel(name: name, slot: slot, kind: kind);
+      try {
+        await _secrets.write(
+          link.secret,
+          SecretKey(link.secretKind, tunnel.id),
+        );
+      } on Object catch (error) {
+        failure = 'Cannot store the ${link.secretLabel}: $error';
+        break;
+      }
+      added.add(tunnel);
+      takenNames.add(name.toLowerCase());
+    }
+    if (added.isNotEmpty) {
+      await update(
+        (store) => store.copyWith(tunnels: [...store.tunnels, ...added]),
+      );
+      expandedTunnelID = added.first.id;
+      pendingFocus = null;
+    }
+    logs.app(
+      LogLevel.info,
+      'added ${StatusText.count(added.length, 'tunnel')} from $host',
+    );
+    if (failure != null) {
+      final message =
+          '${StatusText.count(added.length, 'tunnel')} added. '
+          '$failure';
+      _alert(AppAlert(title: 'Subscription import stopped', message: message));
+      _changed();
+      return message;
+    }
+    _changed();
+    return null;
+  }
+
   Future<String?> replaceLink(String tunnelID, ProxyLink link) async {
     final tunnel = _store.tunnel(tunnelID);
     if (tunnel == null) return 'Tunnel not found';
@@ -398,13 +458,17 @@ extension AppModelTunnels on AppModel {
     _changed();
   }
 
-  String uniqueName(String base) {
+  /// `taken` holds lowercased names claimed earlier in the same batch, before
+  /// they reach the store.
+  String uniqueName(String base, {Set<String> taken = const {}}) {
     var candidate = base.trim();
     if (candidate.length > Tunnel.nameMaxLength) {
       candidate = candidate.substring(0, Tunnel.nameMaxLength);
     }
     if (candidate.isEmpty) candidate = 'Tunnel';
-    if (_store.isNameAvailable(candidate)) return candidate;
+    bool available(String name) =>
+        _store.isNameAvailable(name) && !taken.contains(name.toLowerCase());
+    if (available(candidate)) return candidate;
     var n = 2;
     while (true) {
       final suffix = ' ($n)';
@@ -413,7 +477,7 @@ extension AppModelTunnels on AppModel {
           ? candidate.substring(0, room)
           : candidate;
       final attempt = '$trimmed$suffix';
-      if (_store.isNameAvailable(attempt)) return attempt;
+      if (available(attempt)) return attempt;
       n += 1;
     }
   }
@@ -437,20 +501,6 @@ extension AppModelTunnels on AppModel {
 }
 
 extension _ProxyLinkTunnel on ProxyLink {
-  TunnelKind get tunnelKind => switch (this) {
-    ProxyLinkVLESS(:final result) => TunnelKindVLESS(result.meta),
-    ProxyLinkShadowsocks(:final result) => TunnelKindShadowsocks(result.meta),
-    ProxyLinkTrojan(:final result) => TunnelKindTrojan(result.meta),
-    ProxyLinkVMess(:final result) => TunnelKindVMess(result.meta),
-  };
-
-  String get linkName => switch (this) {
-    ProxyLinkVLESS(:final result) => result.name,
-    ProxyLinkShadowsocks(:final result) => result.name,
-    ProxyLinkTrojan(:final result) => result.name,
-    ProxyLinkVMess(:final result) => result.name,
-  };
-
   String get secret => switch (this) {
     ProxyLinkVLESS(:final result) => result.uuid,
     ProxyLinkShadowsocks(:final result) => result.password,

@@ -73,10 +73,14 @@ public struct Store: Codable, Sendable, Hashable {
     }
 
     /// Lowest free slot for a new tunnel, or nil when all `Tunnel.maxSlots` are taken.
-    public func nextFreeSlot() -> Int? {
-        let used = Set(tunnels.map(\.slot))
+    /// `excluding` lists slots claimed by tunnels not yet appended (a batch import).
+    public func nextFreeSlot(excluding: [Int] = []) -> Int? {
+        let used = Set(tunnels.map(\.slot)).union(excluding)
         return (0..<Tunnel.maxSlots).first { !used.contains($0) }
     }
+
+    /// Slots still free for new tunnels.
+    public var freeSlotCount: Int { max(0, Tunnel.maxSlots - tunnels.count) }
 
     /// Tunnel names are compared case-insensitively for uniqueness.
     public func isNameAvailable(_ name: String, excluding id: UUID? = nil) -> Bool {

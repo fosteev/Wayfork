@@ -82,8 +82,8 @@ adapters through `GetAdaptersAddresses`.
 - Same setting, same default (on).
 
 **F13. More tunnel types** — same kinds and the same inputs as on macOS (WireGuard `.conf`,
-`ss://`, `trojan://`, `vmess://`), parsed by the Dart twins of the Swift
-parsers against the shared fixtures. Secrets go to DPAPI-protected `secrets.dat`; WireGuard
+`ss://`, `trojan://`, `vmess://`, and from stage 7 a subscription URL), parsed by the Dart
+twins of the Swift parsers against the shared fixtures. Secrets go to DPAPI-protected `secrets.dat`; WireGuard
 runs inside sing-box's own userspace stack, so wintun is not involved and the Go service —
 to which the sing-box config is opaque — needs no change. An export from either platform
 still imports on the other.
@@ -557,6 +557,9 @@ step, so it can follow kind by kind rather than wait for all of macOS.
 - [x] Service (Go): untouched, `go test ./...` and `GOOS=windows go build ./...` green.
       `core/validate.go` has no outbound-type whitelist, so `endpoints[]` passes through it
       unnoticed — the sing-box config really is opaque to the service.
+- [x] Subscriptions (stage 7): `subscription_decoder.dart` replaying the shared fixture,
+      the fetch → checklist flow in `add_link_dialog.dart`, `AppModel.addLinks`
+      (2026-09-12; PC run folded into the one below).
 - [ ] PC run (`ssh wf-pc`): a tunnel of each kind imported from the same links as on macOS
       carries traffic, and an MSI upgrade over a store written by the older build still
       loads (new → old is knowingly forward-only, old → new must work).

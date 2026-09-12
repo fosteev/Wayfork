@@ -149,7 +149,7 @@ Written as user scenarios. Technical details belong to Phase 2.
 | Shadowsocks | `ss://` SIP002 (base64 userinfo, `plugin=`) | password | yes; AEAD + 2022 methods only, `plugin` → unsupported |
 | Trojan | `trojan://pw@host:port?sni&fp&alpn&type&path&host&serviceName` | password | yes; shares the VLESS TLS/transport code |
 | VMess | `vmess://` base64 JSON (V2RayN) | uuid | yes; `aid>0` → unsupported |
-| Subscriptions (URL → base64 list of links) | URL | — | optional follow-up, after the four kinds |
+| Subscriptions (URL → list of links, plain or base64) | URL | — | yes, stage 7 (approved 2026-09-12) |
 | Hysteria2, TUIC, AnyTLS, SOCKS/HTTP upstream, NaiveProxy | links / fields | password | no — no server to test against; same recipe on request |
 | XHTTP via Xray-core | `vless://…type=xhttp` | uuid | no — separate approval (below) |
 | IKEv2 / L2TP / other per-process VPNs | — | — | no — own process + system NE, outside the architecture |
@@ -159,9 +159,12 @@ Written as user scenarios. Technical details belong to Phase 2.
   link forms. The VLESS parser set the precedent.
 - A WireGuard conf whose `AllowedIPs` is narrower than `0.0.0.0/0` is imported as written
   and flagged: traffic Wayfork routes into it outside that list is dropped by the peer.
-- Subscription URLs are an optional follow-up on the same parser: paste a URL, fetch,
-  decode, pick servers from a checklist. One-shot import, no auto-refresh — refreshing a
-  server list belongs with L4 tunnel health.
+- **Subscription URLs** *(approved 2026-09-12)*: the same *Add from link…* sheet accepts an
+  `https://` URL, fetches it, decodes the body (plain link lines or base64 of them), runs
+  every line through the link parser and offers a checklist of servers to add. Lines the
+  parser refuses are listed with the reason, not hidden. One-shot import, no auto-refresh
+  and no stored URL — refreshing a server list belongs with L4 tunnel health, and a
+  subscription URL is a bearer token, so it is never written to disk or to the log.
 - **VLESS over XHTTP stays out of F13** and keeps its own shape: sing-box has no XHTTP
   transport (1.13.19 rejects `xhttp`/`splithttp`; upstream declined it), so each XHTTP
   tunnel runs its own bundled `xray` process with a local SOCKS5 inbound that sing-box
@@ -581,6 +584,9 @@ and follows kind by kind, on the fixtures this milestone produces.
       drop target and the seed importer, per-kind card fields and badges, masked link
       **Copy** for every link kind (`AddLinkSheet` replaces the VLESS-only sheet;
       `AddWireGuardSheet` takes a file or pasted text and warns on a narrow `AllowedIPs`).
+- [x] Subscriptions (stage 7): `SubscriptionDecoder` + `SubscriptionFetcher`, the
+      *Add from link…* sheet fetching a URL into a checklist, `AppModel.addLinks`
+      (2026-09-12; the live check is in the plan file).
 - [ ] Manual check: one tunnel per kind the maintainer has a server for carries traffic
       through a domain rule; WireGuard as the default tunnel resolves DNS through the
       endpoint with no leak.

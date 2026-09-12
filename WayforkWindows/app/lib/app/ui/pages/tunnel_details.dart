@@ -345,7 +345,7 @@ class _LinkDetailState extends State<LinkDetail> {
   }
 
   Future<void> _replace() async {
-    final link = await showAddLinkDialog(context, replacing: true);
+    final link = await showReplaceLinkDialog(context);
     if (link == null) return;
     final error = await _model.replaceLink(widget.tunnel.id, link);
     if (error != null && mounted) {

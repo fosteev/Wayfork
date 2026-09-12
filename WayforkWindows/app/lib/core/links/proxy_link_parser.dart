@@ -143,6 +143,39 @@ final class ProxyLinkVMess extends ProxyLink {
   int get hashCode => result.hashCode;
 }
 
+/// What every link kind has in common, for the sheets and the store.
+extension ProxyLinkInfo on ProxyLink {
+  /// The tunnel kind this link imports as.
+  TunnelKind get tunnelKind => switch (this) {
+    ProxyLinkVLESS(:final result) => TunnelKindVLESS(result.meta),
+    ProxyLinkShadowsocks(:final result) => TunnelKindShadowsocks(result.meta),
+    ProxyLinkTrojan(:final result) => TunnelKindTrojan(result.meta),
+    ProxyLinkVMess(:final result) => TunnelKindVMess(result.meta),
+  };
+
+  /// The name from the link's fragment (or `ps`), possibly empty.
+  String get linkName => switch (this) {
+    ProxyLinkVLESS(:final result) => result.name,
+    ProxyLinkShadowsocks(:final result) => result.name,
+    ProxyLinkTrojan(:final result) => result.name,
+    ProxyLinkVMess(:final result) => result.name,
+  };
+
+  String get server => switch (this) {
+    ProxyLinkVLESS(:final result) => result.meta.server,
+    ProxyLinkShadowsocks(:final result) => result.meta.server,
+    ProxyLinkTrojan(:final result) => result.meta.server,
+    ProxyLinkVMess(:final result) => result.meta.server,
+  };
+
+  int get port => switch (this) {
+    ProxyLinkVLESS(:final result) => result.meta.port,
+    ProxyLinkShadowsocks(:final result) => result.meta.port,
+    ProxyLinkTrojan(:final result) => result.meta.port,
+    ProxyLinkVMess(:final result) => result.meta.port,
+  };
+}
+
 enum ProxyLinkError { invalid, unsupported }
 
 final class ProxyLinkException implements Exception {

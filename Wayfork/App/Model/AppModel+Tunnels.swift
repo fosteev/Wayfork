@@ -291,6 +291,42 @@ extension AppModel {
         expandedTunnelID = tunnel.id
     }
 
+    /// Adds every link of a subscription in one store update (docs/design/04-tunnels.md,
+    /// "Subscriptions"). Stops at the first Keychain failure, keeping what was written.
+    /// `host` is all the log ever sees of the subscription URL.
+    func addLinks(_ links: [ProxyLink], from host: String) {
+        var added: [Tunnel] = []
+        var takenNames: Set<String> = []
+        var failure: String?
+        for link in links {
+            guard let slot = store.nextFreeSlot(excluding: added.map(\.slot)) else {
+                failure = "Wayfork supports up to \(Tunnel.maxSlots) tunnels."
+                break
+            }
+            let name = uniqueName(link.name.isEmpty ? link.server : link.name, taken: takenNames)
+            let tunnel = Tunnel(name: name, slot: slot, kind: link.tunnelKind)
+            do {
+                try secrets.write(link.secret, for: link.secretKey(tunnel.id))
+            } catch {
+                failure = "Cannot store the \(link.secretName): \(error)"
+                break
+            }
+            added.append(tunnel)
+            takenNames.insert(name.lowercased())
+        }
+        update { $0.tunnels.append(contentsOf: added) }
+        logs.app(.info, "added \(StatusText.count(added.count, "tunnel")) from \(host)")
+        if let failure {
+            Alerts.show(
+                title: "Subscription import stopped",
+                message: "\(StatusText.count(added.count, "tunnel")) added. \(failure)")
+        }
+        if let first = added.first {
+            settingsSection = .tunnels
+            expandedTunnelID = first.id
+        }
+    }
+
     func replaceLink(tunnelID: UUID, with link: ProxyLink) {
         guard let index = store.tunnels.firstIndex(where: { $0.id == tunnelID }) else { return }
         // Identity by case, not by the badge text: this guard is what keeps a pasted link
@@ -400,44 +436,29 @@ extension AppModel {
         logs.app(.info, "deleted tunnel \(tunnel.name)")
     }
 
-    func uniqueName(_ base: String) -> String {
+    /// `taken` holds lowercased names claimed earlier in the same batch, before they reach
+    /// the store.
+    func uniqueName(_ base: String, taken: Set<String> = []) -> String {
         var candidate = String(
             base.trimmingCharacters(in: .whitespacesAndNewlines).prefix(
                 Tunnel.nameMaxLength))
         if candidate.isEmpty { candidate = "Tunnel" }
-        guard !store.isNameAvailable(candidate) else { return candidate }
+        let available = { (name: String) in
+            self.store.isNameAvailable(name) && !taken.contains(name.lowercased())
+        }
+        guard !available(candidate) else { return candidate }
         var n = 2
         while true {
             let suffix = " (\(n))"
             let trimmed = String(candidate.prefix(Tunnel.nameMaxLength - suffix.count))
             let attempt = trimmed + suffix
-            if store.isNameAvailable(attempt) { return attempt }
+            if available(attempt) { return attempt }
             n += 1
         }
     }
 }
 
 extension ProxyLink {
-    fileprivate var tunnelKind: TunnelKind {
-        switch self {
-        case .vless(let result): .vless(result.meta)
-        case .shadowsocks(let result): .shadowsocks(result.meta)
-        case .trojan(let result): .trojan(result.meta)
-        case .vmess(let result): .vmess(result.meta)
-        }
-    }
-
-    fileprivate var name: String {
-        switch self {
-        case .vless(let result): result.name
-        case .shadowsocks(let result): result.name
-        case .trojan(let result): result.name
-        case .vmess(let result): result.name
-        }
-    }
-
-    fileprivate var server: String { tunnelKind.serverHosts[0] }
-
     fileprivate var kindName: String { StatusText.typeBadge(tunnelKind) }
 
     /// Whether this link could replace a tunnel of that kind.

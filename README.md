@@ -120,6 +120,10 @@ under `%LOCALAPPDATA%\Wayfork` are kept.
   `vmess://`; the scheme picks the parser and the sheet shows what it understood. REALITY
   over TCP is supported, XHTTP is not (see the roadmap). Refused with a reason rather than
   guessed: pre-AEAD Shadowsocks ciphers, SIP003 `plugin=`, VMess `alterId` above 0.
+- **Subscriptions** — the same sheet takes an `https://` subscription URL: *Fetch* loads
+  it (plain link lines or base64 of them), lists every server with a checkbox and every
+  line it could not use with the reason, and adds the checked ones. One-shot: the URL is
+  not stored, logged or refreshed — it is a bearer token for every server on it.
 - *Route everything else through this tunnel* makes it the default exit.
 
 ## Rules
@@ -213,7 +217,7 @@ Worth knowing:
 - **Application rules** only see traffic entering the TUN, and are keyed by path — a moved
   app needs a new rule. They do not cross platforms in an export.
 - **IP rules** are IPv4 and match the destination address only; no port or protocol conditions.
-- No rule lists or subscriptions, no WireGuard / Shadowsocks / XHTTP yet.
+- No rule lists, no subscription auto-refresh, no XHTTP yet.
 - Neither build is signed for its store: macOS is not notarized, Windows is not Authenticode-signed.
 
 ## Development

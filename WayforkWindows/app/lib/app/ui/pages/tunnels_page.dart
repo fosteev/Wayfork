@@ -27,11 +27,20 @@ class TunnelsPage extends StatefulWidget {
 class _TunnelsPageState extends State<TunnelsPage> {
   Future<void> _addLink() async {
     final model = AppScope.of(context);
-    final link = await showAddLinkDialog(context);
-    if (link == null) return;
-    final error = await model.addLink(link);
-    if (error != null && mounted) {
-      model.showAlert(AppAlert(title: 'Cannot add the tunnel', message: error));
+    final outcome = await showAddLinkDialog(context, store: model.store);
+    switch (outcome) {
+      case null:
+        return;
+      case AddLinkSingle(:final link):
+        final error = await model.addLink(link);
+        if (error != null && mounted) {
+          model.showAlert(
+            AppAlert(title: 'Cannot add the tunnel', message: error),
+          );
+        }
+      case AddLinkSubscription(:final links, :final host):
+        // addLinks shows its own alert when it stops early.
+        await model.addLinks(links, host: host);
     }
   }
 

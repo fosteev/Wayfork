@@ -78,13 +78,21 @@ final class Store {
     return value != null && value.isEnabled ? value : null;
   }
 
-  int? nextFreeSlot() {
-    final used = tunnels.map((tunnel) => tunnel.slot).toSet();
+  /// Lowest free slot, or null when all `Tunnel.maxSlots` are taken.
+  /// `excluding` lists slots claimed by tunnels not yet appended (a batch
+  /// import).
+  int? nextFreeSlot({Iterable<int> excluding = const []}) {
+    final used = {...tunnels.map((tunnel) => tunnel.slot), ...excluding};
     for (var slot = 0; slot < Tunnel.maxSlots; slot++) {
       if (!used.contains(slot)) return slot;
     }
     return null;
   }
+
+  /// Slots still free for new tunnels.
+  int get freeSlotCount => Tunnel.maxSlots - tunnels.length < 0
+      ? 0
+      : Tunnel.maxSlots - tunnels.length;
 
   bool isNameAvailable(String name, {String? excluding}) {
     final candidate = name.trim().toLowerCase();

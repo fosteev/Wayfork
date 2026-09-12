@@ -437,6 +437,75 @@ silently misconfigured.
   "tls": { … }, "transport": { … } }
 ```
 
+## Subscriptions (F13 stage 7)
+
+Not a tunnel kind: a delivery mechanism for the four link kinds above. A subscription is
+an `https://` URL whose body is a list of sharing links, and the whole feature is
+"fetch, decode, run each line through `ProxyLinkParser`, let the user pick". Nothing new
+reaches the store, the secrets or the generator — the result of an import is N ordinary
+tunnels, indistinguishable from N pasted links.
+
+### Fetch (app)
+
+`SubscriptionFetcher.fetch(_ url: URL) async throws -> String` in WayforkCore (URLSession;
+Dart: `dart:io` `HttpClient`). Policy, in the order it is applied:
+
+| Rule | Why |
+|------|-----|
+| Scheme must be `https` (`http://` → `unsupported("subscriptions must use https")`) | the body carries the password / UUID of every server on it |
+| Redirects followed, final URL must still be `https` | converters commonly 302 to a CDN |
+| `User-Agent: Wayfork/<version>`, `Accept: text/plain, */*;q=0.1` | subscription converters key the *format* on the UA — Clash UAs get YAML, the rest get raw links; a neutral UA gets the links |
+| 15 s timeout, body ≤ 1 MiB (`invalid("subscription is larger than 1 MiB")`) | a list of links is a few KB; anything bigger is not one |
+| Non-2xx → `invalid("server answered <status>")` | shown verbatim in the sheet |
+| Body decoded as UTF-8; invalid UTF-8 → `invalid("subscription is not text")` | |
+
+The URL is a bearer token: it is not logged (`logs.app` gets the host only), not stored,
+and not part of any diagnostics bundle. The fetch runs in the app process — the
+daemon/service never sees it.
+
+### Decode (pure, fixture-tested)
+
+`SubscriptionDecoder.decode(_ body: String) throws -> [SubscriptionEntry]`,
+`SubscriptionEntry = .link(ProxyLink, line: Int, uri: String) | .skipped(line: Int, reason: String)`:
+
+1. Normalise line endings, trim the body. Empty → `invalid("subscription is empty")`.
+2. **Plain form**: split into lines; if at least one trimmed line starts with a supported
+   scheme (`vless://`, `ss://`, `trojan://`, `vmess://`, case-insensitive) the body is
+   taken as is.
+3. **Base64 form**: otherwise strip all whitespace, accept standard or URL-safe alphabets,
+   add missing padding, decode, require UTF-8, and apply step 2 to the result. The
+   PaperVPN body is form 2; V2RayN / 3x-ui exports are form 3.
+4. Neither → `invalid("not a list of links")` — a Clash YAML, a sing-box JSON or an HTML
+   error page all land here. (Converting those is a different feature.)
+5. Every line, in order: blank lines and lines starting with `#` or `//` are dropped
+   silently (some exporters write comments); a line with a scheme `ProxyLinkParser` does
+   not know is `.skipped(reason: "unsupported scheme <scheme>://")`; a line the parser
+   refuses is `.skipped` with the parser's reason. Line numbers are 1-based, counted in
+   the decoded text.
+
+Duplicates within one body are kept (the checklist shows them; the user decides).
+Unknown-scheme lines are the normal case in the wild — `hysteria2://`, `tuic://`,
+`wireguard://` — so they are *skipped*, never fatal.
+
+### Import (app model)
+
+`AppModel.addLinks(_ links: [ProxyLink], from host: String)` = `addLink` in a loop inside **one** store
+update, stopping at the slot limit (the sheet already prevents that) and at the first
+Keychain / DPAPI failure (the tunnels written so far stay; the alert names how many). Names
+are `uniqueName(link.name.isEmpty ? link.server : link.name)` exactly as for one link,
+so a subscription that names every server the same yields `NL`, `NL 2`, `NL 3`. A link
+whose `TunnelKind` equals an existing tunnel's is the sheet's *already added* case; the
+model does not re-check it.
+
+### Fixture
+
+`fixtures/links/subscription.json`: `cases[]` of `{name, body, expected: {links: [{line,
+kind, name, server, port}], skipped: [{line, reason}]} | error: {kind, message}}`. Bodies
+use the same placeholder servers and reserved UUIDs as `links/*.json`. Cases: `plain-one`
+(the PaperVPN shape), `plain-mixed` (four kinds plus `hysteria2://` and a broken `ss://`),
+`base64-standard` (with line breaks inside the base64), `base64-urlsafe-unpadded`,
+`comments-and-blank-lines`, `empty`, `clash-yaml`, `html`.
+
 ## What the pinned sing-box accepts (1.13.19, checked 2026-09-07)
 
 Everything below was run against the bundled binary before the mappings above were

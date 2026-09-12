@@ -1130,6 +1130,14 @@ clients are held to. Only the deltas are listed here.
 - **File picker.** The `.conf` extension is added next to `.ovpn` in the drop target and the
   open dialog. Windows has no uniform type identifiers here, so it is an extension list —
   and `.conf` is generic enough that the parser, not the extension, decides.
+- **Subscriptions (stage 7).** `core/links/subscription_decoder.dart` is the Dart twin of
+  `SubscriptionDecoder` and replays `fixtures/links/subscription.json`;
+  `core/links/subscription_fetcher.dart` wraps `dart:io` `HttpClient` with the policy from
+  [04-tunnels.md](04-tunnels.md) § Subscriptions (https only, 15 s, 1 MiB, the Wayfork UA)
+  — no new pub dependency, `http` stays transitive. `add_link_dialog.dart` gains the
+  Fetch → checklist state (a `ListView` of `Checkbox` rows, skipped lines as disabled rows
+  with the reason) and returns `List<ProxyLink>`; `AppModel.addLinks` writes them in one
+  store save. The URL never reaches `secrets.dat`, the log or the diagnostics bundle.
 
 
 ## Open items
