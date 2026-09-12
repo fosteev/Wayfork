@@ -6,6 +6,11 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-09-12
+
+Subscription links: paste the URL a VPN service hands out instead of copying its servers
+one by one.
+
 ### Added
 
 - **Subscription URLs, on both platforms.** *+ Add › Add from link…* also takes an
