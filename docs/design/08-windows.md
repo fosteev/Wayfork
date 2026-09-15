@@ -1140,6 +1140,47 @@ clients are held to. Only the deltas are listed here.
   store save. The URL never reaches `secrets.dat`, the log or the diagnostics bundle.
 
 
+## The F14–F18 wave (WM10–WM15)
+
+Design in [02-ux.md](02-ux.md) § Variant C, [01-data-model.md](01-data-model.md) (F16–F18),
+[03-routing.md](03-routing.md) (F14, F16–F18), [05-daemon.md](05-daemon.md) (F14–F18) and
+[07-rule-testing.md](07-rule-testing.md) § Probe; boards W9–W15 of
+[prototype/windows.html](prototype/windows.html) are the variant C port. Deltas only:
+
+- **Chrome (WM11)**: the flyout keeps 360 px and gains the same sections; the main window
+  stays 860 × 600 with the NavigationView, so the "720 × 480 minimum" of the macOS
+  Settings window does not apply and the Rules page needs no taller variant. The New
+  group sheet is a `ContentDialog` (W15). Strings come from the M10 wording table with
+  three substitutions: `Same as Windows`, `Open Wayfork at sign-in`, `Service installed`.
+  Fluent `ToggleSwitch`, `InfoBar` for the hints, `Expander` rows as today.
+- **Prober (WM10)**: the Go service issues the same `GET /proxies/t-<id>/delay` calls from
+  `internal/core` (an `http.Client` on the loopback controller — no Win32), same 10 s round,
+  same 3-strike *unreachable*; the snapshot gains `latency` with the same JSON keys, so
+  the Dart `TrafficSnapshot` decoder is the only app change. "Connected" for OpenVPN is the
+  management `CONNECTED` state as on macOS; for WireGuard the endpoint's presence.
+- **Recent hosts (WM12)**: `processPath` comes from sing-box's `find_process` on Windows
+  too (an image path like `C:\Program Files\...\msedge.exe`); the app maps it to an icon
+  through `SHGetFileInfo` (`win32`) and to a display name from the exe's version resource,
+  falling back to the file name. The trust-boundary amendment (00-architecture.md § 7)
+  applies to the named pipe the same way.
+- **Groups (WM13)**: `core/validate.go` has no outbound-type whitelist *(verify, as for
+  F13)*, so `urltest` / `selector` pass through; the *first live* `PUT /proxies/g-<id>`
+  lives next to the prober in `internal/core`. The group's `localProxy` and `groupID` on
+  rules use the same JSON keys as Swift — the export must round-trip both ways.
+- **Local proxy (WM14)**: `mixed` on `127.0.0.1` needs no firewall rule (loopback is
+  exempt) and no elevation; the copy button copies `socks5h://127.0.0.1:<port>` as on
+  macOS and the hint names `curl.exe`. `netsh`-style port reservations are not touched;
+  a bind failure is mapped to `proxy.portInUse` from sing-box's stdout exactly as the
+  daemon does.
+- **Block list (WM15)**: `block-ads.srs` and its `block-ads.json` sidecar are fetched by
+  `scripts/fetch-win-bins.ps1` from the same pinned URL and shipped by the MSI next to
+  `sing-box.exe`; the service derives the path from its own image location. The counter
+  reads the sing-box stdout the service already relays; the same `info` caveat.
+- **Probe (WM10)**: a new pipe request `probe` mirroring the XPC call; the Rules page's
+  tester line is the Windows twin of 07-rule-testing.md once L2 lands there (the tester
+  itself is not on the Windows pages yet — WM10 adds the Probe button only if the tester
+  exists by then, otherwise the Probe waits for the tester).
+
 ## Open items
 
 - **t1/pilot-gps user flow (not a Windows issue) — resolved 2026-08-27.** In S5 the

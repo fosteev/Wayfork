@@ -427,6 +427,191 @@ Implementation notes (2026-08-25): `RuleSetGenerator.renderIP` and
 `sing-box check` on 1.13.19. A tunnel that is enabled but unusable (no secret) carves
 nothing — its rules are not emitted either.
 
+## Tunnel groups (F16)
+
+A group `Streaming` (id `<grp>`, members Home then Lab, policy *fastest*) adds one outbound
+and is otherwise treated like a tunnel: its own rule-set file `rules-g-<grp>.json`, its own
+route rule, the same fake-ip DNS rule, and — when it is the default exit — the same
+`route.final` / `dns.final` shape.
+
+```json
+"outbounds": [ …,
+  { "type": "urltest", "tag": "g-<grp>",
+    "outbounds": ["t-<home>", "t-<lab>"],
+    "url": "https://cp.cloudflare.com/generate_204", "interval": "10s",
+    "tolerance": 50, "idle_timeout": "30m", "interrupt_exist_connections": false }
+],
+"route": {
+  "rules": [ …, { "rule_set": "rules-g-<grp>", "outbound": "g-<grp>" }, … ],
+  "rule_set": [ …, { "type": "local", "tag": "rules-g-<grp>", "format": "source", "path": "rules-g-<grp>.json" } ]
+}
+```
+
+- **Fastest** is sing-box's own `urltest`: it probes every member through itself every
+  `interval` against the F14 probe URL (the same URL, so the numbers on the cards and the
+  choice inside the group agree), picks the lowest delay and only switches when another
+  member is faster by more than `tolerance` (50 ms) — the hysteresis that keeps a group
+  from flapping between two similar tunnels. `interrupt_exist_connections: false`: a
+  connection stays on the member it started on; when that member dies the connection is
+  dead anyway and the next one takes the new choice.
+- **First live** is a `selector` (`"type": "selector", "outbounds": [...], "default":
+  "<first member>", "interrupt_exist_connections": false`) that the daemon points at the
+  first member whose F14 probe passes, re-evaluated after every probe round
+  ([05-daemon.md](05-daemon.md) § Tunnel latency). Decided 2026-09-15 against dropping the
+  policy: `urltest`'s `tolerance` cannot express "prefer this one unless it is down" —
+  it always converges on the fastest, and a user who ordered a cheap tunnel before an
+  expensive one wants the order, not the race. The cost is ten lines in the prober.
+- **Members** are emitted as today (`t-<id>` outbounds); a member that is disabled or
+  lacks its secret is left out of `outbounds`. A group with no usable member is dropped
+  with its rule-set and route rule, exactly like a disabled tunnel (its rules then fall to
+  the default route); with one usable member the `urltest` / `selector` has one entry.
+- **Order** in `route.rules`: tunnels first in store order, then groups in store order
+  (matching the Rules page); the shadowing rule spans both.
+- **DNS**: a member resolves as its kind does — an OpenVPN or WireGuard member through its
+  own `domain_resolver`, a proxy member server-side — because `urltest` and `selector`
+  hand the connection to the member with the domain intact (fake-ip + `reverse_mapping`).
+  Nothing is emitted for the group itself. As the *default exit*, `dns.final` is a DoT
+  server `{"type":"tls","tag":"dns-g-<grp>","server":"1.1.1.1","detour":"g-<grp>"}` —
+  the group dials it through whichever member is active, which works for both member
+  kinds (a `direct` member bound to its utun reaches `1.1.1.1:853` inside the tunnel).
+- **Rates**: the Clash API lists `g-<grp>` and the member's `t-<id>` in a group
+  connection's `chains`; the accumulator attributes such a connection to the *group*, so
+  the group card shows its own traffic and a member card only the traffic its own rules
+  sent (changed from the prototype caption, which said "the active member's" — the
+  member's number would otherwise double-count).
+- Golden variants: `group-fastest` (two members, rules under the group),
+  `group-first-live`, `group-default` (the group as the default exit, DoT through it),
+  `group-one-member` (one member skipped). All pass `sing-box check` on 1.13.19 *(verify
+  when M12 starts: `urltest` with a `direct`-typed member outbound; the docs do not
+  restrict member types, but a `direct` member with `bind_interface` has not been run
+  inside a group yet)*.
+
+## Local proxy ports (F17)
+
+A tunnel or group with `localProxy.isEnabled` gets one `mixed` inbound on loopback and one
+route rule that sends everything from that inbound to the exit, placed **before** the
+rule-sets so no domain rule, exception or the block list can redirect it:
+
+```json
+"inbounds": [ …,
+  { "type": "mixed", "tag": "proxy-t-<work>", "listen": "127.0.0.1", "listen_port": 1081 },
+  { "type": "mixed", "tag": "proxy-g-<grp>",  "listen": "127.0.0.1", "listen_port": 1082 }
+],
+"route": {
+  "rules": [
+    { "action": "sniff" },
+    { "protocol": "dns", "action": "hijack-dns" },
+    { "inbound": ["proxy-t-<work>"], "outbound": "t-<work>" },
+    { "inbound": ["proxy-g-<grp>"],  "outbound": "g-<grp>" },
+    …
+  ]
+}
+```
+
+- `mixed` speaks SOCKS5 and HTTP CONNECT on one port, no authentication (loopback only;
+  LAN sharing is not in this cut — it would bind `0.0.0.0` behind the warning the feature
+  text describes and is a separate approval).
+- **DNS** (the F17 risk in next-features.md): a `socks5h://` or HTTP CONNECT client hands
+  the *name* to the inbound, so the outbound dials by name — a proxy exit resolves
+  server-side, an OpenVPN / WireGuard exit through its `domain_resolver`, a group through
+  the active member — nothing is looked up outside the tunnel. A `socks5://` (no `h`)
+  client resolves the name itself first: that query goes to the system resolver, i.e. to
+  Wayfork under F12, and matches no rule, so it is answered like every unmatched query
+  (fake-ip with a default tunnel and dialled through it; `dns-direct` without one). The
+  connection then arrives at the inbound as an IP or a fake IP and still leaves through
+  the chosen exit. So the only leak is the *lookup* of a `socks5://` client on a setup
+  without a default tunnel — the card's hint therefore shows `socks5h://`. Verified with
+  the generator before M13 is final: the `mixed` inbound has no `domain_strategy` of its
+  own (deprecated), so no local resolution is forced.
+- The inbounds exist only while the engine runs; a flow into the port of a tunnel that is
+  down fails like a routed flow does (kill-switch by construction, no fallback).
+- Port collision at start (`bind: address already in use`) is reported by sing-box on
+  stdout before the "started" line; the daemon maps it to `proxy.portInUse` for that
+  tunnel, removes the inbound and its rule from the config it writes, and starts the rest
+  — the tunnel still routes its sites, only the port is missing until the user changes it.
+- Golden variants: `proxy-tunnel` (one OpenVPN tunnel with a port), `proxy-group`,
+  `proxy-with-default` (a port on a tunnel that is not the default, rules present, to pin
+  the rule order).
+
+## Block list (F18)
+
+`settings.blockList.isEnabled` adds one rule-set and two rules — a DNS rule that answers
+`NXDOMAIN` for listed names and a route rule that rejects a connection whose sniffed name
+is listed (a browser with its own DoH never asks Wayfork's resolver, so the DNS rule alone
+would not catch it). Exceptions are folded into both as a logical `and … not`:
+
+```json
+"dns": {
+  "rules": [
+    { "domain": ["_dns.resolver.arpa"], "action": "reject" },
+    { "rule_set": "rules-direct", "server": "dns-direct" },
+    { "type": "logical", "mode": "and",
+      "rules": [ { "rule_set": "block-ads" }, { "domain_suffix": [".example.com"], "domain": ["example.com"], "invert": true } ],
+      "action": "predefined", "rcode": "NXDOMAIN" },
+    …
+  ]
+},
+"route": {
+  "rules": [
+    { "action": "sniff" },
+    { "protocol": "dns", "action": "hijack-dns" },
+    …,
+    { "rule_set": "rules-direct", "outbound": "direct" },
+    { "type": "logical", "mode": "and",
+      "rules": [ { "rule_set": "block-ads" }, { "domain_suffix": [".example.com"], "domain": ["example.com"], "invert": true } ],
+      "action": "reject" },
+    …
+  ],
+  "rule_set": [ …, { "type": "local", "tag": "block-ads", "format": "binary", "path": "<bundle>/Contents/Resources/rulesets/block-ads.srs" } ]
+}
+```
+
+- **Placement**: after `rules-direct` in both lists — an explicit exception the user wrote
+  as a rule beats the list too, and local names are never blocked — and before every
+  tunnel rule-set, so a listed name is blocked whichever tunnel a rule would send it to.
+- **NXDOMAIN, not REFUSED**: `predefined` with `rcode: NXDOMAIN` (sing-box ≥ 1.11) makes
+  the browser fail the lookup at once and cache the miss; `action: reject` on a DNS rule
+  answers REFUSED, which some resolvers retry. The route `reject` (`method: default`)
+  sends a TCP RST / ICMP unreachable, so a page's ad slot fails in milliseconds instead of
+  hanging on a fake IP that goes nowhere.
+- **The list** ships with the app: `scripts/fetch-blocklist.sh` downloads a pinned release
+  of a domain list (URL + SHA-256 in `scripts/versions.env`, the same way binaries are
+  pinned), converts it to sing-box source format (one `domain_suffix` per entry) and
+  compiles it with `sing-box rule-set compile` into `Contents/Resources/rulesets/
+  block-ads.srs`; the daemon references the file by the path derived from its own bundle,
+  never a path from the client (trust rule 3). Source (decided 2026-09-15, lean option from
+  next-features.md): the OISD *small* list — domain-only, permissively licensed, curated
+  against breakage, ~40 k entries; the count and the source date land in the General hint
+  from a `block-ads.json` sidecar written by the script. A daemon-side refresh job is
+  **not** in this cut: sing-box's `remote` rule-set type would fetch and cache the list
+  itself, but a failed download at first start blocks the engine, and a fetch job in the
+  daemon is the same work L1 (rule sources) needs — it comes with L1, and the `Update
+  now` link on board C6 waits for it.
+- **Exceptions** (`Never block`) are validated as `suffix` patterns and emitted as
+  `domain` + `domain_suffix` in the inverted half of both logical rules; an empty list
+  emits plain `{ "rule_set": "block-ads", … }` rules.
+- **Counting** (`Blocked N today`): rejected connections never reach the Clash API, so the
+  daemon counts sing-box's own log lines (`=> reject` from the route rule, `=> predefined`
+  from the DNS rule, both tagged `block-ads`), which sing-box prints at `info`. At a log
+  level above `info` nothing is printed and the counter is unavailable (02-ux.md says so on
+  the row). Rejected: forcing sing-box to `info` while the switch is on — the user chose
+  the log level for a reason.
+- Golden variants: `block-list` (switch on, two exceptions, a default tunnel),
+  `block-list-no-exceptions`. Both pass `sing-box check` on 1.13.19 *(verify: `predefined`
+  with `rcode` only and no `answer` is accepted — the docs allow it)*.
+
+## Tunnel latency probe (F14)
+
+The number on every card is sing-box's own measurement of the tunnel, obtained through the
+Clash API rather than by the daemon dialling anything itself: `GET
+/proxies/t-<id>/delay?url=<probe>&timeout=5000` makes sing-box send one HTTP request to the
+probe URL *through that outbound* and answer `{ "delay": <ms> }` or an error. One request
+per connected tunnel every 10 s, sequentially, from the daemon's prober
+([05-daemon.md](05-daemon.md) § Tunnel latency). Probe URL: `https://cp.cloudflare.com/
+generate_204` — small, anycast, no cookies, the same one the `urltest` groups use;
+not user-configurable in this cut. Nothing in the generated config changes for F14 (the
+groups' `url` above is the same constant, so the goldens pin it).
+
 ## Hot reload vs restart
 
 | Change | Action |
@@ -440,6 +625,11 @@ nothing — its rules are not emitted either.
 | `directDNS`, log level | restart |
 | Effective resolvers or gateway changed (network switch, manual DNS edited) | `route_exclude_address` / reject rule change → restart; the daemon moves the override on its own |
 | Tunnel credentials / OpenVPN config body | no sing-box change; openvpn process restarted |
+| Group created / deleted / members or policy changed (F16) | outbounds change → restart |
+| Rules under a group | rewrite `rules-g-<id>.json` → hot reload |
+| Local proxy toggled or port changed (F17) | inbounds change → restart |
+| Block list switch (F18) | rule-set reference and rules change → restart |
+| Block list exceptions | the logical rules change → restart (they live in the main config, not in a rule-set file; a rule-set file for exceptions would make it a reload — take that route if the restart proves annoying) |
 
 Existing fake-ip mappings survive restarts through `cache.db`. Newly added rules for domains
 that clients already resolved to real IPs are still honored through sniffing (SNI/Host).

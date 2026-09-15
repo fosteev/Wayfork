@@ -212,7 +212,8 @@ Written as user scenarios. Technical details belong to Phase 2.
   A rule, an exception or the default tunnel can point at a group wherever it can point at
   a tunnel.
 - Rendered as a card among the tunnels with its members inside; the active member is
-  marked. Rates and latency on the group card are the active member's.
+  marked. Latency on the group card is the active member's; rates are the group's own
+  traffic (design decision 2026-09-15, 03-routing.md § Tunnel groups).
 - Maps to a sing-box `urltest` outbound (`fastest`) or `selector` driven by the daemon
   (`first live`); the probe URL and interval are F14's. This is L4 "failover" delivered
   without a fallback field on every rule.
@@ -681,7 +682,8 @@ Phase 1 above, § F14. Design first: measurement, sampling and the snapshot fiel
 [design/08-windows.md](design/08-windows.md). Not started; the design is written and
 approved before any of the boxes below.
 
-- [ ] Design notes as listed above.
+- [x] Design notes as listed above (written 2026-09-15; 03-routing.md § Tunnel latency
+      probe, 05-daemon.md § Tunnel latency, 07-rule-testing.md § Probe).
 - [ ] Daemon: periodic probe per connected tunnel, latency and probe failures in the
       traffic snapshot.
 - [ ] App: current latency next to the rates, sparkline on the card, *unreachable* state —
@@ -701,8 +703,9 @@ the friction audit at the top of
 Boards C1, C2, C3 (light), C4 (without the Recent strip and the group section), C6
 (without the Blocking section).
 
-- [ ] 02-ux.md: wording table (old → new), status words per tunnel state, empty states
+- [x] 02-ux.md: wording table (old → new), status words per tunnel state, empty states
       (no tunnels yet, tunnel with no rules), the popover summary lines, the General rows.
+      — § Variant C (2026-09-15).
 - [ ] Popover: 360 pt wide, section headers, card line 2 = status word + at most two facts,
       *Idle* instead of zero rates, Retry only on a card with something to retry, *Fix…* on
       a failed tunnel, "Not via any tunnel" row, off / can't-connect / first-run states.
@@ -724,7 +727,7 @@ writes the design (05-daemon.md: the recent-hosts list in the snapshot;
 00-architecture.md § 7 amended for per-connection hosts crossing to the app; 02-ux.md:
 the Recent section and strip, boards C1 and C4).
 
-- [ ] Design notes as listed above.
+- [x] Design notes as listed above (2026-09-15).
 - [ ] `WayforkCore`: snapshot field `recentHosts` (host, process, tunnel, lastSeen),
       capped at 200, cleared when the state leaves *on*; never written to disk or logged
       at `info`.
@@ -743,7 +746,8 @@ become tunnel-or-group. Design in 01-data-model.md (`TunnelGroup`), 03-routing.m
 (`urltest` / `selector`, new goldens), 05-daemon.md (*first live* switching, or the
 decision that `urltest` with `tolerance` covers it), 02-ux.md (boards C1, C3, C7).
 
-- [ ] Design notes as listed above; the *first live* vs `urltest` question decided there.
+- [x] Design notes as listed above; the *first live* vs `urltest` question decided there
+      (2026-09-15: both kept, *first live* = daemon-driven `selector`).
 - [ ] `WayforkCore`: `TunnelGroup` (name, ordered members, policy) in `store.json`, rule
       and default-tunnel targets widened, validation (no nested groups, ≥ 2 members).
 - [ ] Generator: `urltest` (fastest) / `selector` (first live) outbounds, goldens.
@@ -760,7 +764,7 @@ inbounds, `inbound → outbound` rules, DNS through the tunnel's resolver — ve
 generator before the design is final), 02-ux.md (board C3). LAN sharing is out unless
 approved separately.
 
-- [ ] Design notes as listed above.
+- [x] Design notes as listed above (2026-09-15).
 - [ ] `WayforkCore`: `localProxy` (enabled, port) per tunnel and group; port chosen by the
       app (stable, starting at 1081), editable, unique.
 - [ ] Generator: one `mixed` inbound per enabled port, one route rule, DNS detour; goldens.
@@ -776,7 +780,8 @@ Phase 1 above, § F18. Design in 03-routing.md (`block` outbound + rule-set), 05
 decided in the design note), 01-data-model.md (switch and exceptions in `store.json`),
 02-ux.md (boards C5 "Blocked" result and C6).
 
-- [ ] Design notes as listed above; list source decided.
+- [x] Design notes as listed above; list source decided (2026-09-15: bundled OISD small,
+      refresh deferred to L1).
 - [ ] List: bundled with the app, refresh job in the daemon if the design keeps it.
 - [ ] Generator: `block` rule-set, exceptions as a rule ahead of it, NXDOMAIN from the
       fake-ip resolver; goldens.

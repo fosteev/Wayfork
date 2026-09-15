@@ -1,6 +1,7 @@
 # Rule testing — "Where does `<domain>` go?" (L2)
 
-Status: design only (2026-08-25), not scheduled; nothing in the code yet. Covers the first
+Status: design only (2026-08-25); the **Probe** half (2026-09-15) is scheduled with F14 (M9),
+the rest is still not scheduled; nothing in the code yet. Covers the first
 bullet of L2 in [ROADMAP.md](../ROADMAP.md). The second bullet (live connection view) is
 sketched under "Out of scope".
 
@@ -143,6 +144,37 @@ Where does [ example.com                          ] go?   [Test]
   ("Update" instead of "Add" when the pattern exists); no new UI there.
 - Prototype: add a board to `docs/design/prototype/variant-b.html` (Rules page with the
   tester line and both disclosures open) before implementation, per the usual gate.
+
+## Probe (F14)
+
+*Test* answers from the rules; **Probe** asks the running engine whether the exit *Test*
+named actually delivers the host — one request, once, nothing in the background
+([ROADMAP.md](../ROADMAP.md) § F14). The line reads `Where does [ host ] go?  [Test]
+[~ Probe]` (board C5 of the variant C prototype); Probe is enabled only for a `host`
+query while the global state is on, and it runs *Test* first if the field changed.
+
+- The app calls the daemon's `probe(host:, exitTag:)` (05-daemon.md § Tunnel latency)
+  with the tag of the resolved exit: `t-<id>`, `g-<id>` or `direct`. sing-box sends one
+  `GET https://<host>/` through that outbound with a 10 s timeout and reports the delay.
+  For a group the reply also names the member that carried it (the group's `now`).
+- Before dialling, the app consults the block list (F18) the way the resolver does: a host
+  the list covers and no exception frees is *Blocked* without any request.
+- Results, as a chip under the result line, in the user's words:
+  - `Reachable · 212 ms via Home` — via the tunnel, or `via Home (Streaming)` for a group.
+  - `Blocked · on your ads & trackers list · Never block this site` — the link adds the
+    exception and re-runs Test.
+  - `Failed · Lab is not reachable right now · Retry Lab` — the exit's F14 state is
+    *unreachable* (or the tunnel is not connected); nothing was sent.
+  - `Failed · no answer from the site in 10 s — the tunnel itself is fine (62 ms)` — the
+    request went out and timed out or was refused; the tunnel's own latency is quoted so
+    the user knows which side to blame.
+  - While running: spinner, `Probing <host> via <exit>… up to 10 s`; the buttons are
+    disabled until it returns (the daemon allows one probe in flight).
+- The host is sent exactly once and only when the user clicks; it is not logged by the
+  app, and the daemon logs the call at `debug` without the host.
+- Tests: none beyond the resolver's — the probe is a thin pass-through; the daemon's
+  `ProbeRequest` validation (hostname grammar, known tag) is covered in
+  `WayforkDaemonCoreTests`.
 
 ## Tests
 

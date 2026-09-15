@@ -55,6 +55,7 @@ minimal and stable.
     func getStatus(_ reply: @escaping (Data) -> Void)               // RuntimeStatus
     func subscribe(_ reply: @escaping (Data) -> Void)               // registers the client's exported object for pushes
     func collectDiagnostics(_ reply: @escaping (Data) -> Void)      // DaemonDiagnostics (daemon log tails, run/ listing, routes)
+    func probe(_ request: Data, _ reply: @escaping (Data) -> Void)   // ProbeRequest(host, exitTag) → ProbeResult(ms | error) (F14, on demand)
 }
 
 @objc protocol WayforkClientXPC {          // exported by the app on its connection
@@ -71,6 +72,7 @@ struct RuntimeStatus: Codable {
     var engine: EngineState            // stopped | starting | running(since) | failed(reason)
     var tunnels: [String: TunnelState] // by tunnel id (OpenVPN only)
     var planHash: String?              // hash of the last applied plan
+    var proxyPortInUse: [String] = []  // F17: tunnel / group ids whose local proxy port could not be bound
 }
 struct LogLine: Codable { var ts: Date; var source: String; var level: LogLevel; var message: String }
 struct TrafficSnapshot: Codable {
@@ -83,6 +85,29 @@ struct TrafficCounters: Codable {
     var downBytesPerSecond: Double; var upBytesPerSecond: Double
     var downTotal: UInt64; var upTotal: UInt64 // since Turn On
     var connections: Int                       // open at sample time
+    var oneWayUDPFlows: Int = 0                // H3
+}
+
+// F14–F18 additions (2026-09-15), all optional on the wire so an older half decodes them as absent:
+extension TrafficSnapshot {
+    var latency: [String: LatencySample]       // by tunnel id, connected tunnels only (F14)
+    var groups: [String: GroupState]           // by group id (F16)
+    var recentHosts: [RecentHost]              // newest first, ≤ 200 (F15)
+    var blockedToday: Int?                     // nil when not countable (F18)
+}
+struct LatencySample: Codable {
+    var milliseconds: Int?                     // nil = the last probe failed
+    var history: [Int?]                        // last 12 probes, oldest first (2 min at 10 s)
+    var failedInARow: Int
+    var unreachable: Bool                      // failedInARow ≥ 3
+    var lastSuccess: Date?
+}
+struct GroupState: Codable { var activeMember: String? }   // tunnel id sing-box is using; nil = none usable
+struct RecentHost: Codable {
+    var host: String                           // sniffed / fake-ip domain, lowercased
+    var processPath: String?                   // from find_process, when known
+    var exit: String                           // "direct" or the tunnel id it went to (always the default route)
+    var lastSeen: Date
 }
 ```
 
@@ -266,6 +291,96 @@ and VLESS alike. Interface counters would only cover OpenVPN, so one mechanism s
   handshake change: the field is additive, the macOS payload decodes it as optional-zero,
   the Windows one reads a missing key as zero, and version-mismatched halves are already
   torn down by the build check in the handshake.
+
+## Tunnel latency (F14)
+
+`LatencyProber`, a task next to `TrafficSampler` on the `Supervisor`, runs while sing-box
+runs and the Clash API is up:
+
+- Every 10 s, for every tunnel that is connected (OpenVPN: management state `CONNECTED`;
+  proxy kinds and WireGuard: whenever the engine runs), one `GET
+  /proxies/t-<id>/delay?url=<probe URL>&timeout=5000` in sequence, so N tunnels cost N
+  small requests per round and never run in parallel with each other. sing-box performs
+  the HTTP request through the outbound and answers `{"delay": ms}`; an HTTP error or a
+  timeout is a failed probe. Probe URL and interval are constants shared with the
+  generator (03-routing.md § Tunnel latency probe).
+- Per tunnel the prober keeps the last 12 results, the current failure streak and the
+  time of the last success. **Unreachable** = 3 failures in a row (30 s); it clears on the
+  first success. The tunnel is not restarted and nothing is logged above `info` except one
+  WARNING per streak (`probe: t-<id> unreachable after 3 failures`) and one INFO when it
+  recovers.
+- The results ride in the traffic snapshot (`latency`, once a second like the rates; the
+  prober only updates its map, the sampler copies it), so the app has one subscription
+  and one staleness rule. Reconnect / Retry from the card resets the streak so the state
+  is re-evaluated at once rather than after three more rounds.
+- A round is skipped while an `apply` or `stop` is in flight; a sing-box restart clears
+  the histories.
+- **On-demand Probe** (07-rule-testing.md): `probe(host:, via:)` is a new XPC call —
+  `GET /proxies/<tag>/delay?url=https://<host>/&timeout=10000` once, result or error
+  returned in the reply, nothing stored. The tag is the exit the resolver named (`t-<id>`,
+  `g-<id>`, or `direct` — sing-box lists `direct` under `/proxies` too). The daemon
+  refuses hosts that are not valid hostnames and rate-limits the call to one in flight.
+- **Privacy**: the probe target is a fixed constant; the on-demand probe sends the host
+  the user typed into the tester and nothing else.
+
+## Recent hosts (F15)
+
+The sampler already decodes `metadata.host`, `destinationIP`, `processPath` and `chains`
+for the connection cut. `RecentHosts` (a ring keyed by host, in `WayforkDaemonCore`)
+keeps, from every `/connections` sample, the connections that took the **default route**
+— `chains` naming neither a `t-<id>` nor a `g-<id>` other than the default exit's, and no
+`proxy-*` inbound — and whose host is a domain (fake-ip or sniffed; a bare IP is not
+listed). A host already matched by a rule never takes the default route, so "not covered
+by a rule" needs no separate check; local names and private ranges are excluded by the
+same token (they are `rules-direct` matches). Per host the newest `lastSeen` and the last
+`processPath` win; the ring holds 200 entries, oldest evicted; it is cleared on `stop` and
+on a sing-box restart. The app filters "last 5 min" and the session's hidden hosts on its
+side, so the daemon has no per-client state.
+
+**Trust boundary change** ([00-architecture.md](00-architecture.md) § 7, amended
+2026-09-15): the snapshot now carries destination *hosts* of default-route flows to the
+app, with the process path. Both processes belong to the same user and the app already
+holds every rule the user wrote; the list never touches disk, the log at `info`, or
+diagnostics, and it exists only while the state is *on*. The Clash API secret and the
+per-connection byte data still stay inside the daemon; what crosses is a bounded, current
+list of names, not a connection view.
+
+## Group selection (F16)
+
+- After every probe round, for each *first live* group: the first member (in the group's
+  order) whose latest probe succeeded is the wanted member; if the `selector` currently
+  points elsewhere (`GET /proxies/g-<id>` → `now`), `PUT /proxies/g-<id>` with
+  `{"name": "t-<member>"}`. With no member passing, the selector is left where it is —
+  the connections fail and the card says so.
+- For every group (both policies) the sampler reads `now` from `GET /proxies/g-<id>` once a
+  second and forwards it as `GroupState.activeMember`; the app draws `✓ in use` and takes
+  the group's latency from that member's sample.
+- The accumulator attributes a connection whose `chains` contain `g-<id>` to the group,
+  not to the member (03-routing.md § Tunnel groups).
+
+## Local proxy ports (F17)
+
+The daemon validates the plan's inbounds like everything else: `listen` must be
+`127.0.0.1`, ports 1024…65535, unique, at most one per tunnel or group, tags of the form
+`proxy-t-<id>` / `proxy-g-<id>`. A bind failure at start (sing-box exits before its
+"started" line with `address already in use` naming the port) is mapped to
+`proxy.portInUse` for that tunnel or group (`RuntimeStatus.proxyPortInUse: [String]`, a new
+optional list of ids), the inbound
+and its rule are stripped from the config and sing-box is started again — once; a second
+failure is the ordinary `singbox.startFailed`.
+
+## Block list (F18)
+
+- The rule-set file is `Contents/Resources/rulesets/block-ads.srs` inside the bundle; the
+  daemon derives the path from its own executable (trust rule 3) and refuses a plan that
+  references any other path. A missing file → `blocklist.missing` in `ApplyResult`, the
+  engine starts without the block rules.
+- **Counter**: `BlockCounter` watches the sing-box log stream the daemon already relays
+  (06-logging.md) for lines whose rule tag is `block-ads` and whose outcome is `reject` or
+  `predefined`; each is one blocked flow or lookup. The count is kept since local
+  midnight (reset by a timer), lives in memory, and rides in the snapshot as
+  `blockedToday`; when sing-box's `log.level` is above `info` the counter is `nil` and the
+  row says so. Lost on a daemon restart — a number for a feeling, not accounting.
 
 ## Connection cut on rule change
 

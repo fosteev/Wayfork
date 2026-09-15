@@ -51,8 +51,12 @@ The daemon is root and can execute binaries; the app is unprivileged. Rules:
    daemon over XPC at start and are held in memory there. OpenVPN credentials are passed
    through the management socket, never written to disk.
 7. sing-box's Clash API (traffic rates, F9) listens on loopback only, behind a secret the
-   daemon generates per start; the secret and the per-connection data (destination hosts)
-   stay inside the daemon — the app receives per-tunnel byte counts and nothing else.
+   daemon generates per start; the secret and the per-connection data stay inside the
+   daemon — the app receives per-tunnel byte counts, probe results (F14) and, since F15
+   (2026-09-15), a bounded list of the destination *hosts* that took the default route
+   with the process that opened them — names the user is about to write rules for, kept
+   in memory only, never logged or written to disk ([05-daemon.md](05-daemon.md) § Recent
+   hosts). Per-connection bytes, addresses and the secret itself still do not cross.
 
 ## Filesystem layout
 

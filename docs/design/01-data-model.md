@@ -10,7 +10,8 @@ struct Store: Codable {
     var tunnels: [Tunnel]
     var rules: [Rule]                 // ordered within a tunnel; see "Rule order" below
     var settings: Settings
-    var defaultTunnelID: UUID?        // F8: "everything else" exit; nil → direct
+    var defaultTunnelID: UUID?        // F8: "everything else" exit; nil → direct. May name a group (F16)
+    var groups: [TunnelGroup] = []    // F16
 }
 
 struct Tunnel: Codable, Identifiable {
@@ -20,6 +21,24 @@ struct Tunnel: Codable, Identifiable {
     var slot: Int                     // 0…31, unique, stable; OpenVPN interface = utun(101 + slot)
     var kind: TunnelKind
     var createdAt: Date
+    var localProxy: LocalProxy?       // F17; nil → off
+}
+
+struct TunnelGroup: Codable, Identifiable {   // F16
+    var id: UUID                      // shares the UUID space with tunnels: a RuleTarget or defaultTunnelID names either
+    var name: String                  // unique among tunnels and groups, 1…40 chars
+    var isEnabled: Bool
+    var members: [UUID]               // ordered, ≥ 2, tunnels only (never a group), no duplicates
+    var policy: GroupPolicy
+    var createdAt: Date
+    var localProxy: LocalProxy?       // F17
+}
+
+enum GroupPolicy: String, Codable { case fastest, firstLive }
+
+struct LocalProxy: Codable {          // F17
+    var isEnabled: Bool
+    var port: Int                     // 1024…65535, unique across tunnels and groups; chosen by the app from 1081 up
 }
 
 enum TunnelKind: Codable {            // encoded as a one-key object: {"vless": {…}}
@@ -121,6 +140,7 @@ struct Rule: Codable, Identifiable {
 
 enum RuleTarget: Codable {
     case tunnel(UUID)
+    case group(UUID)                  // F16
     case direct
 }
 
@@ -133,6 +153,12 @@ struct Settings: Codable {
     var overrideSystemDNS = true         // Wayfork is the system resolver while On (F12)
     var logLevel: LogLevel = .info
     var logRetentionDays = 7
+    var blockList = BlockListSettings()  // F18
+}
+
+struct BlockListSettings: Codable {   // F18
+    var isEnabled = false
+    var exceptions: [String] = []     // normalized hostnames, suffix semantics ("never block")
 }
 
 enum DirectDNS: Codable { case system; case custom([String]) }
@@ -238,6 +264,54 @@ range; `coversLocalNetwork(interface:)` when the range overlaps one of the Mac's
 networks (passed in by the app from `getifaddrs`; Core stays free of network lookups).
 Neither blocks the rule. `store.json` uses the same schema 2 as F10 (a build that does not
 know `"match": "ip"` refuses the file); export files carry IP rules unchanged.
+
+### Tunnel groups (F16)
+
+A `TunnelGroup` is an ordered list of tunnels behind one name and one policy. Anything
+that can name a tunnel — a rule's `target`, `Store.defaultTunnelID` — can name a group
+instead; the two live in one UUID space, so `RuleTarget.tunnelID` stays the computed
+accessor and `Store.exit(for: UUID) -> Exit?` (tunnel or group) resolves either.
+Semantics:
+
+- `members` holds tunnel ids only (a group inside a group is rejected by validation; the
+  UI never offers one), at least two, in the order the user set. Order matters only for
+  `firstLive`; `fastest` ignores it.
+- A member that is disabled, missing or without its secret is *skipped*: the group is
+  generated from the usable members. With none usable the generator drops the group and
+  its rules (they fall to the default route) and the UI marks it `No member reachable`
+  — the same behaviour as a disabled tunnel. With exactly one usable member the group is
+  still emitted (a `urltest` of one), so the config shape does not change with liveness.
+- Deleting a tunnel removes it from every group; a group left with fewer than two
+  members is deleted with its rules after the same confirmation a tunnel gets
+  (`Delete tunnel, the group Streaming it leaves too small, and their N rules?`).
+- Rules under a group are one group in the Rules page, ordered after the tunnels in store
+  order (groups come after tunnels, in their own store order); shadowing works across
+  tunnel and group sections alike.
+- A group has no DNS setting: each member resolves as its kind does (03-routing.md).
+
+JSON, still schema 1 (additive): `"groups": [{ "id", "name", "isEnabled", "members":
+[…], "policy": "fastest" | "firstLive", "createdAt", "localProxy"? }]`; a rule targeting
+a group carries `"groupID": "<uuid>"` and no `tunnelID`; `defaultTunnelID` may hold a
+group id. A build that predates F16 fails to decode a store with `groupID` (unknown
+`RuleTarget`) — the forward-only stance of F13 applies. Export files carry groups after
+tunnels; on import a group whose members were skipped is skipped with a warning
+(`group.invalid`), and a group name that collides is suffixed like a tunnel name.
+
+### Local proxy (F17)
+
+`localProxy` on a tunnel or group: `{ "isEnabled": true, "port": 1081 }`. The app picks
+the port when the toggle is first turned on — the lowest free value from 1081 up, free
+meaning unused by any other tunnel or group in the store (the daemon reports a port that
+another program holds at start, `proxy.portInUse`, and the user picks another). The value
+is kept when the toggle goes off, so turning it back on gives the same address. Validation:
+1024…65535, unique across the store. Export carries the field; on import a port that
+collides is dropped to nil with a warning (the address is machine-local anyway).
+
+### Block list (F18)
+
+`settings.blockList`: the switch and the exceptions. The list itself is not in the store —
+it ships with the app (03-routing.md § Block list); `exceptions` are hostnames validated
+like `suffix` rule patterns and applied with suffix semantics. Export carries both.
 
 ## Persistence
 

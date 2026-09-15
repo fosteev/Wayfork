@@ -1,8 +1,9 @@
 # Next features — F14–F18
 
 > Status: approved · created 2026-09-15 · F14–F18 approved 2026-09-15 (ROADMAP § F14–F18);
-> prototype variant C approved 2026-09-15 (stage 2 done) · stage 3 (design notes) next;
-> milestones M10–M14 / WM11–WM15 in the roadmaps · nothing built yet
+> prototype variant C approved 2026-09-15 (stage 2 done) · stage 3 design notes written
+> 2026-09-15, awaiting approval · milestones M10–M14 / WM11–WM15 in the roadmaps ·
+> nothing built yet
 
 ## Goal
 
@@ -63,7 +64,8 @@ this file keeps the original text, the stages and the working order.
   A rule, an exception or the default tunnel can point at a group wherever it can point at
   a tunnel.
 - Rendered as a card among the tunnels with its members inside; the active member is
-  marked. Rates and latency on the group card are the active member's.
+  marked. Latency on the group card is the active member's; rates are the group's own
+  traffic (design decision 2026-09-15, 03-routing.md § Tunnel groups).
 - Maps to a sing-box `urltest` outbound (`fastest`) or `selector` driven by the daemon
   (`first live`); the probe URL and interval are F14's. This is L4 "failover" delivered
   without a fallback field on every rule.
@@ -136,15 +138,21 @@ approval line goes into ROADMAP.md § UI prototype.
 
 ### 3. Design notes
 
-- [ ] [02-ux.md](../design/02-ux.md): the approved screens, states, empty states and error
-      strings per feature; the friction audit's fixes for existing screens.
-- [ ] [01-data-model.md](../design/01-data-model.md): `TunnelGroup`, proxy port fields,
+- [x] [02-ux.md](../design/02-ux.md): the approved screens, states, empty states and error
+      strings per feature; the friction audit's fixes for existing screens. — § Variant C,
+      with the M10 wording table (2026-09-15).
+- [x] [01-data-model.md](../design/01-data-model.md): `TunnelGroup`, proxy port fields,
       block-list switch and exceptions in `store.json`; rule targets widen to tunnel-or-group.
-- [ ] [03-routing.md](../design/03-routing.md): `urltest` / `selector` outbounds, `mixed`
-      inbounds and their route rules, `block` rule-set; new golden variants named.
-- [ ] [05-daemon.md](../design/05-daemon.md): F14 probes, the recent-hosts list in the
-      snapshot, the `first live` selector switch, the list-fetch job for F18.
-- [ ] [08-windows.md](../design/08-windows.md): deltas only.
+      — schema stays 1, `RuleTarget.group`, `defaultTunnelID` may name a group (2026-09-15).
+- [x] [03-routing.md](../design/03-routing.md): `urltest` / `selector` outbounds, `mixed`
+      inbounds and their route rules, `block` rule-set; new golden variants named. — plus
+      the F14 probe constants; 11 golden variants named (2026-09-15).
+- [x] [05-daemon.md](../design/05-daemon.md): F14 probes, the recent-hosts list in the
+      snapshot, the `first live` selector switch, the list-fetch job for F18. — the fetch
+      job is deferred to L1 (bundled list only); 00-architecture § 7 amended; Probe added
+      to 07-rule-testing.md (2026-09-15).
+- [x] [08-windows.md](../design/08-windows.md): deltas only. — § The F14–F18 wave
+      (2026-09-15).
 
 ### 4. Implementation, macOS (one feature per commit series)
 
@@ -235,20 +243,21 @@ ROADMAP.md: M10 (friendlier screens, existing features only), M9 (F14), M11–M1
 
 ## Risks and open questions
 
-- **F15 privacy**: the recent-domain list moves per-connection hosts from the daemon to the
-  app. Both are the same user's processes and the list never touches disk, but
-  [00-architecture.md](../design/00-architecture.md) § 7 says aggregates only — the design
-  note must amend it explicitly.
-- **F16 `first live` vs `urltest`**: sing-box's `urltest` already implements "fastest with
-  tolerance"; `first live` may not be worth a daemon-driven `selector`. Decide in the
-  design note after checking `urltest`'s `tolerance` and `interrupt_exist_connections`.
-- **F17 DNS**: a flow entering the `mixed` inbound skips the domain rules but must still
-  resolve through the tunnel's resolver, or the sniffed host leaks a direct DNS query. Same
-  shape as the default-tunnel DNS detour (H4); verify with the generator before the design
-  is final.
-- **F18 list source**: bundling a list means shipping updates with the app; fetching means a
-  network job in the daemon and a trust decision about the source. Lean: bundled list +
-  optional refresh from a pinned URL, decided at stage 3.
+- **F15 privacy** — amended 2026-09-15: [00-architecture.md](../design/00-architecture.md)
+  § 7 now names the bounded host list as the one thing that crosses besides aggregates;
+  05-daemon.md § Recent hosts states the limits (memory only, default-route flows, ≤ 200).
+- **F16 `first live` vs `urltest`** — decided 2026-09-15: keep both; `tolerance` only
+  damps switching, it cannot express "prefer this one unless it is down", so *first live*
+  is a daemon-driven `selector` (ten lines next to the prober). 03-routing.md § Tunnel
+  groups.
+- **F17 DNS** — analysed 2026-09-15: a `socks5h` / CONNECT client hands the name to the
+  inbound and the exit resolves it inside the tunnel; only a `socks5://` client's own
+  lookup goes the way of every unmatched query. The hint shows `socks5h://`. Generator
+  check still owed when M13 starts. 03-routing.md § Local proxy ports.
+- **F18 list source** — decided 2026-09-15: bundled only (OISD small, pinned URL + SHA in
+  `scripts/versions.env`, compiled to `.srs` at build); the refresh job comes with L1, so
+  board C6's *Update now* waits. Counting reads sing-box's log at `info`. 03-routing.md
+  § Block list.
 - **Prototype scope creep**: the friendlier pass will suggest redrawing screens the features
   do not touch (Logs, Add sheets). Out unless the maintainer widens the scope in stage 1.
 
