@@ -226,6 +226,7 @@ Worth knowing:
 
 ```sh
 scripts/fetch-bins.sh                 # pinned sing-box, static universal openvpn
+scripts/fetch-blocklist.sh            # pinned ads & trackers list, compiled with sing-box
 scripts/dev-sign.sh                   # build signed with your Apple Development identity
 swift test --package-path Wayfork/WayforkCore
 scripts/format.sh --lint              # swift-format check (drop --lint to fix)

@@ -6,6 +6,37 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+The F14–F18 wave on macOS (the Windows client follows in WM10–WM15): friendlier screens,
+latency on every card, a Recent list, tunnel groups, local proxy ports and a block list.
+
+### Added
+
+- **Latency on every card.** The daemon measures each connected tunnel through sing-box
+  every 10 s; cards and rows show the number in a colour band with a 2-minute sparkline,
+  and a tunnel that stops answering reads *Not reachable* with a Retry.
+- **Recent.** The popover and the Rules page list the sites that went the default way in
+  the last 5 minutes, with the app that opened them and a *Route via ▾* menu that turns a
+  row into a rule in one click.
+- **Tunnel groups.** Several tunnels behind one name: *Fastest* (sing-box's `urltest`
+  with hysteresis) or *First live* (the top member that works; the daemon switches the
+  selector after every probe round). Rules and the default exit can point at a group; the
+  group card shows the member in use and why the others are skipped.
+- **Local proxy port per tunnel or group.** A `127.0.0.1:‹port›` SOCKS5/HTTP address
+  (from 1081 up) that sends any app through that exit without a rule — for curl, a browser
+  profile, Telegram. Loopback only; a port another program holds is reported on the row
+  and the engine starts without it.
+- **Block ads and trackers.** General › Blocking: one switch backed by a bundled,
+  pinned OISD *small* list (56 k domains, compiled into a sing-box rule-set at build
+  time), listed names get NXDOMAIN from the resolver and a fast reject on the route,
+  *Never block* exceptions, and a *Blocked N today* counter from sing-box's log.
+
+### Changed
+
+- Wording across the popover, Settings › Tunnels, Rules and General per the variant C
+  friction audit: status words (*Connected*, *Can't connect*, *Not reachable*), `N sites`
+  instead of `N rules`, match kinds in plain words, *Not via any tunnel* instead of
+  *Direct · exceptions*, group headers on the Rules page that say what they mean.
+
 ## [0.6.0] — 2026-09-12
 
 Subscription links: paste the URL a VPN service hands out instead of copying its servers

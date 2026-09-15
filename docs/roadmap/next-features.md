@@ -172,7 +172,10 @@ ROADMAP.md: M10 (friendlier screens, existing features only), M9 (F14), M11–M1
       check and WM13 owed.
 - [ ] F17: model + generator + goldens, port on the card, copy button; LAN toggle only if
       approved. — code done 2026-09-15 (M13; no LAN toggle); manual check and WM14 owed.
-- [ ] F18: list source and fetch, generator, the switch, counter, exceptions.
+- [ ] F18: list source and fetch, generator, the switch, counter, exceptions. — code done
+      2026-09-15 (M14); manual check (a known ad host fails fast, the counter moves — the
+      counter's log-line match is written against sing-box's documented format, not seen
+      live) and WM15 owed.
 - [ ] Manual check per feature, listed in the design notes.
 
 ### 5. Windows mirror

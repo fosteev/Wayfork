@@ -78,6 +78,8 @@ for bin in sing-box openvpn; do
     lipo -info "$ROOT/Wayfork/Resources/bin/$bin" | grep -q "x86_64" \
         || warn "Wayfork/Resources/bin/$bin has no x86_64 slice (Intel Macs will not work)"
 done
+[[ -f "$ROOT/Wayfork/Resources/rulesets/block-ads.srs" ]] \
+    || die "block list missing: Wayfork/Resources/rulesets/block-ads.srs (run scripts/fetch-blocklist.sh)"
 
 if [[ -z "$IDENTITY" ]]; then
     IDENTITY="$(security find-identity -v -p codesigning \

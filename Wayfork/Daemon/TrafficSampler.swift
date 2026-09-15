@@ -24,6 +24,9 @@ actor TrafficSampler {
     private var defaultExit = TrafficAccumulator.Exit.direct
     /// Groups the plan routes (F16); each is asked once a second which member it uses.
     private var routedGroups: [String] = []
+    /// `Blocked N today` (F18): fed by the engine's log relay; reported only while counting.
+    private var blocked = BlockCounter()
+    private var blockCounting = false
     private var poll: Task<Void, Never>?
     private var generation = 0
     /// One WARNING per failure streak.
@@ -51,6 +54,17 @@ actor TrafficSampler {
     /// Ids of the groups in the plan (`RuntimePlan.routedGroupIDs`); set per plan.
     func setRoutedGroups(_ ids: [String]) {
         routedGroups = ids
+    }
+
+    /// Whether the plan has the block list and a log level that prints its matches.
+    func setBlockCounting(_ enabled: Bool) {
+        blockCounting = enabled
+        if !enabled { blocked.reset() }
+    }
+
+    /// One `block-ads` match in sing-box's log.
+    func countBlocked() {
+        blocked.record()
     }
 
     /// sing-box is up on `endpoint`: (re)start polling; the per-connection map starts over.
@@ -84,6 +98,7 @@ actor TrafficSampler {
         await pause()
         accumulator.reset()
         recent.clear()
+        blocked.reset()
         await prober.reset()
     }
 
@@ -104,6 +119,7 @@ actor TrafficSampler {
             recent.ingest(decoded.connections, defaultExit: defaultExit, at: now)
             snapshot.recentHosts = recent.snapshot
             snapshot.groups = await groupStates(endpoint)
+            snapshot.blockedToday = blockCounting ? blocked.value(at: now) : nil
             guard generation == self.generation, poll != nil else { return }
             if failing {
                 failing = false

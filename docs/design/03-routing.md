@@ -597,8 +597,15 @@ would not catch it). Exceptions are folded into both as a logical `and … not`:
   the row). Rejected: forcing sing-box to `info` while the switch is on — the user chose
   the log level for a reason.
 - Golden variants: `block-list` (switch on, two exceptions, a default tunnel),
-  `block-list-no-exceptions`. Both pass `sing-box check` on 1.13.19 *(verify: `predefined`
-  with `rcode` only and no `answer` is accepted — the docs allow it)*.
+  `block-list-no-exceptions`. Both pass `sing-box check` on 1.13.19 (verified 2026-09-15:
+  `predefined` with `rcode` only and no `answer` is accepted; `sing-box check` does open
+  local rule-sets, so the check tests compile a one-entry placeholder `.srs` and point
+  the config at it). The list's format at the pinned commit is plain domains, one per
+  line, emitted as `domain_suffix` entries (sing-box matches a suffix without a leading
+  dot as the name itself and its subdomains). Licence note (2026-09-15): the OISD
+  repository is GPL-3.0, not permissive as the decision note assumed; the list ships as a
+  separate data file with its source, commit and licence link in `block-ads.json` —
+  revisit if the licence turns out to matter for distribution.
 
 ## Tunnel latency probe (F14)
 

@@ -200,6 +200,7 @@ actor SingBoxEngine {
         generation += 1
         let generation = generation
         let hub = hub
+        let sampler = sampler
         let collector = LineCollector(capacity: SingBoxEngine.logTailLines)
         recent = collector
         let (started, startedSignal) = AsyncStream.makeStream(of: Void.self)
@@ -221,6 +222,9 @@ actor SingBoxEngine {
                                 source: SingBoxEngine.source, level: SingBoxLog.level(of: line),
                                 message: SingBoxLog.message(of: line)))
                         if SingBoxLog.isStartedLine(line) { startedSignal.yield() }
+                        if BlockCounter.isBlockedLine(line) {
+                            Task { await sampler.countBlocked() }
+                        }
                     },
                     onExit: { [weak self] exit in
                         startedSignal.finish()

@@ -4,7 +4,11 @@ import WayforkCore
 /// Limits enforced on a `RuntimePlan` before anything is written or spawned
 /// (docs/design/00-architecture.md, "Trust boundaries", rule 4).
 public enum PlanValidator {
-    public static func validate(_ plan: RuntimePlan) throws(DaemonError) {
+    /// `blockListPath`: the daemon's own `Contents/Resources/rulesets/block-ads.srs` (F18);
+    /// a binary rule-set anywhere else is refused (trust rule 3), a missing file too.
+    public static func validate(_ plan: RuntimePlan, blockListPath: String? = nil)
+        throws(DaemonError)
+    {
         guard plan.version == RuntimePlan.currentVersion else {
             throw .planInvalid(
                 reason:
@@ -23,6 +27,15 @@ public enum PlanValidator {
                 )
             }
             try checkSize(contents, name: name, allowEmpty: false)
+        }
+        for path in plan.singBox.binaryRuleSetPaths {
+            guard path == blockListPath else {
+                throw .planInvalid(
+                    reason: "rule-set path \"\(path)\" is not the bundled block list")
+            }
+            guard FileManager.default.fileExists(atPath: path) else {
+                throw .planInvalid(reason: "block list missing at \(path) — reinstall Wayfork")
+            }
         }
         // F17: loopback only, sane ports, one per tunnel or group, tags of our shape.
         var proxyPorts = Set<Int>()

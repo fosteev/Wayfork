@@ -822,11 +822,25 @@ decided in the design note), 01-data-model.md (switch and exceptions in `store.j
 
 - [x] Design notes as listed above; list source decided (2026-09-15: bundled OISD small,
       refresh deferred to L1).
-- [ ] List: bundled with the app, refresh job in the daemon if the design keeps it.
-- [ ] Generator: `block` rule-set, exceptions as a rule ahead of it, NXDOMAIN from the
-      fake-ip resolver; goldens.
-- [ ] Daemon: blocked-flow counter in the F9 snapshot.
-- [ ] App: the *Blocking* section in General (switch, "Blocked N today", list age,
-      *Update now*, *Never block* chips), the *Blocked* result in the Probe line.
+- [x] List: bundled with the app, refresh job in the daemon if the design keeps it
+      (2026-09-15: `scripts/fetch-blocklist.sh` downloads the OISD small list pinned by
+      commit + SHA-256 in `versions.env`, compiles it with the bundled sing-box into
+      `Resources/rulesets/block-ads.srs` + a `block-ads.json` sidecar, `embed-bins.sh`
+      copies both into the bundle; no refresh job — with L1).
+- [x] Generator: `block` rule-set, exceptions as a rule ahead of it, NXDOMAIN from the
+      fake-ip resolver; goldens (2026-09-15: `block-list`, `block-list-no-exceptions`;
+      the check tests compile a placeholder `.srs` since `sing-box check` opens local
+      rule-sets; `predefined` + `rcode` alone and the logical `and … invert` are accepted
+      by 1.13.19).
+- [x] Daemon: blocked-flow counter in the F9 snapshot (2026-09-15: `BlockCounter` on the
+      engine's log relay → `TrafficSnapshot.blockedToday`, nil above log level *Normal*;
+      `PlanValidator` accepts only its own bundle's `block-ads.srs` and refuses a plan
+      when the file is missing).
+- [x] App: the *Blocking* section in General (switch, "Blocked N today", list age,
+      *Update now*, *Never block* chips), the *Blocked* result in the Probe line
+      (2026-09-15: switch + hint `Blocked N today · list of N sites · from Wayfork
+      <version>`, chips with `×` and an *Add a site…* field; `Update now` waits for L1 with
+      the refresh job, the Probe line for the L2 tester; the toggle is disabled with the
+      *missing from this build* hint when the `.srs` is absent).
 - [ ] Manual check: a known ad host fails fast in the browser with the switch on and loads
       with it in *Never block*; the counter moves.

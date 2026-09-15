@@ -258,11 +258,15 @@ public struct TrafficSnapshot: Codable, Sendable, Hashable {
     /// Which member each routed group is using, by group id (F16; docs/design/05-daemon.md,
     /// "Group selection"). Absent in a payload from a build that predates it.
     public var groups: [String: GroupState]
+    /// Flows and lookups the block list rejected since local midnight (F18); nil while the
+    /// list is off or sing-box's log level is above `info` (nothing to count then).
+    public var blockedToday: Int?
 
     public init(
         sampledAt: Date, interval: TimeInterval, tunnels: [String: TrafficCounters],
         direct: TrafficCounters, latency: [String: LatencySample] = [:],
-        recentHosts: [RecentHost] = [], groups: [String: GroupState] = [:]
+        recentHosts: [RecentHost] = [], groups: [String: GroupState] = [:],
+        blockedToday: Int? = nil
     ) {
         self.sampledAt = sampledAt
         self.interval = interval
@@ -271,10 +275,11 @@ public struct TrafficSnapshot: Codable, Sendable, Hashable {
         self.latency = latency
         self.recentHosts = recentHosts
         self.groups = groups
+        self.blockedToday = blockedToday
     }
 
     private enum CodingKeys: String, CodingKey {
-        case sampledAt, interval, tunnels, direct, latency, recentHosts, groups
+        case sampledAt, interval, tunnels, direct, latency, recentHosts, groups, blockedToday
     }
 
     public init(from decoder: Decoder) throws {
@@ -286,6 +291,7 @@ public struct TrafficSnapshot: Codable, Sendable, Hashable {
         latency = try c.decodeIfPresent([String: LatencySample].self, forKey: .latency) ?? [:]
         recentHosts = try c.decodeIfPresent([RecentHost].self, forKey: .recentHosts) ?? []
         groups = try c.decodeIfPresent([String: GroupState].self, forKey: .groups) ?? [:]
+        blockedToday = try c.decodeIfPresent(Int.self, forKey: .blockedToday)
     }
 
     public func counters(forTunnel id: String) -> TrafficCounters {

@@ -46,6 +46,21 @@ public enum DirectDNS: Codable, Sendable, Hashable {
     case custom(servers: [String])
 }
 
+/// The ads & trackers switch and its exceptions (F18, docs/design/01-data-model.md,
+/// "Block list"). The list itself ships with the app, not in the store.
+public struct BlockListSettings: Codable, Sendable, Hashable {
+    public var isEnabled: Bool
+    /// Normalized hostnames with suffix semantics: *Never block* these and their subdomains.
+    public var exceptions: [String]
+
+    public init(isEnabled: Bool = false, exceptions: [String] = []) {
+        self.isEnabled = isEnabled
+        self.exceptions = exceptions
+    }
+
+    public static let off = BlockListSettings()
+}
+
 /// User preferences (F6). Every field has a default so that a `store.json` written by an
 /// older version, or with keys removed, still loads.
 public struct Settings: Codable, Sendable, Hashable {
@@ -58,6 +73,8 @@ public struct Settings: Codable, Sendable, Hashable {
     public var overrideSystemDNS: Bool
     public var logLevel: LogLevel
     public var logRetentionDays: Int
+    /// F18: block ads and trackers, with the sites the list gets wrong.
+    public var blockList: BlockListSettings
 
     public init(
         launchAtLogin: Bool = false,
@@ -67,7 +84,8 @@ public struct Settings: Codable, Sendable, Hashable {
         directDNS: DirectDNS = .system,
         overrideSystemDNS: Bool = true,
         logLevel: LogLevel = .info,
-        logRetentionDays: Int = 7
+        logRetentionDays: Int = 7,
+        blockList: BlockListSettings = .off
     ) {
         self.launchAtLogin = launchAtLogin
         self.connectOnLaunch = connectOnLaunch
@@ -77,11 +95,27 @@ public struct Settings: Codable, Sendable, Hashable {
         self.overrideSystemDNS = overrideSystemDNS
         self.logLevel = logLevel
         self.logRetentionDays = logRetentionDays
+        self.blockList = blockList
     }
 
     private enum CodingKeys: String, CodingKey {
         case launchAtLogin, connectOnLaunch, autoReconnect, notifyOnTunnelFailure
-        case directDNS, overrideSystemDNS, logLevel, logRetentionDays
+        case directDNS, overrideSystemDNS, logLevel, logRetentionDays, blockList
+    }
+
+    /// `blockList` is written only when it differs from the default, so a store (and every
+    /// golden `input.json`) without it is byte-identical to one written before F18.
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(launchAtLogin, forKey: .launchAtLogin)
+        try c.encode(connectOnLaunch, forKey: .connectOnLaunch)
+        try c.encode(autoReconnect, forKey: .autoReconnect)
+        try c.encode(notifyOnTunnelFailure, forKey: .notifyOnTunnelFailure)
+        try c.encode(directDNS, forKey: .directDNS)
+        try c.encode(overrideSystemDNS, forKey: .overrideSystemDNS)
+        try c.encode(logLevel, forKey: .logLevel)
+        try c.encode(logRetentionDays, forKey: .logRetentionDays)
+        if blockList != .off { try c.encode(blockList, forKey: .blockList) }
     }
 
     public init(from decoder: Decoder) throws {
@@ -103,5 +137,6 @@ public struct Settings: Codable, Sendable, Hashable {
         logLevel = try c.decodeIfPresent(LogLevel.self, forKey: .logLevel) ?? defaults.logLevel
         logRetentionDays =
             try c.decodeIfPresent(Int.self, forKey: .logRetentionDays) ?? defaults.logRetentionDays
+        blockList = try c.decodeIfPresent(BlockListSettings.self, forKey: .blockList) ?? .off
     }
 }

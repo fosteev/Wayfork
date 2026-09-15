@@ -44,13 +44,17 @@ public enum SingBoxConfigGenerator {
         /// to the system resolver — which is sing-box under the F12 override, a loop that
         /// left every direct name unresolvable (2026-08-26). Empty → `local` as before.
         public var networkResolvers: [String]
+        /// Absolute path of the bundled `block-ads.srs` (F18); nil when the build has no
+        /// list, in which case the switch emits nothing. Only used while
+        /// `settings.blockList.isEnabled`.
+        public var blockListPath: String?
 
         public init(
             store: Store, vlessUUIDs: [UUID: String],
             wireGuardKeys: [UUID: WireGuardSecrets] = [:], passwords: [UUID: String] = [:],
             vmessUUIDs: [UUID: String] = [:], openVPNBinaryPath: String,
             resolvedServerAddresses: [String: [String]] = [:], systemDNSServers: [String] = [],
-            networkResolvers: [String] = []
+            networkResolvers: [String] = [], blockListPath: String? = nil
         ) {
             self.store = store
             self.vlessUUIDs = vlessUUIDs
@@ -61,6 +65,7 @@ public enum SingBoxConfigGenerator {
             self.resolvedServerAddresses = resolvedServerAddresses
             self.systemDNSServers = systemDNSServers
             self.networkResolvers = networkResolvers
+            self.blockListPath = blockListPath
         }
     }
 
@@ -111,6 +116,8 @@ public enum SingBoxConfigGenerator {
     public static let defaultTunnelDoTServer = "1.1.1.1"
     /// The DDR special-use name (RFC 9462) mDNSResponder queries to upgrade to DoH/DoT.
     public static let ddrDiscoveryName = "_dns.resolver.arpa"
+    /// The bundled block list's rule-set tag (F18, docs/design/03-routing.md, "Block list").
+    public static let blockListTag = "block-ads"
 
     public static func generate(_ input: Input) -> Output {
         let store = input.store
@@ -200,6 +207,15 @@ public enum SingBoxConfigGenerator {
             localRuleSet(
                 tag: RuleSetGenerator.directIPTag, path: RuleSetGenerator.directIPFileName),
         ]
+        // F18: listed names are rejected after the exceptions and before every tunnel
+        // rule-set, so the list wins whichever tunnel a rule would send them to.
+        let blockList = blockListRules(store.settings.blockList, path: input.blockListPath)
+        if let blockList {
+            routeRules.append(blockList.route)
+            ruleSetRefs.append([
+                "type": "local", "tag": blockListTag, "format": "binary", "path": blockList.path,
+            ])
+        }
 
         for tunnel in routed {
             switch tunnel.kind {
@@ -326,6 +342,9 @@ public enum SingBoxConfigGenerator {
             // OpenVPN remotes and WireGuard peers must resolve to real addresses, never
             // fake IPs. Only OpenVPN's control flow also gets a direct route rule above.
             dnsRules.append(["domain": directDNSHosts, "server": "dns-direct"])
+        }
+        if let blockList {
+            dnsRules.append(blockList.dns)
         }
         if !routed.isEmpty {
             dnsRules.append([
@@ -593,6 +612,38 @@ public enum SingBoxConfigGenerator {
             "route_exclude_address": routeExcludeAddresses(carving: carved),
             "stack": "system",
         ]
+    }
+
+    /// The block list's DNS rule (NXDOMAIN) and route rule (reject), the exceptions folded
+    /// in as an inverted half of a logical `and` (F18). nil while the switch is off or the
+    /// build ships no list.
+    static func blockListRules(_ settings: BlockListSettings, path: String?)
+        -> (dns: [String: Any], route: [String: Any], path: String)?
+    {
+        guard settings.isEnabled, let path else { return nil }
+        let exceptions = settings.exceptions
+        func rule(_ action: [String: Any]) -> [String: Any] {
+            guard !exceptions.isEmpty else {
+                return ["rule_set": blockListTag].merging(action) { $1 }
+            }
+            return [
+                "type": "logical",
+                "mode": "and",
+                "rules": [
+                    ["rule_set": blockListTag],
+                    [
+                        "domain": exceptions,
+                        "domain_suffix": exceptions.map { "." + $0 },
+                        "invert": true,
+                    ],
+                ],
+            ].merging(action) { $1 }
+        }
+        return (
+            dns: rule(["action": "predefined", "rcode": "NXDOMAIN"]),
+            route: rule(["action": "reject"]),
+            path: path
+        )
     }
 
     /// SOCKS5 + HTTP CONNECT on one loopback port, no authentication (F17). No

@@ -674,3 +674,41 @@ private func groupedStore() -> (Store, group: TunnelGroup, work: Tunnel, home: T
     #expect(LocalProxyText.onHint(exitName: "Work").hasSuffix("uses Work, no rule needed"))
     #expect(LocalProxyText.offHint(exitName: "Work").contains("through Work without a rule"))
 }
+
+// MARK: - Block list (F18)
+
+@Test func blockListHintAndExceptions() throws {
+    let info = BlockListInfo(isAvailable: true, name: "oisd small", entries: 56069, version: "1")
+    #expect(
+        BlockListText.hint(
+            info: info, isEnabled: true, blockedToday: 12, isRunning: true, countingPossible: true,
+            appVersion: "0.7.0") == "Blocked 12 today · list of 56,069 sites · from Wayfork 0.7.0")
+    #expect(
+        BlockListText.hint(
+            info: info, isEnabled: true, blockedToday: nil, isRunning: true,
+            countingPossible: false,
+            appVersion: "0.7.0")
+            == "Blocked — (counting needs log detail Normal) · list of 56,069 sites · from Wayfork 0.7.0"
+    )
+    #expect(
+        BlockListText.hint(
+            info: info, isEnabled: false, blockedToday: nil, isRunning: true,
+            countingPossible: true,
+            appVersion: "0.7.0") == "list of 56,069 sites · from Wayfork 0.7.0")
+    #expect(
+        BlockListText.hint(
+            info: .missing, isEnabled: true, blockedToday: nil, isRunning: true,
+            countingPossible: true, appVersion: "0.7.0")
+            == "The block list is missing from this build — reinstall Wayfork")
+    #expect(try BlockListText.normalizeException(" Example.COM. ").get() == "example.com")
+    #expect(BlockListText.normalizeException("") == .failure(.empty))
+    #expect(BlockListText.normalizeException("*.example.com") == .failure(.wildcardNotAllowed))
+
+    // The settings field is omitted while default and round-trips otherwise.
+    var settings = Settings()
+    #expect(
+        !String(decoding: try JSONEncoder().encode(settings), as: UTF8.self).contains("blockList"))
+    settings.blockList = BlockListSettings(isEnabled: true, exceptions: ["example.com"])
+    let decoded = try JSONDecoder().decode(Settings.self, from: try JSONEncoder().encode(settings))
+    #expect(decoded.blockList == settings.blockList)
+}

@@ -807,7 +807,8 @@ final class AppModel {
             store: store, secrets: planSecrets, bundlePath: bundlePath,
             resolvedServerAddresses: resolved,
             systemDNSServers: systemDNS.routable(override: override),
-            networkResolvers: systemDNS.networkServers)
+            networkResolvers: systemDNS.networkServers,
+            blockListAvailable: blockList.isAvailable)
         for warning in result.warnings {
             if case .missingSecret(let id) = warning {
                 logs.app(.warning, "\(store.tunnel(id: id)?.name ?? "?") skipped: secret missing")
@@ -970,8 +971,10 @@ final class AppModel {
 
     private func buildPlanForDiagnostics() -> RuntimePlan? {
         guard let planSecrets = try? PlanSecrets.load(for: store, from: secrets) else { return nil }
-        return RuntimePlanBuilder.build(store: store, secrets: planSecrets, bundlePath: bundlePath)
-            .plan
+        return RuntimePlanBuilder.build(
+            store: store, secrets: planSecrets, bundlePath: bundlePath,
+            blockListAvailable: blockList.isAvailable
+        ).plan
     }
 }
 

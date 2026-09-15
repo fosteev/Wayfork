@@ -105,6 +105,24 @@ public struct SingBoxPlan: Codable, Sendable, Hashable {
         return route["final"] as? String
     }
 
+    /// Paths of the `binary` local rule-sets the config references — the bundled block
+    /// list (F18) and nothing else in the generator's shape.
+    public var binaryRuleSetPaths: [String] {
+        guard
+            let root = try? JSONSerialization.jsonObject(with: Data(config.utf8)) as? [String: Any],
+            let route = root["route"] as? [String: Any],
+            let ruleSets = route["rule_set"] as? [[String: Any]]
+        else { return [] }
+        return ruleSets.compactMap { ruleSet in
+            guard ruleSet["type"] as? String == "local", ruleSet["format"] as? String == "binary"
+            else { return nil }
+            return ruleSet["path"] as? String
+        }
+    }
+
+    /// Whether the config carries the block list's rule-set (F18).
+    public var hasBlockList: Bool { !binaryRuleSetPaths.isEmpty }
+
     /// The local proxy inbounds of the config (F17): tag, listen address and port of every
     /// `mixed` inbound, in config order. Empty when the config is not the generator's shape.
     public var localProxyInbounds: [LocalProxyInbound] {

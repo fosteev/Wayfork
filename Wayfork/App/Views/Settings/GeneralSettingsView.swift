@@ -16,6 +16,7 @@ struct GeneralSettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             PageTitle(text: "General").padding(.horizontal, 20).padding(.top, 20)
             Form {
+                BlockingSection()
                 Section("Startup") {
                     Toggle("Open Wayfork at login", isOn: setting(\.launchAtLogin))
                     Toggle("Turn on when it opens", isOn: setting(\.connectOnLaunch))
@@ -204,6 +205,96 @@ struct GeneralSettingsView: View {
         retentionDays = days
         guard days != model.settings.logRetentionDays else { return }
         model.updateSettings { $0.logRetentionDays = days }
+    }
+}
+
+/// General › Blocking (F18): the switch with its one-line hint, and the *Never block* chips.
+private struct BlockingSection: View {
+    @Environment(AppModel.self) private var model
+    @State private var newException = ""
+    @State private var exceptionError: String?
+
+    var body: some View {
+        let info = model.blockList
+        Section("Blocking") {
+            Toggle(
+                "Block ads and trackers",
+                isOn: Binding(
+                    get: { model.settings.blockList.isEnabled },
+                    set: { model.setBlockList(enabled: $0) })
+            )
+            .disabled(!info.isAvailable)
+            Text(model.blockListHint)
+                .font(.system(size: 11))
+                .foregroundStyle(info.isAvailable ? Color.secondary : Color.red)
+                .help(info.name.map { "List: \($0)" } ?? "")
+            LabeledContent("Never block") {
+                VStack(alignment: .leading, spacing: 6) {
+                    if !model.settings.blockList.exceptions.isEmpty {
+                        FlowChips(
+                            items: model.settings.blockList.exceptions,
+                            remove: { model.removeBlockException($0) })
+                    }
+                    HStack(spacing: 6) {
+                        TextField("Add a site…", text: $newException)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 200)
+                            .onSubmit(addException)
+                            .invalidOutline(exceptionError != nil)
+                        Button("Add", action: addException)
+                            .disabled(newException.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                    if let exceptionError {
+                        Text(exceptionError).font(.system(size: 11)).foregroundStyle(.red)
+                    }
+                    Text(BlockListText.exceptionsHint)
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func addException() {
+        if let message = model.addBlockException(newException) {
+            exceptionError = message
+        } else {
+            exceptionError = nil
+            newException = ""
+        }
+    }
+}
+
+/// Chips with an `×`, wrapping onto new lines.
+private struct FlowChips: View {
+    let items: [String]
+    let remove: (String) -> Void
+
+    var body: some View {
+        // A lazy grid with adaptive columns is the cheap wrap; chips are short hostnames.
+        LazyVGrid(
+            columns: [
+                GridItem(.adaptive(minimum: 120, maximum: 260), spacing: 6, alignment: .leading)
+            ],
+            alignment: .leading, spacing: 6
+        ) {
+            ForEach(items, id: \.self) { item in
+                HStack(spacing: 4) {
+                    Text(item).font(.system(size: 11, design: .monospaced)).lineLimit(1)
+                    Button {
+                        remove(item)
+                    } label: {
+                        Image(systemName: "xmark").font(.system(size: 8, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Remove \(item)")
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.secondary.opacity(0.14)))
+            }
+        }
+        .frame(maxWidth: 420, alignment: .leading)
     }
 }
 

@@ -101,7 +101,8 @@ private let t0 = Date(timeIntervalSince1970: 1_756_140_000)
         let original = try String(
             contentsOf: source.appendingPathComponent("sing-box.json"), encoding: .utf8)
         let endpoint = try ClashAPIEndpoint.generate()
-        try ClashAPIConfig.inject(endpoint, into: original).write(
+        let injected = try ClashAPIConfig.inject(endpoint, into: original)
+        try installPlaceholderBlockList(in: injected, dir: dir, binary: binary).write(
             to: dir.appendingPathComponent("sing-box.json"), atomically: true, encoding: .utf8)
         let process = Process()
         process.executableURL = binary
@@ -115,6 +116,28 @@ private let t0 = Date(timeIntervalSince1970: 1_756_140_000)
         #expect(process.terminationStatus == 0, "sing-box check failed for \(variant): \(log)")
         try? FileManager.default.removeItem(at: dir)
     }
+}
+
+/// The goldens reference the bundled block list (F18) by its install path; `sing-box check`
+/// opens local rule-sets, so a placeholder is compiled into `dir` and the path rewritten.
+private func installPlaceholderBlockList(
+    in config: String, dir: URL, binary: URL
+) throws -> String {
+    let installPath = RuntimePlanBuilder.blockListPath(bundlePath: "/Applications/Wayfork.app")
+    guard config.contains(installPath) else { return config }
+    let source = dir.appendingPathComponent("block-ads.source.json")
+    try #"{"version":3,"rules":[{"domain_suffix":[".ads.example"]}]}"#.write(
+        to: source, atomically: true, encoding: .utf8)
+    let compiled = dir.appendingPathComponent("block-ads.srs")
+    let process = Process()
+    process.executableURL = binary
+    process.arguments = ["rule-set", "compile", "--output", compiled.path, source.path]
+    process.standardOutput = Pipe()
+    process.standardError = Pipe()
+    try process.run()
+    process.waitUntilExit()
+    #expect(process.terminationStatus == 0, "sing-box rule-set compile failed")
+    return config.replacingOccurrences(of: installPath, with: compiled.path)
 }
 
 // MARK: - /connections decoding

@@ -155,7 +155,8 @@ actor Supervisor {
 
     func apply(_ plan: RuntimePlan) async -> ApplyResult {
         do {
-            try PlanValidator.validate(plan)
+            try PlanValidator.validate(
+                plan, blockListPath: RuntimePlanBuilder.blockListPath(bundlePath: env.bundlePath))
         } catch {
             return .failure(error)
         }
@@ -259,6 +260,9 @@ actor Supervisor {
         await sampler.setDefaultExit(
             TrafficAccumulator.Exit(chains: [plan.singBox.routeFinal ?? "direct"]))
         await sampler.setRoutedGroups(plan.routedGroupIDs)
+        // F18: the counter reads sing-box's `info` lines; above that there is nothing to count.
+        await sampler.setBlockCounting(
+            plan.singBox.hasBlockList && (plan.logLevel == .info || plan.logLevel == .debug))
 
         await stopSessions(actions.stopOpenVPN)
         await engine.deleteRuleSets(actions.staleRuleSets)

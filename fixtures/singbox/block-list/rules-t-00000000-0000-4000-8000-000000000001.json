@@ -1,0 +1,10 @@
+{
+  "rules" : [
+    {
+      "domain" : [
+        "api.other.com"
+      ]
+    }
+  ],
+  "version" : 3
+}

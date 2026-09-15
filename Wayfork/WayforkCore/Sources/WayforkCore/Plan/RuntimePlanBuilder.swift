@@ -94,15 +94,23 @@ public enum RuntimePlanBuilder {
         bundlePath + "/Contents/Resources/bin/openvpn"
     }
 
+    /// The bundled block list (F18); the daemon derives the same path from its own bundle
+    /// and accepts no other (trust rule 3).
+    public static func blockListPath(bundlePath: String) -> String {
+        bundlePath + "/Contents/Resources/rulesets/block-ads.srs"
+    }
+
     /// `resolvedServerAddresses`: IPv4 addresses of OpenVPN and WireGuard server hosts from
     /// `HostResolver.resolveIPv4(HostResolver.serverHosts(in: store))`; empty when the
     /// caller could not resolve (the servers are then matched by name only).
     /// `systemDNSServers`: `SystemDNS.Snapshot.routable(override:)`, routed into the TUN by
     /// the generator. `networkResolvers`: `Snapshot.networkServers`, named as `dns-direct`.
+    /// `blockListAvailable`: whether `blockListPath(bundlePath:)` exists in this build; with
+    /// the switch on and no list the plan carries no block rules (`blocklist.missing`).
     public static func build(
         store: Store, secrets: PlanSecrets, bundlePath: String,
         resolvedServerAddresses: [String: [String]] = [:], systemDNSServers: [String] = [],
-        networkResolvers: [String] = []
+        networkResolvers: [String] = [], blockListAvailable: Bool = false
     ) -> RuntimePlanBuildResult {
         var warnings: [PlanWarning] = []
         var openVPN: [OpenVPNRuntime] = []
@@ -162,7 +170,8 @@ public enum RuntimePlanBuilder {
                 openVPNBinaryPath: openVPNBinaryPath(bundlePath: bundlePath),
                 resolvedServerAddresses: resolvedServerAddresses,
                 systemDNSServers: systemDNSServers,
-                networkResolvers: networkResolvers))
+                networkResolvers: networkResolvers,
+                blockListPath: blockListAvailable ? blockListPath(bundlePath: bundlePath) : nil))
         let plan = RuntimePlan(
             singBox: SingBoxPlan(config: generated.config, ruleSets: generated.ruleSets),
             openVPN: openVPN,

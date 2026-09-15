@@ -18,8 +18,9 @@ xcuserdata/
 .swiftpm/
 Package.resolved.bak
 
-# Bundled binaries (fetched by scripts/, not committed)
+# Bundled binaries and the compiled block list (fetched by scripts/, not committed)
 Wayfork/Resources/bin/
+Wayfork/Resources/rulesets/
 WayforkWindows/bin/
 WayforkWindows/drivers/
 

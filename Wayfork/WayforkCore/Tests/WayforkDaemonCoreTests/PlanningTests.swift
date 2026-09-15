@@ -24,9 +24,9 @@ private func reason(_ error: DaemonError?) -> String {
     return ""
 }
 
-private func validationError(_ plan: RuntimePlan) -> DaemonError? {
+private func validationError(_ plan: RuntimePlan, blockListPath: String? = nil) -> DaemonError? {
     do {
-        try PlanValidator.validate(plan)
+        try PlanValidator.validate(plan, blockListPath: blockListPath)
         return nil
     } catch {
         return error
@@ -356,4 +356,57 @@ private func proxyConfig(_ inbounds: [(tag: String, listen: String, port: Int)])
     #expect(rules.count == 2)
     #expect(rules[1]["outbound"] as? String == "g-\(idB)")
     #expect(LocalProxyStripper.strip(inboundTag: "proxy-t-missing", from: config) == nil)
+}
+
+// MARK: - F18
+
+@Test func blockListPathMustBeTheBundledOne() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "wayfork-blocklist-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let present = dir.appendingPathComponent("block-ads.srs").path
+    try Data().write(to: URL(fileURLWithPath: present))
+    func config(_ path: String) -> String {
+        #"{"route":{"rule_set":[{"type":"local","tag":"rules-direct","format":"source","path":"rules-direct.json"},{"type":"local","tag":"block-ads","format":"binary","path":"\#(path)"}]}}"#
+    }
+    #expect(SingBoxPlan(config: config(present), ruleSets: [:]).binaryRuleSetPaths == [present])
+    #expect(SingBoxPlan(config: config(present), ruleSets: [:]).hasBlockList)
+    #expect(!SingBoxPlan(config: "{}", ruleSets: [:]).hasBlockList)
+    #expect(validationError(plan([], config: config(present)), blockListPath: present) == nil)
+    #expect(
+        reason(validationError(plan([], config: config("/etc/passwd")), blockListPath: present))
+            .contains("not the bundled block list"))
+    #expect(reason(validationError(plan([], config: config(present)))).contains("not the bundled"))
+    let missing = dir.appendingPathComponent("gone.srs").path
+    #expect(
+        reason(validationError(plan([], config: config(missing)), blockListPath: missing))
+            .contains("missing"))
+}
+
+@Test func blockCounterCountsMatchesUntilMidnight() {
+    #expect(
+        BlockCounter.isBlockedLine(
+            "INFO[0012] [3924010537 0ms] router: match[3] logical(and)[rule_set=block-ads !domain_suffix=[.example.com]] => reject"
+        ))
+    #expect(
+        BlockCounter.isBlockedLine(
+            "INFO[0012] [1 0ms] dns: match[4] rule_set=block-ads => predefined"))
+    #expect(
+        !BlockCounter.isBlockedLine(
+            "INFO[0012] [1 0ms] router: match[5] rule_set=rules-direct => direct"))
+    #expect(!BlockCounter.isBlockedLine("INFO[0012] rule_set=block-ads loaded"))
+
+    var counter = BlockCounter()
+    let calendar = Calendar(identifier: .gregorian)
+    let noon = calendar.date(from: DateComponents(year: 2026, month: 9, day: 15, hour: 12))!
+    counter.record(at: noon, calendar: calendar)
+    counter.record(at: noon.addingTimeInterval(60), calendar: calendar)
+    #expect(counter.value(at: noon.addingTimeInterval(3600), calendar: calendar) == 2)
+    let tomorrow = noon.addingTimeInterval(13 * 3600)
+    #expect(counter.value(at: tomorrow, calendar: calendar) == 0)
+    counter.record(at: tomorrow, calendar: calendar)
+    #expect(counter.value(at: tomorrow, calendar: calendar) == 1)
+    counter.reset()
+    #expect(counter.value(at: tomorrow, calendar: calendar) == 0)
 }

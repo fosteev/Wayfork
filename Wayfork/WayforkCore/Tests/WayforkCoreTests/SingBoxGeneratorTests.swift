@@ -29,14 +29,16 @@ private func input(
     _ store: Store, uuids: [UUID: String] = [Fixtures.homeID: homeUUID],
     wireGuardKeys: [UUID: WireGuardSecrets] = [:],
     passwords: [UUID: String] = [:], vmessUUIDs: [UUID: String] = [:],
-    resolved: [String: [String]] = [:], systemDNS: [String] = [], network: [String] = []
+    resolved: [String: [String]] = [:], systemDNS: [String] = [], network: [String] = [],
+    blockList: Bool = false
 ) -> SingBoxConfigGenerator.Input {
     SingBoxConfigGenerator.Input(
         store: store, vlessUUIDs: uuids, wireGuardKeys: wireGuardKeys, passwords: passwords,
         vmessUUIDs: vmessUUIDs,
         openVPNBinaryPath: RuntimePlanBuilder.openVPNBinaryPath(bundlePath: bundlePath),
         resolvedServerAddresses: resolved, systemDNSServers: systemDNS,
-        networkResolvers: network)
+        networkResolvers: network,
+        blockListPath: blockList ? RuntimePlanBuilder.blockListPath(bundlePath: bundlePath) : nil)
 }
 
 private func generate(
@@ -65,6 +67,8 @@ private struct GoldenInput: Codable {
     var resolvedServerAddresses: [String: [String]]
     var systemDNSServers: [String]
     var networkResolvers: [String]
+    /// F18; absent in records written before it.
+    var blockListPath: String?
 
     init(_ input: SingBoxConfigGenerator.Input) {
         store = input.store
@@ -93,6 +97,7 @@ private struct GoldenInput: Codable {
             })
         self.vmessUUIDs = vmessUUIDs.isEmpty ? nil : vmessUUIDs
         openVPNBinaryPath = input.openVPNBinaryPath
+        blockListPath = input.blockListPath
         resolvedServerAddresses = input.resolvedServerAddresses
         systemDNSServers = input.systemDNSServers
         networkResolvers = input.networkResolvers
@@ -714,6 +719,15 @@ private func configVariants() -> [(String, SingBoxConfigGenerator.Input)] {
     var proxyWithDefault = defaultTunnelStore(defaultID: Fixtures.homeID)
     proxyWithDefault.tunnels[0].localProxy = LocalProxy(isEnabled: true, port: 1081)
     variants.append(("proxy-with-default", input(proxyWithDefault)))
+    // F18: the switch on with two exceptions and a default tunnel, and without exceptions;
+    // the switch on in a build without the list emits nothing (checked separately).
+    var blockList = defaultTunnelStore(defaultID: Fixtures.homeID)
+    blockList.settings.blockList = BlockListSettings(
+        isEnabled: true, exceptions: ["example.com", "cdn.example.net"])
+    variants.append(("block-list", input(blockList, blockList: true)))
+    var noExceptions = twoTunnelStore()
+    noExceptions.settings.blockList = BlockListSettings(isEnabled: true)
+    variants.append(("block-list-no-exceptions", input(noExceptions, blockList: true)))
     return variants
 }
 
@@ -750,7 +764,7 @@ private func groupStore(policy: GroupPolicy) -> Store {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(
             "wayfork-singbox-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        try output.config.write(
+        try installPlaceholderBlockList(in: output.config, dir: dir, binary: binary).write(
             to: dir.appendingPathComponent("sing-box.json"), atomically: true, encoding: .utf8)
         for (file, contents) in output.ruleSets {
             try contents.write(
@@ -767,6 +781,28 @@ private func groupStore(policy: GroupPolicy) -> Store {
         let log = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         #expect(process.terminationStatus == 0, "sing-box check failed for \(name): \(log)")
     }
+}
+
+/// The goldens reference the bundled block list (F18) by its install path; `sing-box check`
+/// opens local rule-sets, so a placeholder is compiled into `dir` and the path rewritten.
+private func installPlaceholderBlockList(
+    in config: String, dir: URL, binary: URL
+) throws -> String {
+    let installPath = RuntimePlanBuilder.blockListPath(bundlePath: "/Applications/Wayfork.app")
+    guard config.contains(installPath) else { return config }
+    let source = dir.appendingPathComponent("block-ads.source.json")
+    try #"{"version":3,"rules":[{"domain_suffix":[".ads.example"]}]}"#.write(
+        to: source, atomically: true, encoding: .utf8)
+    let compiled = dir.appendingPathComponent("block-ads.srs")
+    let process = Process()
+    process.executableURL = binary
+    process.arguments = ["rule-set", "compile", "--output", compiled.path, source.path]
+    process.standardOutput = Pipe()
+    process.standardError = Pipe()
+    try process.run()
+    process.waitUntilExit()
+    #expect(process.terminationStatus == 0, "sing-box rule-set compile failed")
+    return config.replacingOccurrences(of: installPath, with: compiled.path)
 }
 
 /// `sing-box check` validates the schema only: a `final`, an `outbound` or a `detour`
