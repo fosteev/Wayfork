@@ -712,3 +712,33 @@ private func groupedStore() -> (Store, group: TunnelGroup, work: Tunnel, home: T
     let decoded = try JSONDecoder().decode(Settings.self, from: try JSONEncoder().encode(settings))
     #expect(decoded.blockList == settings.blockList)
 }
+
+// MARK: - Can't reach (F19)
+
+@Test func failedTextWords() {
+    #expect(FailedText.reason(.noAnswer, exitName: nil) == "no answer")
+    #expect(FailedText.reason(.tunnelDown, exitName: "Lab") == "Lab is down")
+    #expect(FailedText.reason(.blocked, exitName: nil) == "blocked by your list")
+    #expect(FailedText.reason(.other("dial tcp: boom"), exitName: nil) == "failed")
+    #expect(FailedText.detail(.other("dial tcp: boom")) == "dial tcp: boom")
+    #expect(FailedText.detail(.refused) == nil)
+    #expect(FailedText.tries(14) == "×14")
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    #expect(FailedText.lastSeen(now.addingTimeInterval(-12), now: now) == "12 s ago")
+    #expect(FailedText.lastSeen(now.addingTimeInterval(-180), now: now) == "3 min ago")
+    #expect(FailedText.lastSeen(now.addingTimeInterval(-7200), now: now).count == 5)
+    #expect(
+        FailedText.header(count: 4, since: nil, appsUnknown: false)
+            == "4 sites — click a row to see its log lines")
+    #expect(
+        FailedText.header(count: 1, since: nil, appsUnknown: true)
+            == "1 site — which app needs log detail Normal")
+    #expect(
+        FailedText.showing(host: "a.example", tries: 1, reason: "no answer", via: "direct")
+            == "Showing lines for a.example · 1 try, all no answer · went direct")
+    #expect(
+        FailedText.showing(host: "a.example", tries: 3, reason: "refused", via: "Work")
+            == "Showing lines for a.example · 3 tries, all refused · went Work")
+    #expect(FailedText.popoverLine(count: 3) == "3 sites can't be reached")
+    #expect(FailedText.empty(since: nil) == "Every site your apps tried could be reached.")
+}

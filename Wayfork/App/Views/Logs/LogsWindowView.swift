@@ -60,6 +60,46 @@ struct LogsWindowView: View {
 
     var body: some View {
         let rows = rows
+        VStack(spacing: 0) {
+            // F19: what could not be reached, above the lines; a click filters to the host.
+            if model.globalState.isRunning {
+                FailedPaneView(search: $search, level: $level)
+                    .padding(EdgeInsets(top: 8, leading: 8, bottom: 6, trailing: 8))
+                Divider()
+            }
+            logList(rows)
+        }
+        .frame(minWidth: 640, minHeight: 300)
+        .toolbar {
+            ToolbarItemGroup(placement: .principal) {
+                sourceMenu
+                Picker("Level", selection: $level) {
+                    ForEach(LogLevel.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
+                }
+                .frame(width: 110)
+                TextField("Search", text: $search)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 220)
+            }
+            ToolbarItemGroup(placement: .primaryAction) {
+                Toggle("Follow", isOn: $follow).toggleStyle(.button)
+                Button("Clear") { model.logs.clear() }
+                Button("Copy") { copyVisible(rows) }
+            }
+        }
+        .onAppear(perform: takePreselectedSearch)
+        .onChange(of: model.logsPreselectedSearch) { takePreselectedSearch() }
+    }
+
+    /// The popover's *Show* opens the window filtered to a host (F19).
+    private func takePreselectedSearch() {
+        guard let host = model.logsPreselectedSearch else { return }
+        search = host
+        level = .debug
+        model.logsPreselectedSearch = nil
+    }
+
+    private func logList(_ rows: [Row]) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
@@ -93,24 +133,6 @@ struct LogsWindowView: View {
                     selectedSources = [preselected]
                     model.logsPreselectedSource = nil
                 }
-            }
-        }
-        .frame(minWidth: 640, minHeight: 300)
-        .toolbar {
-            ToolbarItemGroup(placement: .principal) {
-                sourceMenu
-                Picker("Level", selection: $level) {
-                    ForEach(LogLevel.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
-                }
-                .frame(width: 110)
-                TextField("Search", text: $search)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 220)
-            }
-            ToolbarItemGroup(placement: .primaryAction) {
-                Toggle("Follow", isOn: $follow).toggleStyle(.button)
-                Button("Clear") { model.logs.clear() }
-                Button("Copy") { copyVisible(rows) }
             }
         }
     }

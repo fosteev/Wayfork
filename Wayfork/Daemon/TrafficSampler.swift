@@ -27,6 +27,8 @@ actor TrafficSampler {
     /// `Blocked N today` (F18): fed by the engine's log relay; reported only while counting.
     private var blocked = BlockCounter()
     private var blockCounting = false
+    /// Connections that could not be established (F19), from the same relay.
+    private var failed = FailedConnections()
     private var poll: Task<Void, Never>?
     private var generation = 0
     /// One WARNING per failure streak.
@@ -67,6 +69,11 @@ actor TrafficSampler {
         blocked.record()
     }
 
+    /// One sing-box line that may tell a connection's fate (F19).
+    func observe(_ message: String, level: LogLevel) {
+        failed.ingest(message, level: level)
+    }
+
     /// sing-box is up on `endpoint`: (re)start polling; the per-connection map starts over.
     func start(_ endpoint: ClashAPIEndpoint) async {
         await pause()
@@ -99,6 +106,7 @@ actor TrafficSampler {
         accumulator.reset()
         recent.clear()
         blocked.reset()
+        failed.clear()
         await prober.reset()
     }
 
@@ -120,6 +128,7 @@ actor TrafficSampler {
             snapshot.recentHosts = recent.snapshot
             snapshot.groups = await groupStates(endpoint)
             snapshot.blockedToday = blockCounting ? blocked.value(at: now) : nil
+            snapshot.failedHosts = failed.snapshot
             guard generation == self.generation, poll != nil else { return }
             if failing {
                 failing = false

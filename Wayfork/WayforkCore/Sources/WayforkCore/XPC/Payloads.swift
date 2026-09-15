@@ -261,12 +261,15 @@ public struct TrafficSnapshot: Codable, Sendable, Hashable {
     /// Flows and lookups the block list rejected since local midnight (F18); nil while the
     /// list is off or sing-box's log level is above `info` (nothing to count then).
     public var blockedToday: Int?
+    /// Connections that could not be established since Turn On, newest first, at most
+    /// `FailedHost.capacity` (F19; docs/design/05-daemon.md, "Failed connections").
+    public var failedHosts: [FailedHost]
 
     public init(
         sampledAt: Date, interval: TimeInterval, tunnels: [String: TrafficCounters],
         direct: TrafficCounters, latency: [String: LatencySample] = [:],
         recentHosts: [RecentHost] = [], groups: [String: GroupState] = [:],
-        blockedToday: Int? = nil
+        blockedToday: Int? = nil, failedHosts: [FailedHost] = []
     ) {
         self.sampledAt = sampledAt
         self.interval = interval
@@ -276,10 +279,12 @@ public struct TrafficSnapshot: Codable, Sendable, Hashable {
         self.recentHosts = recentHosts
         self.groups = groups
         self.blockedToday = blockedToday
+        self.failedHosts = failedHosts
     }
 
     private enum CodingKeys: String, CodingKey {
         case sampledAt, interval, tunnels, direct, latency, recentHosts, groups, blockedToday
+        case failedHosts
     }
 
     public init(from decoder: Decoder) throws {
@@ -292,6 +297,7 @@ public struct TrafficSnapshot: Codable, Sendable, Hashable {
         recentHosts = try c.decodeIfPresent([RecentHost].self, forKey: .recentHosts) ?? []
         groups = try c.decodeIfPresent([String: GroupState].self, forKey: .groups) ?? [:]
         blockedToday = try c.decodeIfPresent(Int.self, forKey: .blockedToday)
+        failedHosts = try c.decodeIfPresent([FailedHost].self, forKey: .failedHosts) ?? []
     }
 
     public func counters(forTunnel id: String) -> TrafficCounters {
@@ -367,6 +373,60 @@ public struct RecentHost: Codable, Sendable, Hashable, Identifiable {
         self.host = host
         self.processPath = processPath
         self.exit = exit
+        self.lastSeen = lastSeen
+    }
+}
+
+/// Why a connection could not be established (F19), classified from sing-box's error
+/// text by the daemon; the words are the app's (`FailedText`).
+public enum FailureReason: Codable, Sendable, Hashable {
+    /// `i/o timeout`.
+    case noAnswer
+    /// `connection refused`.
+    case refused
+    /// `connection reset by peer`.
+    case reset
+    /// The name did not resolve (`no such host`, NXDOMAIN, a failed lookup).
+    case noSuchName
+    /// The block list rejected the flow or answered the lookup (F18).
+    case blocked
+    /// `network is unreachable` / `no route to host` through a tunnel exit.
+    case tunnelDown
+    /// Anything else; the raw error text travels for the tooltip.
+    case other(String)
+}
+
+/// One site + app that could not be reached, aggregated by the daemon (F19). Lives in
+/// memory on both sides, never on disk.
+public struct FailedHost: Codable, Sendable, Hashable, Identifiable {
+    /// The daemon keeps this many rows; the oldest goes first.
+    public static let capacity = 200
+
+    /// Domain (sniffed or from the resolver) or `ip:port` when there was no name.
+    public var host: String
+    /// Executable path from sing-box's `find_process`; nil when unknown (log detail above
+    /// `info`, or a lookup by the system resolver).
+    public var processPath: String?
+    /// `"direct"`, the tunnel or group id the flow left through, or `""` when the flow
+    /// never reached an outbound (a blocked lookup).
+    public var exit: String
+    public var reason: FailureReason
+    /// Tries since Turn On.
+    public var count: Int
+    public var lastSeen: Date
+
+    /// Host + process, the row's identity in the pane.
+    public var id: String { "\(host)|\(processPath ?? "")" }
+
+    public init(
+        host: String, processPath: String? = nil, exit: String, reason: FailureReason,
+        count: Int = 1, lastSeen: Date
+    ) {
+        self.host = host
+        self.processPath = processPath
+        self.exit = exit
+        self.reason = reason
+        self.count = count
         self.lastSeen = lastSeen
     }
 }

@@ -29,6 +29,11 @@ latency on every card, a Recent list, tunnel groups, local proxy ports and a blo
   pinned OISD *small* list (56 k domains, compiled into a sing-box rule-set at build
   time), listed names get NXDOMAIN from the resolver and a fast reject on the route,
   *Never block* exceptions, and a *Blocked N today* counter from sing-box's log.
+- **Can't reach.** The Logs window lists the connections that could not be established —
+  site, the app that opened it, how many tries, why (*no answer*, *refused*, *blocked by
+  your list*, *‹tunnel› is down*, …), through which exit — and a click filters the log
+  to that site; *Route via* and *Never block* fix the usual causes on the spot. The
+  popover says `N sites can't be reached` while it happens.
 
 ### Changed
 

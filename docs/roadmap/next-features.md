@@ -95,6 +95,41 @@ this file keeps the original text, the stages and the working order.
 - Deliberately a switch, not a rule group: the audience for this feature does not want to
   see 40 000 rows.
 
+**F19. Can't reach — failed connections by site and app** *(proposed 2026-09-15; approved
+2026-09-15 — ROADMAP.md § F19 / M15)*
+- The user's question: "I started a game (or an app) and something in it does not work —
+  which host could it not reach, and through what?" Today the answer is buried in the
+  sing-box log. F19 keeps a table of **connections that could not be established**,
+  grouped by host + app: site (domain, or `ip:port` when there was no name), the app that
+  opened it, how many tries, why (`no answer` · `refused` · `blocked by your list` · `no
+  such name` · `‹tunnel› is down`), which exit it went through (`Work` / `direct`), when
+  last. Sorted by last try; kept since Turn On, capped at 200 rows, cleared on Turn Off.
+- Where: the **Logs window** (macOS) / **Main window › Logs** (Windows) gets the table
+  as a pane above the log lines, header `Can't reach · N sites since 14:31 · Clear`.
+  **Clicking a row filters the log below to that host** (search = the host, level *All*) —
+  the request in the user's words, "open the logs for this URL". Row actions on hover:
+  *Route via ▾* (a suffix rule, like Recent — the usual fix when a site is unreachable
+  direct but fine through a tunnel), *Never block* when the reason is the block list, and
+  the row's × to dismiss it. The popover / flyout shows one red line under the summary
+  while there were failures in the last 5 minutes: `3 sites can't be reached · Show`.
+- Data: the daemon already relays sing-box's log. Its `router`/`inbound` lines carry a
+  connection id, the destination (`inbound connection to host:443`), the process path
+  (`found process path: …`) and the chosen outbound; the failure is an `ERROR` line with
+  the same id (`open connection to host:443: dial tcp …: i/o timeout` / `connection
+  refused` / `network is unreachable`), and a listed name shows as the `=> reject` match
+  or the resolver's `predefined` NXDOMAIN. A `FailedConnections` tracker in
+  `WayforkDaemonCore` joins the lines by id (a small LRU keyed by connection id), classifies
+  the reason and forwards `(host, processPath, exit, reason, count, lastSeen)` in the
+  traffic snapshot next to `recentHosts` — no new endpoint, no Clash API (a connection
+  that fails never lives long enough to be sampled there). At log detail *Problems* the
+  info lines are absent, so rows have a host and a reason but no app; the pane says so.
+- **Not** an HTTP error monitor: a request that reached the server and got a 403 or 500
+  is invisible inside TLS and is not listed. The table answers "could not connect", which
+  is exactly what a wrong route, a dead tunnel, a blocked name or a censored host
+  produces. Also not a live connection view (L2), and no history across Turn Off.
+- Boards: `variant-c.html` C8 (Logs window with the pane, the popover line in a callout),
+  `windows.html` W16.
+
 **Candidates, not scoped** (one line each; promoted only on request):
 - Notifications when a tunnel becomes unreachable / reachable again (after F14).
 - Network-aware profiles: on/off or a profile per Wi-Fi SSID (needs L5).
@@ -176,6 +211,9 @@ ROADMAP.md: M10 (friendlier screens, existing features only), M9 (F14), M11–M1
       2026-09-15 (M14); manual check (a known ad host fails fast, the counter moves — the
       counter's log-line match is written against sing-box's documented format, not seen
       live) and WM15 owed.
+- [ ] F19: the daemon's log join, the pane in the Logs window, the popover line (M15;
+      added 2026-09-15 after the wave). — code done 2026-09-15; manual check (the line
+      shapes above all) and WM16 owed.
 - [ ] Manual check per feature, listed in the design notes.
 
 ### 5. Windows mirror

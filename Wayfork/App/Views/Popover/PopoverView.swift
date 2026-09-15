@@ -61,6 +61,20 @@ struct PopoverView: View {
                 .foregroundStyle(.secondary)
                 .padding(.leading, 26)
                 .lineLimit(2)
+            // F19: one red line while something failed in the last 5 minutes.
+            if model.recentFailedCount > 0 {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle")
+                    Text(FailedText.popoverLine(count: model.recentFailedCount))
+                    Spacer()
+                    Button("Show") { model.openLogs() }
+                        .buttonStyle(.link)
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(.red)
+                .padding(.leading, 26)
+            }
         }
     }
 

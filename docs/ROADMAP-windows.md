@@ -628,3 +628,13 @@ strings and states, Windows chrome). Deltas, if any, go to
 - [ ] Service (Go): blocked-flow counter in the snapshot.
 - [ ] App (Flutter): the *Blocking* section per W14, the *Blocked* Probe result per W13.
 - [ ] PC run: same check as M14.
+
+### WM16 — Can't reach (F19)
+
+[ROADMAP.md](ROADMAP.md) § M15; the line shapes and reason classes in 05-daemon.md
+§ Failed connections are sing-box's, so they carry over unchanged.
+
+- [ ] Service (Go): the `FailedConnections` join in `internal/core`, fed by the service's
+      sing-box log relay; `failedHosts` in the snapshot.
+- [ ] App (Flutter): the pane on the Logs page per W16, click → filter, the flyout line.
+- [ ] PC run: same check as M15.

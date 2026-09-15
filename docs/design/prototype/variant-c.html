@@ -297,6 +297,30 @@ h2 { font-size:15px; font-weight:600; margin:0 0 10px; color:rgba(0,0,0,0.75); }
 .callout { background:var(--card); border-radius:8px; box-shadow:var(--cardsh); padding:8px 12px; display:flex; flex-direction:column; gap:6px; font-size:12px; width:300px; box-sizing:border-box; }
 .t.dark .callout { background:var(--win); box-shadow:0 0 0 0.5px rgba(255,255,255,0.15),0 6px 20px rgba(0,0,0,0.4); }
 .callout .cap { font-size:10px; font-weight:600; color:var(--fg3); text-transform:uppercase; letter-spacing:0.4px; }
+
+/* ---- C8 · Can't reach ---- */
+.lw { width:760px; height:520px; }
+.lw .tb { display:flex; align-items:center; gap:8px; padding:6px 12px; border-bottom:1px solid var(--sep); background:var(--side); }
+.lw .body { flex:1; display:flex; flex-direction:column; gap:10px; padding:10px 12px 12px; min-height:0; }
+.strip.fr .h { color:var(--fg); }
+.strip.fr .cols, .strip.fr .rec { display:grid; grid-template-columns:16px 1fr 70px 44px 128px 48px 62px 100px; gap:8px; align-items:center; padding:0 12px; }
+.strip.fr .cols { height:20px; font-size:10px; font-weight:600; color:var(--fg3); text-transform:uppercase; letter-spacing:0.4px; border-bottom:1px solid var(--sep); background:var(--card2); }
+.strip.fr .cols .c1 { grid-column:1 / 3; }
+.strip.fr .rec { height:26px; font-size:12px; border-bottom:1px solid var(--sep); }
+.strip.fr .rec .c3, .strip.fr .rec .c5, .strip.fr .rec .c6 { color:var(--fg2); font-variant-numeric:tabular-nums; }
+.strip.fr .rec .c3 { font-weight:500; color:var(--fg); }
+.strip.fr .rec .c6 { font-size:11px; }
+.strip.fr .rec .act { display:flex; justify-content:flex-end; align-items:center; gap:6px; }
+.strip.fr .rec.sel { background:rgba(10,96,255,0.12); }
+.strip.fr .rec .badt { color:var(--badt); }
+.log { font-family:"SF Mono",Menlo,Monaco,Consolas,monospace; font-size:11px; line-height:16px; display:flex; flex-direction:column; background:var(--card); border:1px solid var(--sep); border-radius:6px; padding:6px 10px; overflow:hidden; white-space:nowrap; }
+.log .src { display:inline-block; width:64px; color:var(--fg3); }
+.log .lv-e { color:var(--badt); }
+.log .lv-w { color:var(--warnt); }
+.log .lv-i { color:var(--fg2); }
+.log .filt { display:flex; align-items:center; gap:6px; font-family:-apple-system,"SF Pro Text",system-ui,sans-serif; font-size:11px; color:var(--fg2); padding-bottom:4px; margin-bottom:4px; border-bottom:1px solid var(--sep); }
+.pv .trouble { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--badt); padding-left:26px; margin-top:-4px; }
+.pv .trouble .link { margin-left:auto; font-weight:500; }
 </style>
 </head>
 <body>
@@ -310,6 +334,7 @@ h2 { font-size:15px; font-weight:600; margin:0 0 10px; color:rgba(0,0,0,0.75); }
 <li><a href="#C5">C5 · Rule test with Probe</a></li>
 <li><a href="#C6">C6 · Settings › General with Block ads and trackers</a></li>
 <li><a href="#C7">C7 · New group sheet</a></li>
+<li><a href="#C8">C8 · Logs window with the "Can't reach" pane (F19)</a></li>
 </ol>
 
 <!-- ============================ C1 ============================ -->
@@ -683,6 +708,47 @@ h2 { font-size:15px; font-weight:600; margin:0 0 10px; color:rgba(0,0,0,0.75); }
   </div>
 </div></div>
 <div class="note">Sheet over the Tunnels page. Members are the existing tunnels with a tick and a grip — the tick includes, the order matters for <i>First live</i> and is shown while dragging (Backup is mid-drag). Every member shows its current latency so the choice is informed. The two policies are one sentence each, in the same words the expanded group card uses. <i>Create</i> is enabled from two ticked members on. No policy-specific settings (probe URL, interval) here — those are F14's and live in General later if ever.</div>
+</div></section>
+
+
+<!-- ============================ C8 ============================ -->
+<section id="C8" class="board"><h2>C8 · Logs window with the "Can't reach" pane (F19) — and the popover line</h2>
+<div class="bd" style="width:1100px">
+<div style="display:flex;gap:24px;align-items:flex-start">
+<div class="t"><div class="win lw">
+  <div class="titlebar"><div class="tl"><span style="background:#ff5f57"></span><span style="background:#febc2e"></span><span style="background:#28c840"></span></div><div class="title">Wayfork Logs</div></div>
+  <div class="tb"><div class="pop"><span style="flex:1">sing-box</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10l5-5 5 5"/><path d="M7 14l5 5 5-5"/></svg></span></div><div class="pop"><span style="flex:1">All</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10l5-5 5 5"/><path d="M7 14l5 5 5-5"/></svg></span></div><div class="tf focus round" style="width:220px"><svg class="icn sm" viewBox="0 0 24 24" style="color:var(--fg3)"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>cdn.gamepatch.example.net <span class="ter" style="margin-left:auto">×</span></div><span style="flex:1"></span><div class="btn" style="background:var(--hl);box-shadow:none">Follow</div><div class="btn">Clear</div><div class="btn">Copy</div></div>
+  <div class="body">
+    <div class="strip fr"><div class="h"><svg class="icn sm" viewBox="0 0 24 24" style="color:var(--badt)"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/></svg><span>Can't reach</span><span class="hint">4 sites since 14:31 — click a row to see its log lines</span><span style="flex:1"></span><a href="#" class="link" style="font-weight:400;font-size:12px">Clear</a></div><div class="cols"><span class="c1">Site</span><span class="c2">App</span><span class="c3">Tried</span><span class="c4">Why</span><span class="c5">Via</span><span class="c6">Last</span></div><div class="rows"><div class="rec sel"><span class="ai" style="background:#5856d6">G</span><span class="c1 dom">cdn.gamepatch.example.net</span><span class="c2 app">Game</span><span class="c3">×14</span><span class="c4 badt">no answer</span><span class="c5">direct</span><span class="c6">12 s ago</span><span class="act"><div class="pop"><span>Route via</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></div><span class="x">×</span></span></div><div class="rec"><span class="ai" style="background:#5856d6">G</span><span class="c1 dom">matchmaking.example.net:5555</span><span class="c2 app">Game</span><span class="c3">×9</span><span class="c4 badt">refused</span><span class="c5">direct</span><span class="c6">40 s ago</span><span class="act"></span></div><div class="rec"><span class="ai" style="background:#0a84ff">S</span><span class="c1 dom">telemetry.example.com</span><span class="c2 app">Game</span><span class="c3">×6</span><span class="c4">blocked by your list</span><span class="c5">—</span><span class="c6">1 min ago</span><span class="act"><a href="#" class="link" style="font-size:11px">Never block</a></span></div><div class="rec" style="border-bottom:none"><span class="ai" style="background:#ff9f0a">T</span><span class="c1 dom">api.example.org</span><span class="c2 app">Terminal</span><span class="c3">×2</span><span class="c4 badt">Lab is down</span><span class="c5">Lab</span><span class="c6">3 min ago</span><span class="act"></span></div></div></div>
+    <div class="filt-note" style="font-size:11px;color:var(--fg2);display:flex;gap:6px;align-items:center"><span>Showing lines for <b style="font-weight:500;color:var(--fg)">cdn.gamepatch.example.net</b> · 3 tries, all <span class="badt">no answer</span> · went direct</span><span style="flex:1"></span><a href="#" class="link">Show all lines</a></div>
+    <div class="log" style="flex:1">
+<span class="lv-i"><span class="src">sing-box</span>14:42:07 INF  [3921 0ms] inbound/tun[tun-in]: inbound connection to cdn.gamepatch.example.net:443</span>
+<span class="lv-i"><span class="src">sing-box</span>14:42:07 INF  [3921 1ms] router: found process path: /Applications/Game.app/Contents/MacOS/Game</span>
+<span class="lv-i"><span class="src">sing-box</span>14:42:07 INF  [3921 1ms] router: no match, using direct</span>
+<span class="lv-e"><span class="src">sing-box</span>14:42:12 ERR  [3921 5004ms] inbound/tun[tun-in]: open connection to cdn.gamepatch.example.net:443: dial tcp 203.0.113.9:443: i/o timeout</span>
+<span class="lv-i"><span class="src">sing-box</span>14:42:14 INF  [3940 0ms] inbound/tun[tun-in]: inbound connection to cdn.gamepatch.example.net:443</span>
+<span class="lv-i"><span class="src">sing-box</span>14:42:14 INF  [3940 1ms] router: found process path: /Applications/Game.app/Contents/MacOS/Game</span>
+<span class="lv-e"><span class="src">sing-box</span>14:42:19 ERR  [3940 5002ms] inbound/tun[tun-in]: open connection to cdn.gamepatch.example.net:443: dial tcp 203.0.113.9:443: i/o timeout</span>
+<span class="lv-i"><span class="src">sing-box</span>14:42:21 INF  [3958 0ms] inbound/tun[tun-in]: inbound connection to cdn.gamepatch.example.net:443</span>
+<span class="lv-e"><span class="src">sing-box</span>14:42:26 ERR  [3958 5001ms] inbound/tun[tun-in]: open connection to cdn.gamepatch.example.net:443: dial tcp 203.0.113.9:443: i/o timeout</span>
+</div>
+  </div>
+</div></div>
+<div style="display:flex;flex-direction:column;gap:14px;width:300px">
+  <div class="t dark"><div class="pv" style="width:300px;gap:6px">
+    <div class="hd"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M9 16V9.5M9 9.5L4 3.5M9 9.5L14 3.5"/><circle cx="4" cy="3.5" r="1.9" fill="rgba(255,255,255,0.9)" stroke="none"/><circle cx="14" cy="3.5" r="1.9" fill="rgba(255,255,255,0.9)" stroke="none"/><circle cx="9" cy="16" r="1.9" fill="rgba(255,255,255,0.9)" stroke="none"/></svg><span class="t">Wayfork</span><div class="sw on"><i></i></div></div>
+    <div class="sub">On — everything goes via Work, 9 sites via other tunnels</div>
+    <div class="trouble"><svg class="icn sm" viewBox="0 0 24 24" style="color:var(--badt)"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/></svg><span>3 sites can't be reached</span><a href="#" class="link">Show</a></div>
+    <div class="sep"></div>
+    <div class="sh">Tunnels</div>
+    <div class="card"><div class="l1"><span class="d ok"></span><span class="n">Work</span><span class="badge acc">Default</span><span class="fill"></span><span class="lat ok">62<small>ms</small></span></div><div class="l2"><b>Connected</b><span>·</span><span>↓ 1.2 MB/s ↑ 85 KB/s</span><span>·</span><span>6 sites</span></div></div>
+    <div class="ter" style="font-size:11px;text-align:center;padding:2px 0">…</div>
+  </div></div>
+  <div class="callout"><div class="cap">Detail · log detail set to Problems</div><div class="strip fr" style="font-size:12px"><div class="h" style="padding:4px 10px"><svg class="icn sm" viewBox="0 0 24 24" style="color:var(--badt)"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/></svg><span>Can't reach</span><span class="hint">2 sites since 14:31</span></div><div class="rows"><div class="rec" style="grid-template-columns:1fr 34px 100px;padding:0 10px"><span class="dom">cdn.gamepatch.example.net</span><span class="c3">×14</span><span class="c4 badt">no answer</span></div><div class="rec" style="grid-template-columns:1fr 34px 100px;padding:0 10px;border-bottom:none"><span class="dom">203.0.113.40:27015</span><span class="c3">×5</span><span class="c4 badt">refused</span></div></div></div><div class="hint" style="font-size:11px;color:var(--fg2)">Which app opened them needs log detail <b style="font-weight:500">Normal</b> — <a href="#" class="link">change it</a></div></div>
+  <div class="callout"><div class="cap">Detail · nothing failed</div><div style="display:flex;gap:8px;align-items:flex-start;font-size:11px;color:var(--fg2);line-height:14px"><svg class="icn sm" viewBox="0 0 24 24" style="color:var(--okt);margin-top:1px"><path d="M20 6L9 17l-5-5"/></svg><span>Every site your apps tried since 14:31 could be reached. A site that cannot shows up here with the app, how many tries and why.</span></div></div>
+</div>
+</div>
+<div class="note"><b>Can't reach</b> (F19) is a pane on top of the Logs window, not a new page: the question "what could my app not reach?" ends in the log anyway. One row per site + app — the site (domain, or <code>ip:port</code> when there was no name), the app that opened it, how many tries, why in the user's words (<i>no answer</i> · <i>refused</i> · <i>blocked by your list</i> · <i>no such name</i> · <i>‹tunnel› is down</i>), the exit it went through, when last. <b>Clicking a row filters the log below to that site</b> — the search field takes the host, the level goes to All, and a line above the log says what is shown with <i>Show all lines</i> to go back. Row actions on hover: <i>Route via ▾</i> (a suffix rule, as in Recent — the usual fix for a site that works only through a tunnel), <i>Never block</i> when the reason is the block list, × to dismiss. The <b>popover</b> gets one red line under the summary while anything failed in the last 5 minutes; <i>Show</i> opens this window. Rows live since Turn On (200 max, cleared on Turn Off). Callouts: at log detail <i>Problems</i> the app column is empty (sing-box prints the process only at <i>info</i>), and the empty state. Only connections that <b>could not be established</b> are listed — an HTTP 403 inside TLS is invisible and is not a failure here.</div>
 </div></section>
 
 </body>

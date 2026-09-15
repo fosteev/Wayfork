@@ -244,6 +244,22 @@ Written as user scenarios. Technical details belong to Phase 2.
 - Deliberately a switch, not a rule group: the audience for this feature does not want to
   see 40 000 rows.
 
+**F19. Can't reach — failed connections by site and app** *(added 2026-09-15; approved
+2026-09-15)*
+- The Logs window gets a pane of **connections that could not be established**, one row
+  per site + app: site (domain or `ip:port`), the app that opened it, how many tries, why
+  in the user's words (`no answer` · `refused` · `blocked by your list` · `no such name` ·
+  `‹tunnel› is down`), which exit, when last. Kept since Turn On, 200 rows, cleared on
+  Turn Off.
+- Clicking a row filters the log below to that site; row actions *Route via ▾*, *Never
+  block* (when the list is the reason), × to dismiss. The popover shows `N sites can't be
+  reached · Show` while anything failed in the last 5 minutes.
+- Data comes from sing-box's own log lines, joined by connection id in the daemon and
+  forwarded in the traffic snapshot; nothing new is polled. Not an HTTP error monitor: a
+  403 inside TLS is invisible and is not listed.
+- Text, boards and the reasoning: [roadmap/next-features.md](roadmap/next-features.md)
+  § F19, `prototype/variant-c.html` C8, `prototype/windows.html` W16.
+
 Feature text, stages and working order for F15–F18 and the friendlier UI pass:
 [roadmap/next-features.md](roadmap/next-features.md).
 
@@ -844,3 +860,26 @@ decided in the design note), 01-data-model.md (switch and exceptions in `store.j
       *missing from this build* hint when the `.srs` is absent).
 - [ ] Manual check: a known ad host fails fast in the browser with the switch on and loads
       with it in *Never block*; the counter moves.
+
+### M15 — Can't reach (F19)
+
+Phase 1 above, § F19. Design in 05-daemon.md (§ Failed connections: the log join by
+connection id, the reason classes, the snapshot field), 06-logging.md (§ Logs window: the
+pane and click-to-filter), 02-ux.md (§ Variant C › Can't reach: wording), boards C8 / W16.
+
+- [x] Design notes as listed above (2026-09-15).
+- [x] `WayforkCore`: `FailedHost` + `FailureReason` in the snapshot (optional on the wire),
+      `FailedText` for the reason words and the pane strings (2026-09-15).
+- [x] Daemon: `FailedConnections` tracker in `WayforkDaemonCore` fed by the engine's log
+      relay — host / process / exit per connection id from the `info` lines, the reason
+      from the `ERROR` line or the `reject` match; since Turn On, 200 rows; tests on
+      recorded line shapes (2026-09-15: the shapes are written from sing-box's source, not
+      captured live — the first live run should confirm `inbound connection to`, `sniffed
+      … domain:`, `found process path:`, `match[N] … => tag` and `open connection to`).
+- [x] App: the pane in the Logs window (columns, row actions, click → search = host, level
+      All, the *Showing lines for …* line), the popover line, the *Problems* and empty
+      states (2026-09-15: `FailedPaneView`, `AppModel+Failed`).
+- [ ] Manual check: a game or `curl` against a dead host shows up with the app and
+      `no answer`; a listed ad host as `blocked by your list`; clicking the row shows its
+      lines; the popover line appears within a second and goes after 5 minutes.
+- [ ] Windows: WM16 in ROADMAP-windows.md.

@@ -115,4 +115,15 @@ import Testing
         TrafficSnapshot.self, from: try JSONEncoder().encode(full))
     #expect(roundTrip.groups["ggg"]?.activeMember == "aaa")
     #expect(roundTrip.groups["hhh"] == GroupState(activeMember: nil))
+    #expect(decoded.failedHosts.isEmpty)
+    let failed = TrafficSnapshot(
+        sampledAt: Date(), interval: 1, tunnels: [:], direct: .zero,
+        failedHosts: [
+            FailedHost(
+                host: "a.example", processPath: "/x", exit: "direct", reason: .other("boom"),
+                count: 3, lastSeen: Date(timeIntervalSince1970: 1))
+        ])
+    let back = try JSONDecoder().decode(
+        TrafficSnapshot.self, from: try JSONEncoder().encode(failed))
+    #expect(back.failedHosts == failed.failedHosts)
 }

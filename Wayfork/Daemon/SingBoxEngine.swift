@@ -217,13 +217,16 @@ actor SingBoxEngine {
                 handlers: ProcessEventHandlers(
                     onLine: { _, line in
                         collector.append(line)
+                        let level = SingBoxLog.level(of: line)
+                        let message = SingBoxLog.message(of: line)
                         hub.post(
-                            LogLine(
-                                source: SingBoxEngine.source, level: SingBoxLog.level(of: line),
-                                message: SingBoxLog.message(of: line)))
+                            LogLine(source: SingBoxEngine.source, level: level, message: message))
                         if SingBoxLog.isStartedLine(line) { startedSignal.yield() }
                         if BlockCounter.isBlockedLine(line) {
                             Task { await sampler.countBlocked() }
+                        }
+                        if FailedConnections.isInteresting(message) {
+                            Task { await sampler.observe(message, level: level) }
                         }
                     },
                     onExit: { [weak self] exit in

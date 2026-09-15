@@ -42,6 +42,18 @@ not running; they are included in diagnostics via `collectDiagnostics`.
   [02-ux.md](02-ux.md)).
 - Copy copies the visible (filtered) lines as text; Clear empties the in-memory ring only.
 - "Show Log" from a tunnel's menu opens the window with that source pre-selected.
+- **Can't reach pane (F19)**: a strip above the lines listing the connections that could
+  not be established (05-daemon.md § Failed connections) — header `Can't reach · N sites
+  since ‹Turn On time› — click a row to see its log lines · Clear`; columns Site · App ·
+  Tried · Why · Via · Last. Clicking a row sets the search to the host, the level to
+  *Everything* and shows a line `Showing lines for ‹host› · N tries, all ‹reason› · went
+  ‹exit›` with *Show all lines* to go back. Row actions on hover: *Route via ▾* (a suffix
+  rule for the registrable domain, as in Recent), *Never block* when the reason is the
+  block list, × to dismiss for the session. Hidden while the state is off. At log detail
+  *Problems* the App column is empty and the header says `which app needs log detail
+  Normal`; with no rows the strip collapses to `Every site your apps tried since ‹time›
+  could be reached`. The popover shows `N sites can't be reached · Show` under the summary
+  while a row is younger than 5 minutes; *Show* opens this window.
 
 ## Export Diagnostics
 

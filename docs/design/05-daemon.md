@@ -383,6 +383,33 @@ failure is the ordinary `singbox.startFailed`.
   `blockedToday`; when sing-box's `log.level` is above `info` the counter is `nil` and the
   row says so. Lost on a daemon restart — a number for a feeling, not accounting.
 
+## Failed connections (F19)
+
+`FailedConnections` (`WayforkDaemonCore`) is fed every sing-box log line the engine relays
+and keeps, per `(host, processPath)`, how many connections could not be established, why,
+through which exit and when last. sing-box prints one connection's story under one id
+(`[3921 5004ms]`), so the tracker joins by id with a small map (last 2 000 ids):
+
+| Line (message after the level) | Kept |
+|---|---|
+| `[id …] inbound/tun[tun-in]: inbound connection to host:443` (`inbound packet connection to` for UDP) | host |
+| `[id …] router: sniffed protocol: tls, domain: host` | host (replaces a bare address) |
+| `[id …] router: found process path: /Applications/Game.app/…` | process |
+| `[id …] router: match[N] rule => outbound` / `router: no match, using outbound` | exit (`t-`/`g-` tag or `direct`); `=> reject` with `rule_set=block-ads` in the rule = **blocked** |
+| `ERROR [id …] inbound/tun[tun-in]: open connection to host:443: dial tcp …: <error>` | the failure; host from the line when no `info` line was seen (log detail *Problems*) |
+| `[id …] dns: exchange host IN A` + `dns: match[N] rule_set=block-ads => predefined` | a blocked lookup (no process — the query comes from the system resolver) |
+
+Reason classes from the error text: `i/o timeout` → *no answer*; `connection refused` →
+*refused*; `connection reset` → *reset*; `no such host` / `NXDOMAIN` / `lookup … failed`
+→ *no such name*; `network is unreachable` / `no route to host` behind a tunnel outbound
+→ *‹tunnel› is down*; anything else → *failed* with the raw text in the row's tooltip.
+Rows ride in `TrafficSnapshot.failedHosts: [FailedHost]` (`host`, `processPath?`, `exit`,
+`reason`, `count`, `lastSeen`; newest first, at most 200 — the oldest row is evicted),
+optional on the wire like `recentHosts`. Kept across a sing-box restart, cleared on
+`stop`. The app hides dismissed rows for the session and draws the popover line from the
+rows of the last 5 minutes. Only `ERROR` lines and the `reject` match count: a connection
+the app closed itself is not a failure, and an HTTP status is invisible inside TLS.
+
 ## Connection cut on rule change
 
 sing-box reloads a rewritten rule-set within ~350 ms but leaves established connections on

@@ -50,6 +50,10 @@ final class AppModel {
     var pendingFocus: TunnelField?
     /// Source to preselect when the Logs window opens ("Show Log").
     var logsPreselectedSource: String?
+    /// F19: a host the Logs window should filter to when it opens from the popover line.
+    var logsPreselectedSearch: String?
+    /// F19: rows of the Can't reach pane dismissed for the session (`FailedHost.id`).
+    var hiddenFailedHosts: Set<String> = []
     /// Last tunnel used by quick add.
     var quickAddTarget: RuleTarget?
     /// Set by the scenes; `openWindow` is only reachable from views.
@@ -351,6 +355,7 @@ final class AppModel {
         cancelRecovery()
         desiredOn = true
         hiddenRecentHosts = []
+        hiddenFailedHosts = []
         setTransition(.starting(since: Date()))
         do {
             try await ensureHelperApproved()
@@ -920,8 +925,9 @@ final class AppModel {
         windowOpener?(AppModel.settingsWindowID)
     }
 
-    func openLogs(source: String? = nil) {
+    func openLogs(source: String? = nil, search: String? = nil) {
         logsPreselectedSource = source
+        logsPreselectedSearch = search
         NSApp.activate(ignoringOtherApps: true)
         windowOpener?(AppModel.logsWindowID)
     }
