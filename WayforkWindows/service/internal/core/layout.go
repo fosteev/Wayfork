@@ -50,10 +50,18 @@ func IsTransient(name string) bool {
 	return name != CacheFile && name != ResolverOverrideRecordFile && name != DriverRecordFile
 }
 
-// IsRuleSet reports whether name has the per-tunnel rule-set file shape.
+// IsRuleSet reports whether name has the per-tunnel (or per-group, F16) rule-set file shape.
 func IsRuleSet(name string) bool {
-	return strings.HasPrefix(name, "rules-t-") && strings.HasSuffix(name, ".json")
+	return (strings.HasPrefix(name, "rules-t-") || strings.HasPrefix(name, "rules-g-")) &&
+		strings.HasSuffix(name, ".json")
 }
+
+// GroupRuleSet returns the domain rule-set file name for a group id (F16).
+func GroupRuleSet(id string) string { return "rules-g-" + id + ".json" }
+
+// BlockListRelativePath is where the MSI puts the compiled block list below the install
+// directory (F18); the service accepts no other binary rule-set path.
+const BlockListRelativePath = "rulesets\\block-ads.srs"
 
 // ChildLog returns the raw log file name for a child source.
 func ChildLog(source string) string {

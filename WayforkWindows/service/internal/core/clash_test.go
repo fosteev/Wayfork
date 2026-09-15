@@ -119,6 +119,18 @@ func TestSingBoxAcceptsInjectedGoldenConfigs(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", variant.Name(), err)
 		}
+		// The block-list goldens (F18) reference the bundled list by its macOS install path
+		// and `sing-box check` opens local rule-sets: compile a placeholder and point at it.
+		const installPath = "/Applications/Wayfork.app/Contents/Resources/rulesets/block-ads.srs"
+		if strings.Contains(injected, installPath) {
+			source := filepath.Join(dir, "block-ads.source.json")
+			compiled := filepath.Join(dir, "block-ads.srs")
+			os.WriteFile(source, []byte(`{"version":3,"rules":[{"domain_suffix":[".ads.example"]}]}`), 0o600)
+			if output, err := exec.Command(binary, "rule-set", "compile", "--output", compiled, source).CombinedOutput(); err != nil {
+				t.Fatalf("sing-box rule-set compile failed: %v\n%s", err, output)
+			}
+			injected = strings.ReplaceAll(injected, installPath, compiled)
+		}
 		os.WriteFile(filepath.Join(dir, SingBoxConfig), []byte(injected), 0o600)
 		output, err := exec.Command(binary, "check", "-D", dir, "-c", SingBoxConfig).CombinedOutput()
 		if err != nil {

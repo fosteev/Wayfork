@@ -23,6 +23,7 @@ Wayfork/Resources/bin/
 Wayfork/Resources/rulesets/
 WayforkWindows/bin/
 WayforkWindows/drivers/
+WayforkWindows/rulesets/
 
 # Secrets / real configs
 *.ovpn

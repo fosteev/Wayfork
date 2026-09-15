@@ -224,13 +224,20 @@ try {
             Invoke-Tool 'powershell' @(
                 '-NoProfile', '-ExecutionPolicy', 'Bypass',
                 '-File', (Join-Path $root 'scripts\fetch-win-bins.ps1'), '-Arch', $architecture)
+            Invoke-Tool 'powershell' @(
+                '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                '-File', (Join-Path $root 'scripts\fetch-win-blocklist.ps1'), '-Arch', $architecture)
         }
         $binDir = Join-Path $root "WayforkWindows\bin\$architecture"
         $driverDir = Join-Path $root "WayforkWindows\drivers\$architecture\ovpn-dco"
+        $rulesetsDir = Join-Path $root 'WayforkWindows\rulesets'
         foreach ($required in @($binDir, $driverDir)) {
             if (-not (Test-Path -LiteralPath $required)) {
                 Fail "missing $required (run scripts\fetch-win-bins.ps1 -Arch $architecture)"
             }
+        }
+        if (-not (Test-Path -LiteralPath (Join-Path $rulesetsDir 'block-ads.srs'))) {
+            Fail "missing $rulesetsDir\block-ads.srs (run scripts\fetch-win-blocklist.ps1 -Arch $architecture)"
         }
 
         # The payload is harvested whole by WiX, so the service executable — the one file
@@ -244,6 +251,8 @@ try {
         Copy-Item -LiteralPath $binDir -Destination (Join-Path $payload 'bin') -Recurse -Force
         [void](New-Item -ItemType Directory -Path (Join-Path $payload 'drivers') -Force)
         Copy-Item -LiteralPath $driverDir -Destination (Join-Path $payload 'drivers\ovpn-dco') -Recurse -Force
+        # F18: the compiled block list, referenced by the service at <install>\rulesets\block-ads.srs.
+        Copy-Item -LiteralPath $rulesetsDir -Destination (Join-Path $payload 'rulesets') -Recurse -Force
 
         Log "Building the service ($architecture)"
         $ldflags = "-s -w -X wayfork/service/internal/service.Version=$Version"

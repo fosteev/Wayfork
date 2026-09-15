@@ -329,10 +329,13 @@ func (e *SingBoxEngine) startAttempt(ctx context.Context, attempt int) (startupO
 				e.recent = e.recent[len(e.recent)-singBoxLogTailLines:]
 			}
 			e.mu.Unlock()
-			e.hub.PostFrom(SingBoxSource, core.SingBoxLogLevel(line), core.SingBoxLogMessage(line))
+			level := core.SingBoxLogLevel(line)
+			e.hub.PostFrom(SingBoxSource, level, core.SingBoxLogMessage(line))
 			if core.IsSingBoxStartedLine(line) {
 				startedOnce.Do(func() { close(started) })
 			}
+			// F18 / F19: the block counter and the failed-connection join read the same relay.
+			e.sampler.Observe(line, level)
 		},
 		OnExit: func(code uint32) { e.handleExit(code, generation) },
 	})

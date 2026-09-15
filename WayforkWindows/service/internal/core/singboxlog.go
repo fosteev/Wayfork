@@ -50,3 +50,27 @@ func SingBoxLogMessage(line string) string {
 	}
 	return parts[4]
 }
+
+// InboundBindFailure returns the inbound whose port another program holds, from sing-box's
+// start failure (`… initialize inbound/mixed[proxy-t-<id>]: listen tcp 127.0.0.1:1081: bind:
+// … address already in use` — Windows says "Only one usage of each socket address"); "" for
+// any other line (F17).
+func InboundBindFailure(line string) string {
+	if !strings.Contains(line, "address already in use") && !strings.Contains(line, "Only one usage of each socket address") {
+		return ""
+	}
+	open := strings.Index(line, "inbound/")
+	if open < 0 {
+		return ""
+	}
+	rest := line[open:]
+	bracket := strings.Index(rest, "[")
+	if bracket < 0 {
+		return ""
+	}
+	close := strings.Index(rest[bracket:], "]")
+	if close < 0 {
+		return ""
+	}
+	return rest[bracket+1 : bracket+close]
+}

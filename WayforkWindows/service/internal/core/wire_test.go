@@ -132,7 +132,7 @@ func TestRuntimeStatusWire(t *testing.T) {
 		ResolverOverride: NewResolverOverrideActive("NRPT"),
 	}
 	want := `{"discoveredDNS":{"a":["10.8.0.1"]},"engine":{"running":{"since":"2026-08-25T12:00:00Z"}},` +
-		`"planHash":"h","resolverOverride":{"active":{"service":"NRPT"}},` +
+		`"planHash":"h","proxyPortInUse":[],"resolverOverride":{"active":{"service":"NRPT"}},` +
 		`"tunnels":{"a":{"connected":{"interface":"Wayfork-1","ip":"10.8.0.2","since":"2026-08-25T12:00:00Z"}},` +
 		`"b":{"reconnecting":{"attempt":3,"nextIn":4,"reason":"ping-restart"}},` +
 		`"c":{"failed":{"permanent":true,"reason":"auth"}}}}`
@@ -145,7 +145,7 @@ func TestRuntimeStatusWire(t *testing.T) {
 		t.Errorf("status round trip gave\n%s", got)
 	}
 
-	stopped := `{"discoveredDNS":{},"engine":{"stopped":{}},"resolverOverride":{"off":{}},"tunnels":{}}`
+	stopped := `{"discoveredDNS":{},"engine":{"stopped":{}},"proxyPortInUse":[],"resolverOverride":{"off":{}},"tunnels":{}}`
 	if got := mustMarshal(t, StoppedStatus()); got != stopped {
 		t.Errorf("stopped status = %s, want %s", got, stopped)
 	}
@@ -215,7 +215,7 @@ func TestSmallPayloadsWire(t *testing.T) {
 	}
 	snapshot := TrafficSnapshot{SampledAt: NewTimestamp(fixtureDate), Interval: 1.25, Tunnels: map[string]TrafficCounters{"a": counters}}
 	wantSnapshot := `{"direct":{"connections":0,"downBytesPerSecond":0,"downTotal":0,"oneWayUDPFlows":0,"upBytesPerSecond":0,"upTotal":0},` +
-		`"interval":1.25,"sampledAt":"2026-08-25T12:00:00Z",` +
+		`"failedHosts":[],"groups":{},"interval":1.25,"latency":{},"recentHosts":[],"sampledAt":"2026-08-25T12:00:00Z",` +
 		`"tunnels":{"a":{"connections":3,"downBytesPerSecond":12.5,"downTotal":100,"oneWayUDPFlows":1,"upBytesPerSecond":2,"upTotal":20}}}`
 	if got := mustMarshal(t, snapshot); got != wantSnapshot {
 		t.Errorf("snapshot = %s, want %s", got, wantSnapshot)

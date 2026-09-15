@@ -44,6 +44,12 @@ func (e Environment) OpenVPNPath() string { return filepath.Join(e.BinDir(), exe
 // TapctlPath is the bundled tapctl.
 func (e Environment) TapctlPath() string { return filepath.Join(e.BinDir(), executable("tapctl")) }
 
+// BlockListPath is the compiled block list the MSI installs (F18); the only binary
+// rule-set path the service accepts.
+func (e Environment) BlockListPath() string {
+	return filepath.Join(e.InstallDir, "rulesets", "block-ads.srs")
+}
+
 // DriverInfPath is the bundled ovpn-dco package the installer publishes with pnputil
 // (docs/design/08-windows.md, "Installer").
 func (e Environment) DriverInfPath() string {

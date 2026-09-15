@@ -1,6 +1,7 @@
 package core
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -570,6 +571,9 @@ type RuntimeStatus struct {
 	PlanHash         string                 `json:"planHash,omitempty"`
 	DiscoveredDNS    map[string][]string    `json:"discoveredDNS"`
 	ResolverOverride ResolverOverrideState  `json:"resolverOverride"`
+	// F17: tunnel / group ids whose local proxy port another program holds; the engine
+	// runs without those inbounds.
+	ProxyPortInUse []string `json:"proxyPortInUse"`
 }
 
 // StoppedStatus returns the initial service status with non-nil maps.
@@ -587,6 +591,7 @@ func (s RuntimeStatus) MarshalJSON() ([]byte, error) {
 		"engine":           s.Engine,
 		"resolverOverride": s.ResolverOverride,
 		"tunnels":          nonNilMap(s.Tunnels),
+		"proxyPortInUse":   nonNilSlice(s.ProxyPortInUse),
 	}
 	if s.PlanHash != "" {
 		object["planHash"] = s.PlanHash
@@ -602,6 +607,7 @@ func (s *RuntimeStatus) UnmarshalJSON(data []byte) error {
 		PlanHash         *string                 `json:"planHash"`
 		ResolverOverride *ResolverOverrideState  `json:"resolverOverride"`
 		Tunnels          *map[string]TunnelState `json:"tunnels"`
+		ProxyPortInUse   []string                `json:"proxyPortInUse"`
 	}
 	if err := decodeRequiredObject(data, "runtime status", &wire); err != nil {
 		return err
@@ -624,6 +630,7 @@ func (s *RuntimeStatus) UnmarshalJSON(data []byte) error {
 	*s = RuntimeStatus{
 		Engine: *wire.Engine, Tunnels: *wire.Tunnels, PlanHash: planHash,
 		DiscoveredDNS: discoveredDNS, ResolverOverride: resolver,
+		ProxyPortInUse: nonNilSlice(wire.ProxyPortInUse),
 	}
 	return nil
 }
@@ -751,6 +758,17 @@ type TrafficSnapshot struct {
 	Interval  float64                    `json:"interval"`
 	Tunnels   map[string]TrafficCounters `json:"tunnels"`
 	Direct    TrafficCounters            `json:"direct"`
+	// F14: latency probes by tunnel id; only tunnels the prober has looked at.
+	Latency map[string]LatencySample `json:"latency"`
+	// F15: hosts that took the default route, newest first, at most RecentHostCapacity.
+	RecentHosts []RecentHost `json:"recentHosts"`
+	// F16: which member each routed group is using, by group id.
+	Groups map[string]GroupState `json:"groups"`
+	// F18: flows and lookups the block list rejected since local midnight; nil while
+	// the list is off or the log level is above info.
+	BlockedToday *int `json:"blockedToday,omitempty"`
+	// F19: connections that could not be established since Turn On, newest first.
+	FailedHosts []FailedHost `json:"failedHosts"`
 }
 
 // CountersForTunnel returns zero counters when id is absent.
@@ -758,12 +776,183 @@ func (s TrafficSnapshot) CountersForTunnel(id string) TrafficCounters {
 	return s.Tunnels[id]
 }
 
-// MarshalJSON emits a traffic snapshot with a non-null tunnels map.
+// MarshalJSON emits a traffic snapshot with non-null collections; the F14–F19 fields are
+// optional on the wire and absent (or null) in a payload from a build that predates them.
 func (s TrafficSnapshot) MarshalJSON() ([]byte, error) {
-	return MarshalWire(map[string]any{
+	object := map[string]any{
 		"direct": s.Direct, "interval": s.Interval, "sampledAt": s.SampledAt,
-		"tunnels": nonNilMap(s.Tunnels),
-	})
+		"tunnels":     nonNilMap(s.Tunnels),
+		"latency":     nonNilMap(s.Latency),
+		"recentHosts": nonNilSlice(s.RecentHosts),
+		"groups":      nonNilMap(s.Groups),
+		"failedHosts": nonNilSlice(s.FailedHosts),
+	}
+	if s.BlockedToday != nil {
+		object["blockedToday"] = *s.BlockedToday
+	}
+	return MarshalWire(object)
+}
+
+// UnmarshalJSON decodes a snapshot, defaulting the fields added after the original contract.
+func (s *TrafficSnapshot) UnmarshalJSON(data []byte) error {
+	var wire struct {
+		SampledAt    Timestamp                  `json:"sampledAt"`
+		Interval     float64                    `json:"interval"`
+		Tunnels      map[string]TrafficCounters `json:"tunnels"`
+		Direct       TrafficCounters            `json:"direct"`
+		Latency      map[string]LatencySample   `json:"latency"`
+		RecentHosts  []RecentHost               `json:"recentHosts"`
+		Groups       map[string]GroupState      `json:"groups"`
+		BlockedToday *int                       `json:"blockedToday"`
+		FailedHosts  []FailedHost               `json:"failedHosts"`
+	}
+	if err := decodeRequiredObject(data, "traffic snapshot", &wire); err != nil {
+		return err
+	}
+	*s = TrafficSnapshot{
+		SampledAt: wire.SampledAt, Interval: wire.Interval, Tunnels: nonNilMap(wire.Tunnels),
+		Direct: wire.Direct, Latency: nonNilMap(wire.Latency),
+		RecentHosts: nonNilSlice(wire.RecentHosts), Groups: nonNilMap(wire.Groups),
+		BlockedToday: wire.BlockedToday, FailedHosts: nonNilSlice(wire.FailedHosts),
+	}
+	return nil
+}
+
+// LatencySample is what the prober knows about one tunnel (F14): one HTTP request through
+// the tunnel every ProbeIntervalSeconds.
+type LatencySample struct {
+	// The last probe's round trip; nil when it failed.
+	Milliseconds *int `json:"milliseconds"`
+	// The last ProbeHistoryLength probes, oldest first; nil entries failed.
+	History      []*int `json:"history"`
+	FailedInARow int    `json:"failedInARow"`
+	// FailedInARow >= ProbeFailureThreshold.
+	Unreachable bool       `json:"unreachable"`
+	LastSuccess *Timestamp `json:"lastSuccess"`
+}
+
+// MarshalJSON emits a sample with sorted keys and nil-safe collections.
+func (l LatencySample) MarshalJSON() ([]byte, error) {
+	object := map[string]any{
+		"failedInARow": l.FailedInARow, "history": nonNilSlice(l.History),
+		"unreachable": l.Unreachable,
+	}
+	if l.Milliseconds != nil {
+		object["milliseconds"] = *l.Milliseconds
+	}
+	if l.LastSuccess != nil {
+		object["lastSuccess"] = *l.LastSuccess
+	}
+	return MarshalWire(object)
+}
+
+// GroupState is what sing-box's selector / urltest for one group currently points at (F16).
+type GroupState struct {
+	// Tunnel id of the member in use; nil when sing-box named no member.
+	ActiveMember *string `json:"activeMember"`
+}
+
+// MarshalJSON omits a nil active member like the Swift Codable does.
+func (g GroupState) MarshalJSON() ([]byte, error) {
+	object := map[string]any{}
+	if g.ActiveMember != nil {
+		object["activeMember"] = *g.ActiveMember
+	}
+	return MarshalWire(object)
+}
+
+// RecentHostCapacity is how many recent hosts the service keeps (F15).
+const RecentHostCapacity = 200
+
+// RecentHost is one domain that went the default way — direct, or through the default
+// exit — with the process that opened it (F15). In memory only.
+type RecentHost struct {
+	// Fake-ip or sniffed domain, lowercased.
+	Host string `json:"host"`
+	// Executable path from sing-box's find_process; empty when unknown.
+	ProcessPath string `json:"processPath,omitempty"`
+	// "direct" or the tunnel / group id the flow left through.
+	Exit     string    `json:"exit"`
+	LastSeen Timestamp `json:"lastSeen"`
+}
+
+// MarshalJSON omits an empty process path like the Swift optional.
+func (r RecentHost) MarshalJSON() ([]byte, error) {
+	object := map[string]any{"host": r.Host, "exit": r.Exit, "lastSeen": r.LastSeen}
+	if r.ProcessPath != "" {
+		object["processPath"] = r.ProcessPath
+	}
+	return MarshalWire(object)
+}
+
+// FailedHostCapacity is how many failed rows the service keeps (F19).
+const FailedHostCapacity = 200
+
+// FailureReason is why a connection could not be established (F19), classified from
+// sing-box's error text; Other carries the raw text.
+type FailureReason struct {
+	Kind  FailureKind
+	Other string
+}
+
+// FailureKind enumerates the reason classes; the wire form is the Swift enum's
+// (`{"noAnswer":{}}`, `{"other":{"_0":"text"}}`).
+type FailureKind string
+
+const (
+	FailureNoAnswer   FailureKind = "noAnswer"
+	FailureRefused    FailureKind = "refused"
+	FailureReset      FailureKind = "reset"
+	FailureNoSuchName FailureKind = "noSuchName"
+	FailureBlocked    FailureKind = "blocked"
+	FailureTunnelDown FailureKind = "tunnelDown"
+	FailureOther      FailureKind = "other"
+)
+
+// MarshalJSON emits the Swift Codable layout of the enum.
+func (r FailureReason) MarshalJSON() ([]byte, error) {
+	if r.Kind == FailureOther {
+		return MarshalWire(map[string]any{"other": map[string]any{"_0": r.Other}})
+	}
+	return MarshalWire(map[string]any{string(r.Kind): map[string]any{}})
+}
+
+// UnmarshalJSON accepts the one-key enum object.
+func (r *FailureReason) UnmarshalJSON(data []byte) error {
+	var wire map[string]map[string]string
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return fmt.Errorf("decoding failure reason: %w", err)
+	}
+	for key, payload := range wire {
+		*r = FailureReason{Kind: FailureKind(key), Other: payload["_0"]}
+		return nil
+	}
+	return fmt.Errorf("failure reason has no case")
+}
+
+// FailedHost is one site + app that could not be reached, aggregated by the service (F19).
+type FailedHost struct {
+	Host        string        `json:"host"`
+	ProcessPath string        `json:"processPath,omitempty"`
+	Exit        string        `json:"exit"`
+	Reason      FailureReason `json:"reason"`
+	Count       int           `json:"count"`
+	LastSeen    Timestamp     `json:"lastSeen"`
+}
+
+// ID is host + process, the row's identity in the pane.
+func (f FailedHost) ID() string { return f.Host + "|" + f.ProcessPath }
+
+// MarshalJSON omits an empty process path like the Swift optional.
+func (f FailedHost) MarshalJSON() ([]byte, error) {
+	object := map[string]any{
+		"host": f.Host, "exit": f.Exit, "reason": f.Reason, "count": f.Count,
+		"lastSeen": f.LastSeen,
+	}
+	if f.ProcessPath != "" {
+		object["processPath"] = f.ProcessPath
+	}
+	return MarshalWire(object)
 }
 
 // DaemonDiagnostics is root-side material for a diagnostics export.

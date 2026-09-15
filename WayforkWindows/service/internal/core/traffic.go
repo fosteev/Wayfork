@@ -11,8 +11,14 @@ type TrafficExit struct {
 // DirectExit is the exit of `direct`, `block`, DNS and chain-less connections.
 var DirectExit = TrafficExit{}
 
-// ExitForChains attributes a connection: the first tunnel outbound in the chain wins.
+// ExitForChains attributes a connection: a group tag wins over the member it dialled
+// through (F16: the group card shows its own traffic), then the first tunnel outbound.
 func ExitForChains(chains []string) TrafficExit {
+	for _, tag := range chains {
+		if id, ok := GroupIDFromOutboundTag(tag); ok {
+			return TrafficExit{Tunnel: id}
+		}
+	}
 	for _, tag := range chains {
 		if id, ok := TunnelIDFromOutboundTag(tag); ok {
 			return TrafficExit{Tunnel: id}

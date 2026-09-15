@@ -54,6 +54,8 @@ var _ ipc.Handler = (*Supervisor)(nil)
 // Bootstrap (service start): restore a leftover NRPT record first, wipe run\, remove
 // stray routes and addresses, then idle (docs/design/08-windows.md, "Lifecycle").
 func (s *Supervisor) Bootstrap(ctx context.Context) {
+	s.sampler.Prober().SetTunnelSource(s.probeTargets)
+	s.sampler.Prober().SetGroupSource(s.firstLiveGroups)
 	s.resolver.RestoreLeftover(ctx)
 	s.wipeRunDirectory()
 	if err := s.deps.Network.CleanupAdapters(ctx); err != nil {
@@ -176,7 +178,9 @@ func (s *Supervisor) Unsubscribe(sink ipc.Sink) { s.hub.Unsubscribe(sink) }
 // Apply implements ipc.Handler: validates, then reconciles — one at a time; an apply
 // still waiting when a newer one arrives is skipped (latest wins) and answers ok.
 func (s *Supervisor) Apply(ctx context.Context, plan core.RuntimePlan) core.ApplyResult {
-	if err := core.ValidatePlan(plan); err != nil {
+	if err := core.ValidatePlanWith(plan, core.ValidateOptions{
+		BlockListPath: s.env.BlockListPath(), FileExists: fileExists,
+	}); err != nil {
 		return core.ApplyFailure(err)
 	}
 	generation := s.applyGeneration.Add(1)
@@ -202,16 +206,58 @@ func (s *Supervisor) Stop(context.Context) core.ApplyResult {
 
 // Reconnect implements ipc.Handler.
 func (s *Supervisor) Reconnect(_ context.Context, id string) core.ApplyResult {
+	s.sampler.Prober().Retry(id)
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	s.mu.Lock()
 	session := s.sessions[id]
+	plan := s.plan
 	s.mu.Unlock()
 	if session == nil {
+		// A proxy or WireGuard tunnel has no process: Retry only clears the probe streak.
+		if plan != nil && contains(plan.RoutedTunnelIDs(), id) {
+			return core.ApplySuccess()
+		}
 		return core.ApplyFailure(core.ErrTunnelNotFound(id))
 	}
 	session.Reconnect()
 	return core.ApplySuccess()
+}
+
+// probeTargets lists the tunnels the prober measures: routed by the plan, and connected
+// when OpenVPN (F14).
+func (s *Supervisor) probeTargets() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.plan == nil {
+		return nil
+	}
+	targets := []string{}
+	for _, id := range s.plan.RoutedTunnelIDs() {
+		if _, hasSession := s.sessions[id]; hasSession {
+			if state, ok := s.status.Tunnels[id]; !ok || state.Kind != core.TunnelConnected {
+				continue
+			}
+		}
+		targets = append(targets, id)
+	}
+	return targets
+}
+
+// firstLiveGroups lists the plan's selector groups with their members (F16).
+func (s *Supervisor) firstLiveGroups() map[string][]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.plan == nil {
+		return nil
+	}
+	groups := map[string][]string{}
+	for id, outbound := range s.plan.SingBox.GroupOutbounds() {
+		if outbound.Policy == "selector" {
+			groups[id] = outbound.Members
+		}
+	}
+	return groups
 }
 
 // CollectDiagnostics implements ipc.Handler.
@@ -273,6 +319,17 @@ func (s *Supervisor) performApply(ctx context.Context, plan core.RuntimePlan) co
 	s.hub.Log(core.LogLevelInfo, fmt.Sprintf("apply: sing-box %s, stop %d, start %d tunnel(s)",
 		actions.SingBox.Kind, len(actions.StopOpenVPN), len(actions.StartOpenVPN)))
 
+	// F15: the recent-hosts list follows route.final; F16: the groups to ask; F18: the
+	// counter reads sing-box's info lines, above that there is nothing to count.
+	final := plan.SingBox.RouteFinal()
+	if final == "" {
+		final = "direct"
+	}
+	s.sampler.SetDefaultExit(core.ExitForChains([]string{final}))
+	s.sampler.SetRoutedGroups(plan.RoutedGroupIDs())
+	s.sampler.SetBlockCounting(plan.SingBox.HasBlockList() &&
+		(plan.LogLevel == core.LogLevelInfo || plan.LogLevel == core.LogLevelDebug))
+
 	s.stopSessions(actions.StopOpenVPN)
 	s.engine.DeleteRuleSets(actions.StaleRuleSets)
 
@@ -306,8 +363,15 @@ func (s *Supervisor) performApply(ctx context.Context, plan core.RuntimePlan) co
 		if actions.SingBox.Kind == core.SingBoxRestart {
 			s.engine.Stop()
 		}
+		s.updateStatus(func(status *core.RuntimeStatus) { status.ProxyPortInUse = []string{} })
 		if err := s.engine.Start(ctx); err != nil {
-			failure = err
+			// F17: a local proxy port another program holds — start once more without
+			// that inbound; the tunnel still routes its sites.
+			if stripped, ok := s.startWithoutTakenPort(ctx, plan, err); ok {
+				s.updateStatus(func(status *core.RuntimeStatus) { status.ProxyPortInUse = []string{stripped} })
+			} else {
+				failure = err
+			}
 		}
 	}
 	if failure != nil {
@@ -346,6 +410,54 @@ func (s *Supervisor) performApply(ctx context.Context, plan core.RuntimePlan) co
 		return core.ApplyFailure(failure)
 	}
 	return core.ApplySuccess()
+}
+
+// startWithoutTakenPort handles a start failure caused by a `proxy-*` inbound whose port
+// is taken: installs the config without it (under the plan's own hash, so the next apply
+// of the same plan does not restart only to hit the same port) and starts again, once.
+// Returns the tunnel or group id that lost its port.
+func (s *Supervisor) startWithoutTakenPort(ctx context.Context, plan core.RuntimePlan, err *core.DaemonError) (string, bool) {
+	if err == nil || err.Kind != core.DaemonStartFailed {
+		return "", false
+	}
+	tag := ""
+	for _, line := range err.LogTail {
+		if tag = core.InboundBindFailure(line); tag != "" {
+			break
+		}
+	}
+	if tag == "" {
+		return "", false
+	}
+	var inbound *core.LocalProxyInbound
+	for _, candidate := range plan.SingBox.LocalProxyInbounds() {
+		if candidate.Tag == tag {
+			copied := candidate
+			inbound = &copied
+		}
+	}
+	if inbound == nil {
+		return "", false
+	}
+	exitID, ok := inbound.ExitID()
+	if !ok {
+		return "", false
+	}
+	config, ok := core.StripLocalProxyInbound(plan.SingBox.Config, tag)
+	if !ok {
+		return "", false
+	}
+	s.hub.Log(core.LogLevelWarning, fmt.Sprintf(
+		"local proxy port %d of %s is taken by another program; starting without it", inbound.Port, tag))
+	if checkErr := s.engine.Check(ctx, config, plan.SingBox.ConfigHash); checkErr != nil {
+		s.hub.Log(core.LogLevelError, "sing-box: "+checkErr.Error())
+		return "", false
+	}
+	if startErr := s.engine.Start(ctx); startErr != nil {
+		s.hub.Log(core.LogLevelError, "sing-box: "+startErr.Error())
+		return "", false
+	}
+	return exitID, true
 }
 
 func (s *Supervisor) performStop() {
@@ -406,6 +518,11 @@ func (s *Supervisor) stopSessions(ids []string) {
 func (s *Supervisor) Shutdown(ctx context.Context) {
 	s.Stop(ctx)
 	s.hub.Close()
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func contains(list []string, value string) bool {
