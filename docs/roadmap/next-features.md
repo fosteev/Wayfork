@@ -166,7 +166,8 @@ ROADMAP.md: M10 (friendlier screens, existing features only), M9 (F14), M11–M1
 - [ ] F15: snapshot field + cap in `WayforkCore`, the panel, *Route via* creating the rule.
       — code done 2026-09-15 (M11); manual check and WM12 owed.
 - [ ] F16: model + generator + goldens, the group card, group in every tunnel picker,
-      `first live` in the daemon.
+      `first live` in the daemon. — part 1 (model, validator, generator, goldens, daemon
+      core) done 2026-09-15 (724f71c); part 2 = the session prompt below.
 - [ ] F17: model + generator + goldens, port on the card, copy button; LAN toggle only if
       approved.
 - [ ] F18: list source and fetch, generator, the switch, counter, exceptions.
@@ -243,6 +244,80 @@ ROADMAP.md: M10 (friendlier screens, existing features only), M9 (F14), M11–M1
 > not to the repo. Send the maintainer C1 and C4 first, then the rest on request. Reply
 > with the friction audit, the list of boards, the one open design choice per board you
 > want a decision on (at most one), and stop. Iterate in the same file on feedback.
+
+## Session prompt — M12 part 2 (F16: daemon switch + UI) *(paste as is)*
+
+> You are working in `/Users/fost/Projects/Wayfork` (read `CLAUDE.md`: English in code
+> and commits, swift-format via `scripts/format.sh`, commit only when asked, no AI
+> trailers). Task: **finish M12 — tunnel groups (F16) — part 2: the daemon's group state
+> and first-live switch, and the macOS UI.** Part 1 (commit `724f71c`) put groups into the
+> model, validator, generator and goldens; do not redo it.
+>
+> Read first: `docs/ROADMAP.md` § M12 (the checklist), `docs/design/01-data-model.md`
+> § Tunnel groups, `docs/design/03-routing.md` § Tunnel groups, `docs/design/05-daemon.md`
+> § Group selection and the `GroupState` field in § XPC interface, `docs/design/02-ux.md`
+> § Variant C (Popover › Group card; Settings › Tunnels › Group row, expanded group, New
+> group…; Rules › group section and target picker; the wording table), and boards C1, C3
+> (dark) and C7 of `docs/design/prototype/variant-c.html`.
+>
+> Code to know: `Wayfork/WayforkCore/Sources/WayforkCore/Model/TunnelGroup.swift`
+> (`TunnelGroup`, `GroupPolicy`, `RoutedExit`), `Model/Store.swift` (`groups`,
+> `effectiveDefaultExit`, `enabledMembers(of:)`, `exitName(id:)`), `Model/Rule.swift`
+> (`RuleTarget.group`, `exitID`), `App/StatusText.swift` (cards and rows; M10 wording),
+> `App/LatencyFormat.swift`, `XPC/Payloads.swift` (`TrafficSnapshot.latency`,
+> `LatencySample`), `Wayfork/Daemon/LatencyProber.swift` and `TrafficSampler.swift` (F14
+> prober rounds, snapshot assembly), `Daemon/Supervisor.swift` (`probeTargets`, plan
+> access), `Wayfork/App/Model/AppModel*.swift`, `App/Views/Popover/PopoverView.swift`
+> (`TunnelCardView`, `RecentSectionView`), `App/Views/Settings/TunnelsSettingsView.swift`,
+> `RulesSettingsView.swift` (groups by `RuleGroup`), `App/Views/Shared/Components.swift`
+> (`AccentBadge`, `LatencyLabel`, `SparklineView`).
+>
+> Deliver, in this order, building and running `cd Wayfork/WayforkCore && swift test`
+> after each step:
+>
+> 1. **Snapshot**: `TrafficSnapshot.groups: [String: GroupState]` (`activeMember: String?`),
+>    optional on the wire like `latency`. The sampler reads `GET /proxies/g-<id>` (`now`)
+>    once a second for every routed group (group ids from the plan: add
+>    `RuntimePlan.routedGroupIDs` next to `routedTunnelIDs`, from `rules-g-*.json` names)
+>    and fills it; a decode helper `ClashProxy.decode` in `WayforkDaemonCore` with a test.
+> 2. **First live**: after every prober round, for each *first live* group (the daemon
+>    needs the policy — add `RuntimePlan.groupPolicies: [String: String]`? No: read it
+>    from the config's outbounds — `selector` vs `urltest` — via a small
+>    `SingBoxPlan.groupOutbounds` helper, tested), the wanted member is the first member in
+>    the outbound's `outbounds` order whose latest probe succeeded; if `now` differs,
+>    `PUT /proxies/g-<id>` with `{"name": "t-<member>"}`. No member passing → leave it.
+>    Log one INFO per switch.
+> 3. **StatusText**: `groupCard(group:store:global:latency:groups:)` → `TunnelPresentation`
+>    per 02-ux (status `Fastest` / `First live`, detail `using <member> · N sites`, no
+>    member usable → red `No member reachable · its N sites go via <default> for now`),
+>    plus member rows (`✓ in use`, `skipped — not reachable`, `skipped — off`); the
+>    summary counts group rules as sites; `Store.rules(for:)` already handles `.group`.
+>    Tests in `AppLogicTests.swift`.
+> 4. **Popover**: a group card after the tunnel cards (accent square glyph, `Group` badge,
+>    the active member's latency + sparkline, its own rates — the accumulator already keys
+>    them by group id — member rows); groups in the quick-add picker after a divider.
+> 5. **Settings › Tunnels**: group rows in the list after the tunnels, expanded group per
+>    C3 dark (Name, Pick by segmented control with the one-line meaning, Members with drag
+>    order and `+ Add member…`, footer `N sites · Show rules · Delete…`), `New group…` as
+>    the last row (hint until the first group exists) opening the **New group sheet** (C7:
+>    name, members with tick + drag + latency, policy radios with the sentences, Create
+>    enabled from two ticks). `AppModel+Groups.swift`: create / rename / set policy /
+>    reorder / add / remove member / enable / delete (with rules, confirmation text from
+>    01-data-model.md), a tunnel deletion removes it from groups and deletes a group left
+>    with one member after confirmation.
+> 6. **Settings › Rules**: one section per group after the tunnel sections (header per
+>    02-ux: accent glyph, name, `Group` badge, hint `fastest of A, B · using A right now`),
+>    `Move to…` and the quick-add picker list groups, `targetName` already handles them.
+> 7. Roadmap: tick the M12 boxes you close in `docs/ROADMAP.md` and update the F16 line in
+>    `docs/roadmap/next-features.md` stage 4; the manual check stays open for the
+>    maintainer. Do not touch `WayforkWindows/` (WM13) or the F17/F18 fields.
+>
+> Definition of done: `swift test` green (≥ 245 tests + the new ones), `cd Wayfork &&
+> xcodebuild -scheme Wayfork -project Wayfork.xcodeproj -configuration Debug
+> -derivedDataPath ../build/DerivedData build CODE_SIGNING_ALLOWED=NO` succeeds with no
+> new warnings, `scripts/format.sh` run. Do not run or install the app (the live Wayfork
+> routes this Mac). Report per file what changed and what you left out, then stop —
+> the maintainer commits.
 
 ## Risks and open questions
 
