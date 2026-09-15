@@ -164,3 +164,24 @@ import Testing
     store.defaultTunnelID = UUID()
     #expect(RuleValidator.defaultTunnelIssue(store) == .missing)
 }
+
+// MARK: - F15
+
+@Test func registrableDomainHeuristic() {
+    #expect(RulePattern.registrableDomain(of: "news.example.com") == "example.com")
+    #expect(RulePattern.registrableDomain(of: "a.b.c.example.org") == "example.org")
+    #expect(RulePattern.registrableDomain(of: "example.com") == "example.com")
+    #expect(RulePattern.registrableDomain(of: "Example.COM") == "example.com")
+    #expect(RulePattern.registrableDomain(of: "www.example.co.uk") == "example.co.uk")
+    #expect(RulePattern.registrableDomain(of: "a.example.com.au") == "example.com.au")
+    #expect(RulePattern.registrableDomain(of: "cdn.static.co") == "static.co")
+    #expect(RulePattern.registrableDomain(of: "intranet") == "intranet")
+}
+
+@Test func planRouteFinalReadsTheDefaultExit() {
+    let direct = SingBoxPlan(config: #"{"route":{"final":"direct","rules":[]}}"#, ruleSets: [:])
+    #expect(direct.routeFinal == "direct")
+    let tunnel = SingBoxPlan(config: #"{"route":{"final":"t-abc"}}"#, ruleSets: [:])
+    #expect(tunnel.routeFinal == "t-abc")
+    #expect(SingBoxPlan(config: "not json", ruleSets: [:]).routeFinal == nil)
+}

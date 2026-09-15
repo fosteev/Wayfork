@@ -85,6 +85,17 @@ public struct SingBoxPlan: Codable, Sendable, Hashable {
     /// hot-reloadable change from one that needs a restart.
     public var configHash: String
 
+    /// `route.final` of the config — `direct` or the default tunnel's `t-<id>` (F8) — which
+    /// is where a flow no rule matched ends up (F15 lists exactly those). nil when the
+    /// config is not the generator's shape.
+    public var routeFinal: String? {
+        guard
+            let root = try? JSONSerialization.jsonObject(with: Data(config.utf8)) as? [String: Any],
+            let route = root["route"] as? [String: Any]
+        else { return nil }
+        return route["final"] as? String
+    }
+
     public init(config: String, ruleSets: [String: String]) {
         self.config = config
         self.ruleSets = ruleSets

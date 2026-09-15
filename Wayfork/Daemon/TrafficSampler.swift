@@ -19,6 +19,9 @@ actor TrafficSampler {
     private let prober: LatencyProber
     private let session: URLSession
     private var accumulator = TrafficAccumulator()
+    /// Domains that took the default route (F15); cleared with the connection map.
+    private var recent = RecentHosts()
+    private var defaultExit = TrafficAccumulator.Exit.direct
     private var poll: Task<Void, Never>?
     private var generation = 0
     /// One WARNING per failure streak.
@@ -38,10 +41,16 @@ actor TrafficSampler {
         session = URLSession(configuration: configuration)
     }
 
+    /// Where a flow no rule matched leaves (`route.final`); set by the supervisor per plan.
+    func setDefaultExit(_ exit: TrafficAccumulator.Exit) {
+        defaultExit = exit
+    }
+
     /// sing-box is up on `endpoint`: (re)start polling; the per-connection map starts over.
     func start(_ endpoint: ClashAPIEndpoint) async {
         await pause()
         accumulator.restartConnections(at: Date())
+        recent.clear()
         await prober.start(endpoint)
         generation += 1
         let generation = generation
@@ -67,6 +76,7 @@ actor TrafficSampler {
     func reset() async {
         await pause()
         accumulator.reset()
+        recent.clear()
         await prober.reset()
     }
 
@@ -81,8 +91,11 @@ actor TrafficSampler {
             let decoded = try ClashConnections.decode(data)
             // Paused or restarted while the request was in flight: drop the sample.
             guard generation == self.generation, poll != nil else { return }
-            var snapshot = accumulator.ingest(decoded.connections, at: Date())
+            let now = Date()
+            var snapshot = accumulator.ingest(decoded.connections, at: now)
             snapshot.latency = await prober.current()
+            recent.ingest(decoded.connections, defaultExit: defaultExit, at: now)
+            snapshot.recentHosts = recent.snapshot
             if failing {
                 failing = false
                 hub.post(.info, "traffic: clash api reachable again")

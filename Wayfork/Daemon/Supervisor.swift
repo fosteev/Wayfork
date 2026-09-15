@@ -246,6 +246,10 @@ actor Supervisor {
             .info,
             "apply: sing-box \(actions.singBox), stop \(actions.stopOpenVPN.count), start \(actions.startOpenVPN.count) tunnel(s)"
         )
+        // F15: the recent-hosts list follows `route.final`, which a default-tunnel change
+        // moves (the config restarts sing-box, so the list starts over anyway).
+        await sampler.setDefaultExit(
+            TrafficAccumulator.Exit(chains: [plan.singBox.routeFinal ?? "direct"]))
 
         await stopSessions(actions.stopOpenVPN)
         await engine.deleteRuleSets(actions.staleRuleSets)

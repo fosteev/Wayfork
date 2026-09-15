@@ -136,6 +136,20 @@ public enum RulePattern {
         return "*." + parent.joined(separator: ".")
     }
 
+    /// The domain a *Route via* rule is written for (F15): the last two labels, or three
+    /// under a public second-level suffix (`news.example.com` → `example.com`,
+    /// `a.b.example.co.uk` → `example.co.uk`). A one- or two-label host is returned as is.
+    /// Heuristic, not the public suffix list — good enough for a suffix rule the user sees
+    /// before it is created.
+    public static func registrableDomain(of host: String) -> String {
+        let labels = host.lowercased().split(separator: ".").map(String.init)
+        guard labels.count > 2 else { return host.lowercased() }
+        let tld = labels[labels.count - 1]
+        let second = labels[labels.count - 2]
+        let keep = tld.count == 2 && publicSecondLevelLabels.contains(second) ? 3 : 2
+        return labels.suffix(keep).joined(separator: ".")
+    }
+
     /// Second-level labels that act as public suffixes under two-letter TLDs (`co.uk`,
     /// `com.au`, `ac.jp`); enough for `wildcardForSiblings` without a suffix list.
     static let publicSecondLevelLabels: Set<String> = [

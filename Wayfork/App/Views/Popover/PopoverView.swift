@@ -24,6 +24,8 @@ struct PopoverView: View {
                 }
                 if model.globalState.isRunning {
                     DirectRowView()
+                    Divider()
+                    RecentSectionView()
                 }
                 Divider()
                 QuickAddView()
@@ -272,6 +274,114 @@ struct DirectRowView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 2)
+    }
+}
+
+/// **Recent** (F15): up to five domains that went the default way, newest first, each
+/// with a *Route via ▾* menu; × on hover hides a row for the session.
+struct RecentSectionView: View {
+    @Environment(AppModel.self) private var model
+    static let rowLimit = 5
+
+    var body: some View {
+        let rows = model.recentHosts
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text("Recent").font(.system(size: 11, weight: .semibold))
+                if !rows.isEmpty {
+                    Text("— went \(went), last \(Int(AppModel.recentWindow) / 60) min")
+                        .font(.system(size: 11)).foregroundStyle(.tertiary)
+                    Spacer()
+                    Text("\(min(rows.count, Self.rowLimit)) of \(rows.count)")
+                        .font(.system(size: 11)).monospacedDigit()
+                }
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 2)
+            if rows.isEmpty {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "clock").foregroundStyle(.tertiary)
+                    Text(
+                        "Sites you open from now on show up here — the ones that went \(went) because no rule said otherwise. One click sends any of them through another tunnel."
+                    )
+                    .foregroundStyle(.secondary)
+                }
+                .font(.system(size: 11))
+                .padding(EdgeInsets(top: 6, leading: 10, bottom: 8, trailing: 10))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.6)))
+            } else {
+                ForEach(rows.prefix(Self.rowLimit)) { row in
+                    RecentRowView(row: row)
+                }
+            }
+        }
+    }
+
+    private var went: String {
+        model.recentExitName.map { "via \($0)" } ?? "direct"
+    }
+}
+
+/// One Recent row: app icon, domain, app name, *Route via ▾*, × on hover.
+struct RecentRowView: View {
+    @Environment(AppModel.self) private var model
+    let row: RecentHost
+    @State private var hovering = false
+
+    var body: some View {
+        let process = AppModel.recentProcess(row.processPath)
+        HStack(spacing: 8) {
+            Image(nsImage: process.icon)
+                .resizable()
+                .frame(width: 16, height: 16)
+            Text(row.host)
+                .font(.system(size: 12))
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 4)
+            Text(process.name)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            RouteViaMenu(host: row.host)
+            Button {
+                model.hideRecent(row.host)
+            } label: {
+                Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.tertiary)
+            .opacity(hovering ? 1 : 0)
+            .help("Hide until the next Turn On")
+        }
+        .padding(EdgeInsets(top: 3, leading: 4, bottom: 3, trailing: 4))
+        .background(
+            RoundedRectangle(cornerRadius: 6).fill(hovering ? Color.primary.opacity(0.06) : .clear)
+        )
+        .onHover { hovering = $0 }
+    }
+}
+
+/// `Route via ▾`: the tunnels a row can go to; creates a suffix rule for the registrable
+/// domain (the menu's header says which).
+struct RouteViaMenu: View {
+    @Environment(AppModel.self) private var model
+    let host: String
+
+    var body: some View {
+        Menu {
+            Text("Route \(model.recentRulePattern(host)) and subdomains via…")
+            ForEach(model.recentTargets, id: \.self) { target in
+                Button(model.targetName(target)) { model.routeRecent(host, via: target) }
+            }
+        } label: {
+            Text("Route via")
+        }
+        .controlSize(.small)
+        .fixedSize()
     }
 }
 

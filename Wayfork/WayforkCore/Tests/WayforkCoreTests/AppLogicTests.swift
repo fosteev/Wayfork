@@ -501,3 +501,27 @@ private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased()
     let off = StatusText.card(tunnel: home, state: nil, global: .off, ruleCount: 1, latency: down)
     #expect(off.status == "Not running")
 }
+
+// MARK: - F15
+
+@Test func recentFilterDropsOldHiddenAndRuledHosts() {
+    let (store, _, _, _) = sampleStore()  // rules: example.com (suffix), *.cdn.example.com, news.example.org…
+    let now = Date()
+    let hosts = [
+        RecentHost(host: "fresh.example.net", exit: "direct", lastSeen: now),
+        RecentHost(host: "old.example.net", exit: "direct", lastSeen: now.addingTimeInterval(-400)),
+        RecentHost(host: "hidden.example.net", exit: "direct", lastSeen: now),
+        RecentHost(host: "shop.example.com", exit: "direct", lastSeen: now),  // suffix rule
+        RecentHost(host: "a.cdn.example.com", exit: "direct", lastSeen: now),  // wildcard rule
+        RecentHost(host: "old.example.com", exit: "direct", lastSeen: now),  // covered by example.com
+    ]
+    let visible = RecentFilter.visible(
+        hosts, sampledAt: now, window: 300, hidden: ["hidden.example.net"], store: store)
+    #expect(visible.map(\.host) == ["fresh.example.net"])
+    // A disabled rule does not count as cover.
+    var loose = store
+    loose.rules = [Rule(pattern: "example.net", tunnelID: store.tunnels[0].id, isEnabled: false)]
+    #expect(
+        RecentFilter.visible(hosts, sampledAt: now, window: 300, hidden: [], store: loose).count
+            == 5)
+}

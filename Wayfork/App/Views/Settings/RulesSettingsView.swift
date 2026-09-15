@@ -48,6 +48,9 @@ struct RulesSettingsView: View {
 
     private var groups: some View {
         VStack(spacing: 12) {
+            if model.globalState.isRunning {
+                RecentStripView()
+            }
             RuleGroupView(
                 group: .direct, search: search, selectedRuleID: $selectedRuleID,
                 editing: $editing, error: groupError(.direct))
@@ -99,6 +102,59 @@ private enum RuleGroup: Hashable {
     }
 }
 
+/// **Recent** as a strip above the groups (F15): three rows, *Show all* for the rest;
+/// collapses to its header when nothing is new (docs/design/02-ux.md, "Variant C" › Rules).
+private struct RecentStripView: View {
+    @Environment(AppModel.self) private var model
+    @State private var showAll = false
+    static let rowLimit = 3
+
+    var body: some View {
+        let rows = model.recentHosts
+        let shown = showAll ? rows : Array(rows.prefix(Self.rowLimit))
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "clock").foregroundStyle(.secondary)
+                Text("Recent").fontWeight(.semibold)
+                Text(hint(rows.count))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer()
+                if rows.count > Self.rowLimit {
+                    Button(showAll ? "Show fewer" : "Show all \(rows.count)") { showAll.toggle() }
+                        .buttonStyle(.link)
+                        .font(.system(size: 12))
+                }
+            }
+            .padding(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+            .background(Color.primary.opacity(0.03))
+            if !shown.isEmpty {
+                ScrollView(.vertical) {
+                    VStack(spacing: 0) {
+                        ForEach(shown) { row in
+                            Divider()
+                            RecentRowView(row: row)
+                                .padding(.horizontal, 8)
+                                .frame(minHeight: 26)
+                        }
+                    }
+                }
+                .frame(maxHeight: showAll ? 200 : .infinity)
+            }
+        }
+        .background(GroupBackground())
+    }
+
+    private func hint(_ count: Int) -> String {
+        let went = model.recentExitName.map { "via \($0)" } ?? "direct"
+        let minutes = Int(AppModel.recentWindow) / 60
+        return count == 0
+            ? "nothing new in the last \(minutes) min"
+            : "went \(went) in the last \(minutes) min — pick a tunnel to make a rule"
+    }
+}
+
 private struct RuleGroupView: View {
     @Environment(AppModel.self) private var model
     let group: RuleGroup
@@ -146,11 +202,15 @@ private struct RuleGroupView: View {
             }
             if rules.isEmpty, !isAddingHere, group != .direct {
                 Divider()
-                Text("No sites yet — add one with \"Add site\".")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
-                    .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
+                Text(
+                    model.globalState.isRunning
+                        ? "No sites yet — add one, or pick a tunnel for a site in Recent above."
+                        : "No sites yet — add one with \"Add site\"."
+                )
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
             }
             if isAddingHere {
                 Divider()

@@ -246,20 +246,25 @@ public struct TrafficSnapshot: Codable, Sendable, Hashable {
     /// Latency probes by tunnel id (F14); only tunnels the prober has looked at. Absent in
     /// a payload from a build that predates it.
     public var latency: [String: LatencySample]
+    /// Hosts that took the default route since sing-box started, newest first, at most
+    /// `RecentHost.capacity` (F15; docs/design/05-daemon.md, "Recent hosts").
+    public var recentHosts: [RecentHost]
 
     public init(
         sampledAt: Date, interval: TimeInterval, tunnels: [String: TrafficCounters],
-        direct: TrafficCounters, latency: [String: LatencySample] = [:]
+        direct: TrafficCounters, latency: [String: LatencySample] = [:],
+        recentHosts: [RecentHost] = []
     ) {
         self.sampledAt = sampledAt
         self.interval = interval
         self.tunnels = tunnels
         self.direct = direct
         self.latency = latency
+        self.recentHosts = recentHosts
     }
 
     private enum CodingKeys: String, CodingKey {
-        case sampledAt, interval, tunnels, direct, latency
+        case sampledAt, interval, tunnels, direct, latency, recentHosts
     }
 
     public init(from decoder: Decoder) throws {
@@ -269,6 +274,7 @@ public struct TrafficSnapshot: Codable, Sendable, Hashable {
         tunnels = try c.decode([String: TrafficCounters].self, forKey: .tunnels)
         direct = try c.decode(TrafficCounters.self, forKey: .direct)
         latency = try c.decodeIfPresent([String: LatencySample].self, forKey: .latency) ?? [:]
+        recentHosts = try c.decodeIfPresent([RecentHost].self, forKey: .recentHosts) ?? []
     }
 
     public func counters(forTunnel id: String) -> TrafficCounters {
@@ -311,4 +317,28 @@ public enum LatencyProbe {
     public static let historyLength = 12
     /// Failures in a row that mark a tunnel *unreachable*.
     public static let failureThreshold = 3
+}
+
+/// One domain that went the default way — direct, or through the default tunnel — with the
+/// process that opened it (F15). Lives in memory on both sides, never on disk or in a log.
+public struct RecentHost: Codable, Sendable, Hashable, Identifiable {
+    /// The daemon keeps this many; the app shows a window of them.
+    public static let capacity = 200
+
+    /// Fake-ip or sniffed domain, lowercased.
+    public var host: String
+    /// Executable path from sing-box's `find_process`; nil when unknown.
+    public var processPath: String?
+    /// `"direct"` or the tunnel id the flow left through.
+    public var exit: String
+    public var lastSeen: Date
+
+    public var id: String { host }
+
+    public init(host: String, processPath: String? = nil, exit: String, lastSeen: Date) {
+        self.host = host
+        self.processPath = processPath
+        self.exit = exit
+        self.lastSeen = lastSeen
+    }
 }

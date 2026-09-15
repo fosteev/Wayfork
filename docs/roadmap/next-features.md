@@ -164,6 +164,7 @@ ROADMAP.md: M10 (friendlier screens, existing features only), M9 (F14), M11–M1
 - [ ] F14 (M9 in ROADMAP.md). — daemon + card done 2026-09-15; the manual check and
       the Windows half (WM10) are owed; Probe waits for the L2 tester.
 - [ ] F15: snapshot field + cap in `WayforkCore`, the panel, *Route via* creating the rule.
+      — code done 2026-09-15 (M11); manual check and WM12 owed.
 - [ ] F16: model + generator + goldens, the group card, group in every tunnel picker,
       `first live` in the daemon.
 - [ ] F17: model + generator + goldens, port on the card, copy button; LAN toggle only if

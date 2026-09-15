@@ -741,16 +741,22 @@ writes the design (05-daemon.md: the recent-hosts list in the snapshot;
 the Recent section and strip, boards C1 and C4).
 
 - [x] Design notes as listed above (2026-09-15).
-- [ ] `WayforkCore`: snapshot field `recentHosts` (host, process, tunnel, lastSeen),
+- [x] `WayforkCore`: snapshot field `recentHosts` (host, process, tunnel, lastSeen),
       capped at 200, cleared when the state leaves *on*; never written to disk or logged
-      at `info`.
-- [ ] Daemon: fill it from the F9 `/connections` poll — default-route flows only, domains
-      covered by a rule excluded.
-- [ ] App: the Recent section in the popover (five rows, *Route via ▾*, hide for the
-      session, empty state) and the strip on the Rules page (three rows, *Show all*).
-- [ ] *Route via* creates a suffix rule for the registrable domain and removes the row.
+      at `info` (2026-09-15: `RecentHost`, `RecentHosts` ring in the daemon core).
+- [x] Daemon: fill it from the F9 `/connections` poll — default-route flows only, domains
+      covered by a rule excluded (2026-09-15: the sampler keys on `route.final`; rule
+      cover is filtered app-side by `RecentFilter`, since a rule to the default tunnel is
+      indistinguishable in `chains`).
+- [x] App: the Recent section in the popover (five rows, *Route via ▾*, hide for the
+      session, empty state) and the strip on the Rules page (three rows, *Show all*)
+      (2026-09-15).
+- [x] *Route via* creates a suffix rule for the registrable domain and removes the row
+      (2026-09-15: `RulePattern.registrableDomain`, a two-label heuristic with the public
+      second-level list — not the PSL).
 - [ ] Manual check: open a site in Safari, it appears within one poll; route it, it leaves
-      the list and the next request goes through the chosen tunnel.
+      the list and the next request goes through the chosen tunnel. Code done 2026-09-15
+      (244 core tests, Debug build clean); the maintainer runs it.
 
 ### M12 — Tunnel groups (F16)
 

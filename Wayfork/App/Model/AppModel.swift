@@ -35,6 +35,8 @@ final class AppModel {
     /// Latest traffic sample (F9); nil while off and when no sample arrived for
     /// `TrafficFormat.staleAfter` seconds, so the popover shows `—` instead of stale figures.
     private(set) var traffic: TrafficSnapshot?
+    /// Recent rows dismissed with × (F15); forgotten on Turn On.
+    var hiddenRecentHosts: Set<String> = []
     /// Tunnels whose OpenVPN body / VLESS UUID is not in Keychain (imported without secrets).
     private(set) var missingSecrets: Set<UUID> = []
     private(set) var iconPulse = false
@@ -348,6 +350,7 @@ final class AppModel {
         logs.app(.info, "Turn On requested")
         cancelRecovery()
         desiredOn = true
+        hiddenRecentHosts = []
         setTransition(.starting(since: Date()))
         do {
             try await ensureHelperApproved()
