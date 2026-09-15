@@ -17,17 +17,17 @@ struct RulesSettingsView: View {
             HStack {
                 PageTitle(text: "Rules")
                 Spacer()
-                TextField("Search rules", text: $search)
+                TextField("Search sites and apps", text: $search)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 200)
             }
             if model.store.tunnels.isEmpty {
-                Text("Add a tunnel first; rules point domains at tunnels.")
+                Text("Add a tunnel first — a rule sends a site through a tunnel.")
                     .foregroundStyle(.secondary)
                     .padding(.top, 8)
             } else if model.store.rules.isEmpty, editing == nil {
                 Text(
-                    "No rules yet. Everything goes direct. Add a rule here or from the menu bar."
+                    "No sites yet. Everything stays on your normal connection. Add a site here or from the menu bar."
                 )
                 .foregroundStyle(.secondary)
                 .padding(.top, 8)
@@ -144,6 +144,14 @@ private struct RuleGroupView: View {
                     return true
                 }
             }
+            if rules.isEmpty, !isAddingHere, group != .direct {
+                Divider()
+                Text("No sites yet — add one with \"Add site\".")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
+            }
             if isAddingHere {
                 Divider()
                 NewRuleRow(editing: $editing, error: $error, target: group.target)
@@ -175,43 +183,49 @@ private struct RuleGroupView: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
                 if let tunnel = group.tunnel {
-                    StatusGlyphView(glyph: model.rowSummary(for: tunnel).glyph)
+                    let summary = model.rowSummary(for: tunnel)
+                    StatusGlyphView(glyph: summary.glyph)
                     Text(tunnel.name).fontWeight(.semibold)
-                    TypeBadge(kind: tunnel.kind)
+                    if model.effectiveDefaultTunnel?.id == tunnel.id {
+                        AccentBadge(text: "Default")
+                    }
+                    if let hint = tunnelHint(tunnel, summary: summary) {
+                        Text(hint.text)
+                            .font(.system(size: 11))
+                            .foregroundStyle(hint.isError ? Color.red : Color.secondary)
+                            .lineLimit(1)
+                    }
                 } else {
                     StatusGlyphView(glyph: .idle)
-                    Text("Direct").fontWeight(.semibold)
-                    Chip(text: "exceptions")
+                    Text("Not via any tunnel").fontWeight(.semibold)
+                    Text("stay on your normal connection, whatever other rules say")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
-                Chip(text: StatusText.count(rules.count, "rule"))
                 if !search.isEmpty, visibleRules.count != rules.count {
                     Text("\(visibleRules.count) shown").font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                 }
                 Spacer()
-                // F10: Domain adds an empty row in edit mode; Application… opens a file dialog.
+                // F10: Site adds an empty row in edit mode; Application… opens a file dialog.
                 Menu {
-                    Button("Domain") {
+                    Button("Site") {
                         error = nil
                         editing = RuleEditState(
                             ruleID: nil, target: group.target, text: "", match: .suffix)
                     }
                     Button("Application…") { chooseApplication() }
                 } label: {
-                    Image(systemName: "plus")
+                    Label("Add site", systemImage: "plus")
                 }
                 .menuIndicator(.hidden)
                 .controlSize(.small)
                 .fixedSize()
                 .help(
                     group == .direct
-                        ? "Add an exception (stays direct)" : "Add a rule to \(group.name)")
-            }
-            if group == .direct {
-                Text(model.directGroupHint)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, 20)
+                        ? "Add a site that stays outside every tunnel"
+                        : "Add a site to route via \(group.name)")
             }
         }
         .padding(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
@@ -222,6 +236,25 @@ private struct RuleGroupView: View {
             model.moveRule(id: dragged, to: group.target, before: nil)
             return true
         }
+    }
+
+    /// Header hint after the tunnel name: what happens to its sites right now.
+    private func tunnelHint(
+        _ tunnel: Tunnel, summary: (text: String, glyph: StatusGlyph, isError: Bool)
+    )
+        -> (text: String, isError: Bool)?
+    {
+        if model.effectiveDefaultTunnel?.id == tunnel.id {
+            return ("everything without a rule goes here, plus:", false)
+        }
+        if !tunnel.isEnabled {
+            if let fallback = model.effectiveDefaultTunnel {
+                return ("off — its sites go via \(fallback.name) for now", false)
+            }
+            return ("off — its sites stay outside a tunnel for now", false)
+        }
+        if summary.isError { return ("can't connect — its sites wait", true) }
+        return nil
     }
 
     private func editingBinding(for rule: Rule) -> Binding<RuleEditState?> {
@@ -242,7 +275,7 @@ private struct RuleGroupView: View {
         panel.directoryURL = URL(fileURLWithPath: "/Applications")
         panel.message =
             group == .direct
-            ? "Choose an application that stays direct"
+            ? "Choose an application that stays outside every tunnel"
             : "Choose an application to route via \(group.name)"
         panel.prompt = "Add Rule"
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -273,7 +306,7 @@ private struct RuleRowView: View {
             if rule.isApp {
                 AppRuleLabel(path: rule.pattern)
                     .frame(width: 230, alignment: .leading)
-                Text("App")
+                Text(StatusText.matchWord(.app))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .frame(width: 100, alignment: .leading)
@@ -306,6 +339,7 @@ private struct RuleRowView: View {
             } else {
                 Text(rule.pattern)
                     .font(.system(size: 12, design: .monospaced))
+                    .opacity(rule.isEnabled ? 1 : 0.5)
                     .frame(width: 230, alignment: .leading)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -357,7 +391,7 @@ private struct RuleRowView: View {
             }
             Menu("Move to") {
                 if group != .direct {
-                    Button("Direct (exception)") {
+                    Button("Not via any tunnel") {
                         model.moveRule(id: rule.id, to: .direct, before: nil)
                     }
                 }
@@ -375,25 +409,24 @@ private struct RuleRowView: View {
     @ViewBuilder
     private var chips: some View {
         if !rule.isEnabled {
-            Chip(text: "paused")
+            note("paused")
         }
         if rule.isApp, !AppBundleInfo.info(for: rule.pattern).exists {
-            Chip(text: "not found", tint: .orange)
+            Chip(text: "app not found", tint: .orange)
                 .help("\(rule.pattern) is missing; the rule matches again once it is back")
         }
         ForEach(Array(issues.enumerated()), id: \.offset) { _, issue in
             switch issue {
             case .shadowed(let by):
-                Chip(text: "shadowed", tint: .orange).help(shadowedHelp(by: by))
+                note(shadowedNote(by: by))
             case .duplicate:
                 Chip(text: "duplicate", tint: .orange)
                     .help("Same pattern and match as an earlier rule of this group")
             case .coversTunnelServer(let name):
                 Chip(text: "warning", tint: .red)
-                    .help("This pattern covers the server of \(name); its own traffic would loop")
+                    .help("This covers \(name)'s own server — its traffic would loop")
             case .tunnelDisabled:
-                Text("tunnel disabled — goes direct").font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                note("paused — \(group.name) is off")
             case .tunnelMissing:
                 Chip(text: "no tunnel", tint: .red)
             case .coversLocalNetwork(let interface, let network):
@@ -405,13 +438,18 @@ private struct RuleRowView: View {
         }
     }
 
-    private func shadowedHelp(by: UUID) -> String {
+    /// 11 pt secondary sentence in place of a chip (docs/design/02-ux.md, "Wording").
+    private func note(_ text: String) -> some View {
+        Text(text).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+    }
+
+    private func shadowedNote(by: UUID) -> String {
         guard let earlier = model.store.rules.first(where: { $0.id == by }) else {
-            return "\(rule.pattern) is already covered by an earlier group"
+            return "never used — an earlier group has it"
         }
         switch earlier.target {
-        case .direct: return "\(rule.pattern) is an exception"
-        case .tunnel(let id): return "\(rule.pattern) is already routed via \(model.tunnelName(id))"
+        case .direct: return "never used — \"Not via any tunnel\" has it"
+        case .tunnel(let id): return "never used — \(model.tunnelName(id)) has it"
         }
     }
 
@@ -498,13 +536,7 @@ private struct NewRuleRow: View {
 }
 
 private func matchTitle(_ match: RuleMatch) -> String {
-    switch match {
-    case .suffix: "Suffix"
-    case .exact: "Exact"
-    case .wildcard: "Wildcard"
-    case .app: "App"
-    case .ip: "IP"
-    }
+    StatusText.matchWord(match)
 }
 
 /// A fake IP pasted into a pattern field turns into the wildcard rule of the name behind it

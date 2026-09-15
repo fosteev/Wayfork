@@ -136,39 +136,65 @@ private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased()
     var (store, work, _, lab) = sampleStore()
     #expect(
         StatusText.summary(state: .off, store: store, status: nil)
-            == "Off — all traffic goes direct")
+            == "Off — nothing goes through a tunnel. Turn on to send your 5 sites through their tunnels; everything else stays as it is."
+    )
     #expect(StatusText.summary(state: .starting, store: store, status: nil) == "Starting…")
-    // 6 rules, one disabled → 5 domains; 3 enabled tunnels.
+    // 6 rules, one disabled → 5 sites; 3 enabled tunnels.
     #expect(
         StatusText.summary(state: .on, store: store, status: nil)
-            == "On — routing 5 domains through 3 tunnels")
+            == "On — 5 sites via 3 tunnels, the rest as usual")
     #expect(
         StatusText.summary(state: .degraded(failingTunnelIDs: [lab.id]), store: store, status: nil)
-            == "Degraded — Lab is failing · 5 domains, 2 tunnels up")
+            == "Lab can't connect — 2 tunnels up")
     #expect(
         StatusText.summary(
             state: .degraded(failingTunnelIDs: [work.id, lab.id]), store: store, status: nil)
-            == "Degraded — Work, Lab are failing · 5 domains, 1 tunnel up")
+            == "Work and Lab can't connect — 1 tunnel up")
     #expect(
         StatusText.summary(state: .error(reason: "singbox.startFailed"), store: store, status: nil)
             == "Routing engine failed — see Logs")
-    store.tunnels = []
     store.rules = []
+    #expect(
+        StatusText.summary(state: .off, store: store, status: nil)
+            == "Off — nothing goes through a tunnel.")
+    store.tunnels = []
     #expect(StatusText.summary(state: .on, store: store, status: nil) == "On — no tunnels")
 }
 
+@Test func ordinalTries() {
+    #expect(StatusText.ordinal(1) == "1st try")
+    #expect(StatusText.ordinal(2) == "2nd try")
+    #expect(StatusText.ordinal(3) == "3rd try")
+    #expect(StatusText.ordinal(4) == "4th try")
+    #expect(StatusText.ordinal(11) == "11th try")
+    #expect(StatusText.ordinal(12) == "12th try")
+    #expect(StatusText.ordinal(13) == "13th try")
+    #expect(StatusText.ordinal(21) == "21st try")
+    #expect(StatusText.ordinal(112) == "112th try")
+}
+
+@Test func wordingHelpers() {
+    #expect(StatusText.matchWord(.suffix) == "and subdomains")
+    #expect(StatusText.matchWord(.exact) == "exactly this")
+    #expect(StatusText.matchWord(.wildcard) == "pattern")
+    #expect(StatusText.matchWord(.app) == "the app")
+    #expect(StatusText.matchWord(.ip) == "address range")
+    #expect(StatusText.logDetailName(.error) == "Errors only")
+    #expect(StatusText.logDetailName(.warning) == "Problems")
+    #expect(StatusText.logDetailName(.info) == "Normal")
+    #expect(StatusText.logDetailName(.debug) == "Everything")
+    #expect(StatusText.count(1, "site") == "1 site")
+    #expect(StatusText.count(3, "site") == "3 sites")
+}
+
 @Test func failureMessagesFollowTheCatalogue() {
-    #expect(
-        StatusText.failureMessage(code: "ovpn.authFailed")
-            == "failed: server rejected username/password")
-    #expect(StatusText.failureMessage(code: "ovpn.keyPassphrase") == "failed: wrong key passphrase")
-    #expect(
-        StatusText.failureMessage(code: "ovpn.configError") == "failed: OpenVPN rejected the config"
-    )
+    #expect(StatusText.failureMessage(code: "ovpn.authFailed") == "Server refused the login")
+    #expect(StatusText.failureMessage(code: "ovpn.keyPassphrase") == "Wrong key passphrase")
+    #expect(StatusText.failureMessage(code: "ovpn.configError") == "OpenVPN rejected the file")
     #expect(
         StatusText.failureMessage(code: "singbox.startFailed")
             == "Routing engine failed to start. Another VPN may be active.")
-    #expect(StatusText.failureMessage(code: "something.new") == "failed: something.new")
+    #expect(StatusText.failureMessage(code: "something.new") == "Can't connect (something.new)")
     #expect(StatusText.failureAction(code: "ovpn.authFailed") == .editCredentials)
     #expect(StatusText.failureAction(code: "ovpn.needsKeyPassphrase") == .editKeyPassphrase)
     #expect(StatusText.failureAction(code: "ovpn.configError") == .replaceConfig)
@@ -180,57 +206,81 @@ private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased()
     let connected = StatusText.card(
         tunnel: work, state: .connected(since: Date(), ip: "10.8.0.6", interface: "utun101"),
         global: .on, ruleCount: 3)
-    #expect(connected.detail == "connected · 10.8.0.6 on utun101 · 3 rules")
+    #expect(connected.status == "Connected")
+    #expect(connected.detail == "3 sites")
     #expect(connected.glyph == .up)
-    #expect(connected.action == .reconnect)
+    #expect(connected.actions.isEmpty)
+    #expect(!connected.isDefault)
 
+    // Proxy kinds have no handshake to wait for: one word for one state.
     let ready = StatusText.card(tunnel: home, state: nil, global: .on, ruleCount: 2)
-    #expect(ready.detail == "ready · host.example.com · 2 rules")
-    #expect(ready.action == nil)
+    #expect(ready.status == "Connected")
+    #expect(ready.detail == "2 sites")
+    #expect(ready.actions.isEmpty)
 
     let reconnecting = StatusText.card(
         tunnel: lab, state: .reconnecting(attempt: 2, nextIn: 4, reason: "tls-error"),
         global: .degraded(failingTunnelIDs: [lab.id]), ruleCount: 1)
-    #expect(reconnecting.detail == "reconnecting… attempt 2 · tls-error")
+    #expect(reconnecting.status == "Reconnecting…")
+    #expect(reconnecting.detail == "2nd try")
     #expect(reconnecting.glyph == .transitioning)
+    #expect(reconnecting.actions == [.reconnect])
 
     let failed = StatusText.card(
         tunnel: lab, state: .failed(reason: "ovpn.authFailed", permanent: true),
         global: .degraded(failingTunnelIDs: [lab.id]), ruleCount: 1)
-    #expect(failed.detail == "failed: server rejected username/password")
+    #expect(failed.status == "Can't connect")
+    #expect(failed.detail == "Server refused the login")
     #expect(failed.isError)
-    #expect(failed.action == .edit(.editCredentials))
+    #expect(failed.actions == [.reconnect, .edit(.editCredentials)])
 
     var disabled = lab
     disabled.isEnabled = false
     let disabledCard = StatusText.card(tunnel: disabled, state: nil, global: .on, ruleCount: 1)
-    #expect(disabledCard.detail == "disabled · 1 rule")
+    #expect(disabledCard.status == "Off")
+    #expect(disabledCard.detail == "1 site")
     #expect(disabledCard.isDimmed)
-    #expect(disabledCard.action == .enable)
+    #expect(disabledCard.actions == [.enable])
 
     let off = StatusText.card(tunnel: work, state: nil, global: .off, ruleCount: 3)
-    #expect(off.detail == "not running · 3 rules")
+    #expect(off.status == "Not running")
+    #expect(off.detail == "3 sites")
     #expect(off.isDimmed)
-    #expect(off.action == nil)
+    #expect(off.actions.isEmpty)
 
     let missing = StatusText.card(
         tunnel: home, state: nil, global: .off, ruleCount: 2, missingSecret: true)
-    #expect(missing.detail == "UUID missing · 2 rules")
+    #expect(missing.status == "Not ready")
+    #expect(missing.detail == "UUID missing")
     #expect(missing.isError)
+    #expect(missing.actions == [.edit(.replaceConfig)])
 }
 
 @Test func tunnelRowSummaries() {
     let (_, work, home, _) = sampleStore()
     let row = StatusText.rowSummary(
         tunnel: work, state: .connected(since: Date(), ip: "10.8.0.6", interface: "utun101"),
-        global: .on)
-    #expect(row.text == "connected · vpn.example.com:1194 udp · 10.8.0.6 on utun101")
+        global: .on, ruleCount: 3)
+    #expect(row.text == "Connected · OpenVPN · 3 sites")
     #expect(row.glyph == .up)
-    let vless = StatusText.rowSummary(tunnel: home, state: nil, global: .on)
-    #expect(vless.text == "ready · host.example.com:443 · REALITY · vision")
-    let off = StatusText.rowSummary(tunnel: home, state: nil, global: .off)
-    #expect(off.text == "not running · host.example.com:443 · REALITY · vision")
+    let vless = StatusText.rowSummary(tunnel: home, state: nil, global: .on, ruleCount: 2)
+    #expect(vless.text == "Connected · VLESS · 2 sites")
+    let off = StatusText.rowSummary(tunnel: home, state: nil, global: .off, ruleCount: 1)
+    #expect(off.text == "Not running · VLESS · 1 site")
     #expect(off.glyph == .idle)
+    let failed = StatusText.rowSummary(
+        tunnel: work, state: .failed(reason: "ovpn.authFailed", permanent: true), global: .on,
+        ruleCount: 1)
+    #expect(failed.text == "Can't connect · Server refused the login · OpenVPN · 1 site")
+    #expect(failed.isError)
+    let reconnecting = StatusText.rowSummary(
+        tunnel: work, state: .reconnecting(attempt: 3, nextIn: 4, reason: nil), global: .on,
+        ruleCount: 1)
+    #expect(reconnecting.text == "Reconnecting… · 3rd try · OpenVPN · 1 site")
+    var disabled = work
+    disabled.isEnabled = false
+    let offRow = StatusText.rowSummary(tunnel: disabled, state: nil, global: .on, ruleCount: 2)
+    #expect(offRow.text == "Off · OpenVPN · 2 sites")
 }
 
 @Test func proxyKindStatusText() {
@@ -255,11 +305,11 @@ private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased()
     let passwordMissing = StatusText.rowSummary(
         tunnel: Tunnel(name: "Trojan", slot: 0, kind: trojan), state: nil, global: .off,
         missingSecret: true)
-    #expect(passwordMissing.text.hasPrefix("password missing ·"))
+    #expect(passwordMissing.text.hasPrefix("Not ready · password missing ·"))
     let uuidMissing = StatusText.rowSummary(
         tunnel: Tunnel(name: "VMess", slot: 1, kind: vmess), state: nil, global: .off,
         missingSecret: true)
-    #expect(uuidMissing.text.hasPrefix("UUID missing ·"))
+    #expect(uuidMissing.text.hasPrefix("Not ready · UUID missing ·"))
 }
 
 // MARK: - Rule editing and quick add
@@ -349,31 +399,35 @@ private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased()
     store.defaultTunnelID = home.id
     store.rules.append(Rule(pattern: "bank.example.org", target: .direct))
     store.rules.append(Rule(pattern: "paused.example.org", target: .direct, isEnabled: false))
+    // 5 active tunnel rules, 3 of them outside Home; the exception is not "via" anything.
     #expect(
         StatusText.summary(state: .on, store: store, status: nil)
-            == "On — everything via Home · 5 rules, 1 exception")
+            == "On — everything goes via Home, 3 sites via other tunnels")
     // A default without its secret is no default.
     #expect(
         StatusText.summary(state: .on, store: store, status: nil, missingSecrets: [home.id])
-            == "On — routing 5 domains through 3 tunnels")
+            == "On — 5 sites via 3 tunnels, the rest as usual")
     store.defaultTunnelID = work.id
     #expect(
         StatusText.summary(state: .degraded(failingTunnelIDs: [work.id]), store: store, status: nil)
-            == "Degraded — Work (default) is down · unmatched traffic is blocked")
+            == "Work can't connect — sites without a rule are blocked until it is back")
     #expect(
         StatusText.summary(state: .degraded(failingTunnelIDs: [lab.id]), store: store, status: nil)
-            == "Degraded — Lab is failing · 5 domains, 2 tunnels up")
+            == "Lab can't connect — 2 tunnels up, everything else via Work")
     #expect(StatusText.activeExceptionCount(store) == 1)
+    store.rules.removeAll { $0.tunnelID != nil && $0.tunnelID != work.id }
+    #expect(
+        StatusText.summary(state: .on, store: store, status: nil)
+            == "On — everything goes via Work")
 
     let card = StatusText.card(
         tunnel: work, state: .connected(since: Date(), ip: "10.8.0.6", interface: "utun101"),
         global: .on, ruleCount: 3, isDefault: true)
-    #expect(card.detail == "connected · 10.8.0.6 on utun101 · 3 rules · everything else")
-    let ready = StatusText.card(
-        tunnel: home, state: nil, global: .on, ruleCount: 2, isDefault: true)
-    #expect(ready.detail == "ready · host.example.com · 2 rules · everything else")
-    let row = StatusText.rowSummary(tunnel: home, state: nil, global: .on, isDefault: true)
-    #expect(row.text == "ready · host.example.com:443 · REALITY · vision · everything else")
+    #expect(card.detail == "3 sites")
+    #expect(card.isDefault)
+    let row = StatusText.rowSummary(
+        tunnel: home, state: nil, global: .on, isDefault: true, ruleCount: 2)
+    #expect(row.text == "Connected · VLESS · routes everything else and 2 sites")
 }
 
 @Test func quickAddAndEditingSupportDirect() {

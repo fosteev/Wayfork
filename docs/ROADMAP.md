@@ -706,19 +706,25 @@ Boards C1, C2, C3 (light), C4 (without the Recent strip and the group section), 
 - [x] 02-ux.md: wording table (old → new), status words per tunnel state, empty states
       (no tunnels yet, tunnel with no rules), the popover summary lines, the General rows.
       — § Variant C (2026-09-15).
-- [ ] Popover: 360 pt wide, section headers, card line 2 = status word + at most two facts,
+- [x] Popover: 360 pt wide, section headers, card line 2 = status word + at most two facts,
       *Idle* instead of zero rates, Retry only on a card with something to retry, *Fix…* on
-      a failed tunnel, "Not via any tunnel" row, off / can't-connect / first-run states.
-- [ ] Settings › Tunnels: row = status in words + protocol demoted to the subtitle, expanded
+      a failed tunnel, "Not via any tunnel" row, off / can't-connect / first-run states
+      (2026-09-15).
+- [x] Settings › Tunnels: row = status in words + protocol demoted to the subtitle, expanded
       form per C3 (Login + password on one line, "From the tunnel", "Everything else",
-      "Imported ‹date›").
-- [ ] Settings › Rules: group headers say what they mean, "Not via any tunnel" for the
+      "Imported ‹date›") (2026-09-15).
+- [x] Settings › Rules: group headers say what they mean, "Not via any tunnel" for the
       Direct group, match kinds "and subdomains / exactly this / pattern / the app",
-      "+ Add site", shadowed chip as a sentence, empty state per group.
-- [ ] Settings › General: rows reworded per C6, "Service/Helper up to date".
-- [ ] README screenshots re-rendered from variant C.
+      "+ Add site", shadowed chip as a sentence, empty state per group (2026-09-15).
+- [x] Settings › General: rows reworded per C6, "Helper up to date", Backup… menu
+      (2026-09-15).
+- [ ] README screenshots re-rendered from variant C — deferred to the ship step of
+      roadmap/next-features.md (stage 6): the boards show F14–F18, which the README must
+      not promise before they ship.
 - [ ] Manual check: the maintainer walks the popover and the three Settings pages against
-      the boards; strings match the 02-ux.md table.
+      the boards; strings match the 02-ux.md table. Code done 2026-09-15 (StatusText,
+      PopoverView, TunnelsSettingsView, RulesSettingsView, GeneralSettingsView; 231 core
+      tests, Debug build clean); the walk is owed.
 
 ### M11 — Recent domains → rule (F15)
 

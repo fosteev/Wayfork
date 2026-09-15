@@ -17,16 +17,16 @@ public enum FailureCode: String, Sendable, CaseIterable {
     case helperVersionMismatch = "helper.versionMismatch"
     case helperUnreachable = "helper.unreachable"
 
-    /// Short text; tunnel codes read as the tail of "failed: …".
+    /// Short text for the UI.
     public var message: String {
         switch self {
-        case .ovpnAuthFailed: "server rejected username/password"
-        case .ovpnNeedsCredentials: "username and password required"
-        case .ovpnKeyPassphrase: "wrong key passphrase"
-        case .ovpnNeedsKeyPassphrase: "key passphrase required"
-        case .ovpnConfigError: "OpenVPN rejected the config"
-        case .ovpnUnsupportedPrompt: "OpenVPN asked for something Wayfork cannot provide"
-        case .ovpnExited: "OpenVPN exited (automatic reconnect is off)"
+        case .ovpnAuthFailed: "Server refused the login"
+        case .ovpnNeedsCredentials: "Login and password needed"
+        case .ovpnKeyPassphrase: "Wrong key passphrase"
+        case .ovpnNeedsKeyPassphrase: "Key passphrase needed"
+        case .ovpnConfigError: "OpenVPN rejected the file"
+        case .ovpnUnsupportedPrompt: "OpenVPN asked for something Wayfork can't provide"
+        case .ovpnExited: "OpenVPN stopped (reconnect on its own is off)"
         case .ovpnStartFailed: "OpenVPN could not start"
         case .singboxStartFailed: "Routing engine failed to start. Another VPN may be active."
         case .singboxConfigInvalid: "Routing config rejected"
@@ -49,7 +49,7 @@ public enum FailureCode: String, Sendable, CaseIterable {
     }
 }
 
-/// What the ✎ / "Show Log" button next to a failure does.
+/// What the Fix… / Show Log button next to a failure does.
 public enum FailureAction: Sendable, Hashable {
     case editCredentials
     case editKeyPassphrase
@@ -62,13 +62,13 @@ public enum FailureAction: Sendable, Hashable {
 
 /// Status glyph next to a tunnel (docs/design/02-ux.md, "Status glyphs").
 public enum StatusGlyph: Sendable, Hashable {
-    /// Green filled: connected / ready.
+    /// Green filled: connected.
     case up
     /// Grey hollow: disabled / not running.
     case idle
     /// Orange half: connecting / reconnecting.
     case transitioning
-    /// Red cross: failed.
+    /// Red: failed / not ready.
     case failed
 }
 
@@ -82,21 +82,26 @@ public enum TunnelCardAction: Sendable, Hashable {
 /// Everything a popover tunnel card needs to render.
 public struct TunnelPresentation: Sendable, Hashable {
     public var glyph: StatusGlyph
-    /// Line 2 of the card, e.g. `connected · 10.8.0.6 on utun101 · 3 rules`.
+    /// The bold word at the start of card line 2.
+    public var status: String
+    /// The rest of card line 2, without the status word.
     public var detail: String
     public var isError: Bool
     public var isDimmed: Bool
-    public var action: TunnelCardAction?
+    public var actions: [TunnelCardAction]
+    public var isDefault: Bool
 
     public init(
-        glyph: StatusGlyph, detail: String, isError: Bool = false, isDimmed: Bool = false,
-        action: TunnelCardAction? = nil
+        glyph: StatusGlyph, status: String, detail: String = "", isError: Bool = false,
+        isDimmed: Bool = false, actions: [TunnelCardAction] = [], isDefault: Bool = false
     ) {
         self.glyph = glyph
+        self.status = status
         self.detail = detail
         self.isError = isError
         self.isDimmed = isDimmed
-        self.action = action
+        self.actions = actions
+        self.isDefault = isDefault
     }
 }
 
@@ -104,11 +109,10 @@ public struct TunnelPresentation: Sendable, Hashable {
 public enum StatusText {
     // MARK: - Failures
 
-    /// `failed: <message>` for tunnel codes; the catalogue message for engine/helper codes;
-    /// `failed: <code>` for anything unknown.
+    /// Tunnel failures are presented separately from their status word.
     public static func failureMessage(code: String) -> String {
-        guard let known = FailureCode(rawValue: code) else { return "failed: \(code)" }
-        return known.rawValue.hasPrefix("ovpn.") ? "failed: \(known.message)" : known.message
+        guard let known = FailureCode(rawValue: code) else { return "Can't connect (\(code))" }
+        return known.message
     }
 
     public static func failureAction(code: String) -> FailureAction? {
@@ -125,7 +129,10 @@ public enum StatusText {
         let defaultTunnel = effectiveDefaultTunnel(store, missingSecrets: missingSecrets)
         switch state {
         case .off:
-            return "Off — all traffic goes direct"
+            let sites = activeRuleCount(store)
+            guard sites > 0 else { return "Off — nothing goes through a tunnel." }
+            return
+                "Off — nothing goes through a tunnel. Turn on to send your \(count(sites, "site")) through their tunnels; everything else stays as it is."
         case .starting:
             return "Starting…"
         case .stopping:
@@ -135,24 +142,36 @@ public enum StatusText {
         case .on:
             let tunnels = store.tunnels.filter(\.isEnabled).count
             guard tunnels > 0 else { return "On — no tunnels" }
+            let sites = activeRuleCount(store)
             if let defaultTunnel {
+                let otherSites = RuleValidator.activeRules(store)
+                    .filter { $0.key != defaultTunnel.id }
+                    .values.reduce(0) { $0 + $1.count }
+                guard otherSites > 0 else {
+                    return "On — everything goes via \(defaultTunnel.name)"
+                }
                 return
-                    "On — everything via \(defaultTunnel.name) · \(count(activeRuleCount(store), "rule")), \(count(activeExceptionCount(store), "exception"))"
+                    "On — everything goes via \(defaultTunnel.name), \(count(otherSites, "site")) via other tunnels"
             }
-            return
-                "On — routing \(count(activeRuleCount(store), "domain")) through \(count(tunnels, "tunnel"))"
+            return "On — \(count(sites, "site")) via \(count(tunnels, "tunnel")), the rest as usual"
         case .degraded(let failing):
             if let defaultTunnel, failing.contains(defaultTunnel.id) {
                 return
-                    "Degraded — \(defaultTunnel.name) (default) is down · unmatched traffic is blocked"
+                    "\(defaultTunnel.name) can't connect — sites without a rule are blocked until it is back"
             }
             let names = failing.compactMap { store.tunnel(id: $0)?.name }
-            let verb = names.count == 1 ? "is" : "are"
-            let subject = names.isEmpty ? "a tunnel" : names.joined(separator: ", ")
+            let subject: String
+            switch names.count {
+            case 0: subject = "A tunnel"
+            case 1: subject = names[0]
+            case 2: subject = names.joined(separator: " and ")
+            default: subject = names.dropLast().joined(separator: ", ") + " and \(names.last!)"
+            }
             let enabled = store.tunnels.filter(\.isEnabled).count
             let up = max(0, enabled - failing.count)
-            return
-                "Degraded — \(subject) \(verb) failing · \(count(activeRuleCount(store), "domain")), \(count(up, "tunnel")) up"
+            var result = "\(subject) can't connect — \(count(up, "tunnel")) up"
+            if let defaultTunnel { result += ", everything else via \(defaultTunnel.name)" }
+            return result
         }
     }
 
@@ -175,9 +194,6 @@ public enum StatusText {
         return tunnel
     }
 
-    /// Card / row suffix for the default tunnel.
-    static let defaultSuffix = " · everything else"
-
     // MARK: - Tunnel cards and rows
 
     /// Popover card for one tunnel.
@@ -185,10 +201,11 @@ public enum StatusText {
         tunnel: Tunnel, state: TunnelState?, global: GlobalState, ruleCount: Int,
         missingSecret: Bool = false, isDefault: Bool = false
     ) -> TunnelPresentation {
-        let rules = count(ruleCount, "rule") + (isDefault ? defaultSuffix : "")
+        let sites = count(ruleCount, "site")
         if !tunnel.isEnabled {
             return TunnelPresentation(
-                glyph: .idle, detail: "disabled · \(rules)", isDimmed: true, action: .enable)
+                glyph: .idle, status: "Off", detail: sites, isDimmed: true, actions: [.enable],
+                isDefault: isDefault)
         }
         if missingSecret {
             let what: String
@@ -200,99 +217,70 @@ public enum StatusText {
             case .vmess: what = "UUID"
             }
             return TunnelPresentation(
-                glyph: .failed, detail: "\(what) missing · \(rules)", isError: true,
-                action: .edit(tunnel.kind.isOpenVPN ? .replaceConfig : .replaceConfig))
+                glyph: .failed, status: "Not ready", detail: "\(what) missing", isError: true,
+                actions: [.edit(.replaceConfig)], isDefault: isDefault)
         }
         switch global {
         case .off, .stopping:
             return TunnelPresentation(
-                glyph: .idle, detail: "not running · \(rules)", isDimmed: true)
+                glyph: .idle, status: "Not running", detail: sites, isDimmed: true,
+                isDefault: isDefault)
         case .error:
-            return TunnelPresentation(glyph: .idle, detail: "not routed · \(rules)", isDimmed: true)
+            return TunnelPresentation(
+                glyph: .idle, status: "Not routed", detail: sites, isDimmed: true,
+                isDefault: isDefault)
         case .starting, .on, .degraded:
             break
         }
         guard tunnel.kind.isOpenVPN else {
-            let host: String
-            if let vless = tunnel.kind.vless {
-                host = vless.server
-            } else if let peer = tunnel.kind.wireGuard?.peers.first {
-                host = "\(peer.host):\(peer.port)"
-            } else if let shadowsocks = tunnel.kind.shadowsocks {
-                host = shadowsocks.server
-            } else if let trojan = tunnel.kind.trojan {
-                host = trojan.server
-            } else if let vmess = tunnel.kind.vmess {
-                host = vmess.server
-            } else {
-                host = ""
-            }
-            return TunnelPresentation(glyph: .up, detail: "ready · \(host) · \(rules)")
+            return TunnelPresentation(
+                glyph: .up, status: "Connected", detail: sites, isDefault: isDefault)
         }
         switch state {
         case .none, .disabled:
-            return TunnelPresentation(glyph: .transitioning, detail: "connecting…")
+            return TunnelPresentation(
+                glyph: .transitioning, status: "Connecting…", detail: ordinal(1),
+                isDefault: isDefault)
         case .connecting(let attempt):
             return TunnelPresentation(
-                glyph: .transitioning, detail: "connecting… attempt \(attempt)",
-                action: .reconnect)
-        case .reconnecting(let attempt, _, let reason):
-            var detail = "reconnecting… attempt \(attempt)"
-            if let reason, !reason.isEmpty { detail += " · \(reason)" }
-            return TunnelPresentation(glyph: .transitioning, detail: detail, action: .reconnect)
-        case .connected(_, let ip, let interface):
-            var detail = "connected · "
-            if let ip, !ip.isEmpty { detail += "\(ip) on " }
-            detail += "\(interface) · \(rules)"
-            return TunnelPresentation(glyph: .up, detail: detail, action: .reconnect)
+                glyph: .transitioning, status: "Connecting…", detail: ordinal(attempt),
+                isDefault: isDefault)
+        case .reconnecting(let attempt, _, _):
+            return TunnelPresentation(
+                glyph: .transitioning, status: "Reconnecting…", detail: ordinal(attempt),
+                actions: [.reconnect], isDefault: isDefault)
+        case .connected:
+            return TunnelPresentation(
+                glyph: .up, status: "Connected", detail: sites, isDefault: isDefault)
         case .failed(let reason, _):
             return TunnelPresentation(
-                glyph: .failed, detail: failureMessage(code: reason), isError: true,
-                action: .edit(failureAction(code: reason) ?? .showLog))
+                glyph: .failed, status: "Can't connect", detail: failureMessage(code: reason),
+                isError: true,
+                actions: [.reconnect, .edit(failureAction(code: reason) ?? .showLog)],
+                isDefault: isDefault)
         }
     }
 
-    /// One-line summary for a Settings › Tunnels row, e.g.
-    /// `connected · vpn.example.com:1194 udp · 10.8.0.6 on utun101`.
+    /// One-line summary for a Settings › Tunnels row.
     public static func rowSummary(
         tunnel: Tunnel, state: TunnelState?, global: GlobalState, missingSecret: Bool = false,
-        isDefault: Bool = false
+        isDefault: Bool = false, ruleCount: Int = 0
     ) -> (text: String, glyph: StatusGlyph, isError: Bool) {
-        let endpoint = endpointDescription(tunnel.kind) + (isDefault ? defaultSuffix : "")
-        if !tunnel.isEnabled { return ("disabled · \(endpoint)", .idle, false) }
-        if missingSecret {
-            let what: String
-            switch tunnel.kind {
-            case .openVPN: what = "config missing"
-            case .vless: what = "UUID missing"
-            case .wireGuard: what = "private key missing"
-            case .shadowsocks, .trojan: what = "password missing"
-            case .vmess: what = "UUID missing"
-            }
-            return ("\(what) · \(endpoint)", .failed, true)
+        let presentation = card(
+            tunnel: tunnel, state: state, global: global, ruleCount: ruleCount,
+            missingSecret: missingSecret, isDefault: isDefault)
+        // The card's detail repeats the site count for the quiet states; the row appends it
+        // itself, so only a reason or an attempt is carried over.
+        var parts = [presentation.status]
+        if presentation.isError || presentation.glyph == .transitioning {
+            parts.append(presentation.detail)
         }
-        guard global.isRunning || global == .starting else {
-            return ("not running · \(endpoint)", .idle, false)
-        }
-        guard tunnel.kind.isOpenVPN else { return ("ready · \(endpoint)", .up, false) }
-        switch state {
-        case .none, .disabled, .connecting:
-            return ("connecting… · \(endpoint)", .transitioning, false)
-        case .reconnecting(let attempt, _, let reason):
-            var text = "reconnecting… attempt \(attempt)"
-            if let reason, !reason.isEmpty { text += " · \(reason)" }
-            return (text, .transitioning, false)
-        case .connected(_, let ip, let interface):
-            var text = "connected · \(endpoint)"
-            if let ip, !ip.isEmpty {
-                text += " · \(ip) on \(interface)"
-            } else {
-                text += " · \(interface)"
-            }
-            return (text, .up, false)
-        case .failed(let reason, _):
-            return (failureMessage(code: reason), .failed, true)
-        }
+        parts.append(typeBadge(tunnel.kind))
+        parts.append(
+            isDefault
+                ? "routes everything else and \(count(ruleCount, "site"))"
+                : count(ruleCount, "site"))
+        return (parts.joined(separator: " · "), presentation.glyph, presentation.isError)
     }
 
     /// `vpn.example.com:1194 udp` / `host.example.com:443 · REALITY · vision`.
@@ -344,6 +332,44 @@ public enum StatusText {
         }
     }
 
+    /// `1st try`, `2nd try`, `11th try`, `21st try`.
+    public static func ordinal(_ number: Int) -> String {
+        let remainder = number % 100
+        let suffix: String
+        if (11...13).contains(remainder) {
+            suffix = "th"
+        } else {
+            switch number % 10 {
+            case 1: suffix = "st"
+            case 2: suffix = "nd"
+            case 3: suffix = "rd"
+            default: suffix = "th"
+            }
+        }
+        return "\(number)\(suffix) try"
+    }
+
+    /// The match kind in the user's words (docs/design/02-ux.md, "Wording").
+    public static func matchWord(_ match: RuleMatch) -> String {
+        switch match {
+        case .suffix: "and subdomains"
+        case .exact: "exactly this"
+        case .wildcard: "pattern"
+        case .app: "the app"
+        case .ip: "address range"
+        }
+    }
+
+    /// General › Logs › Detail item for a log level.
+    public static func logDetailName(_ level: LogLevel) -> String {
+        switch level {
+        case .error: "Errors only"
+        case .warning: "Problems"
+        case .info: "Normal"
+        case .debug: "Everything"
+        }
+    }
+
     private static func securityDescription(_ security: TLSSecurity) -> String {
         switch security {
         case .reality: "REALITY"
@@ -360,7 +386,7 @@ public enum StatusText {
         }
     }
 
-    /// `1 rule`, `3 rules`.
+    /// `1 site`, `3 sites`.
     public static func count(_ n: Int, _ noun: String) -> String {
         "\(n) \(noun)\(n == 1 ? "" : "s")"
     }

@@ -422,7 +422,7 @@ extension AppModel {
         let rules = ruleCount(for: tunnelID)
         let message =
             rules > 0
-            ? "Delete \(tunnel.name) and its \(StatusText.count(rules, "rule"))? The rules go with it."
+            ? "Delete \(tunnel.name) and its \(StatusText.count(rules, "site"))? The rules go with it."
             : "Delete \(tunnel.name)?"
         guard Alerts.confirm(title: "Delete tunnel", message: message, destructive: "Delete")
         else { return }

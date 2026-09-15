@@ -26,7 +26,7 @@ struct TunnelsSettingsView: View {
             }
             if model.store.tunnels.isEmpty {
                 Text(
-                    "No tunnels yet. Import an OpenVPN or WireGuard config or add a link with + Add, or drop a .ovpn or .conf file here."
+                    "No tunnels yet. Add an OpenVPN file (.ovpn), a WireGuard config or a link with + Add, or drop a file here."
                 )
                 .foregroundStyle(.secondary)
                 .padding(.top, 8)
@@ -67,7 +67,7 @@ struct TunnelsSettingsView: View {
     }
 }
 
-/// Header row of a tunnel: glyph, name, badge, summary, enabled toggle, chevron.
+/// Header row of a tunnel: glyph, name, status summary, enabled toggle, chevron.
 struct TunnelRowView: View {
     @Environment(AppModel.self) private var model
     let tunnel: Tunnel
@@ -79,8 +79,7 @@ struct TunnelRowView: View {
             StatusGlyphView(glyph: summary.glyph)
             Text(tunnel.name).fontWeight(.semibold).lineLimit(1)
                 .frame(minWidth: 70, alignment: .leading)
-            TypeBadge(kind: tunnel.kind)
-            Text(displaySummary(summary.text))
+            Text(summary.text)
                 .font(.system(size: 12))
                 .foregroundStyle(summary.isError ? Color.red : Color.secondary)
                 .lineLimit(1)
@@ -109,25 +108,6 @@ struct TunnelRowView: View {
         }
     }
 
-    private func displaySummary(_ summary: String) -> String {
-        let suffix = summary.hasSuffix(" · everything else") ? " · everything else" : ""
-        let base = suffix.isEmpty ? summary : String(summary.dropLast(suffix.count))
-        switch tunnel.kind {
-        case .wireGuard:
-            return base + " · WireGuard" + suffix
-        case .vmess(let meta):
-            let status = base.split(separator: " · ", maxSplits: 1).first.map(String.init) ?? base
-            var transport: String
-            switch meta.transport {
-            case .tcp: transport = "tcp"
-            case .ws: transport = "ws"
-            case .grpc: transport = "gRPC"
-            }
-            return "\(status) · \(meta.server):\(meta.port) · \(transport)\(suffix)"
-        case .openVPN, .vless, .shadowsocks, .trojan:
-            return summary
-        }
-    }
 }
 
 /// Expanded OpenVPN tunnel: name, credentials, DNS, config, footer.
@@ -169,20 +149,19 @@ struct OpenVPNDetailView: View {
             }
             if meta.needsCredentials {
                 GridRow {
-                    label("Username")
-                    TextField("Username", text: $username)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 220)
-                        .focused($focus, equals: .username)
-                        .onSubmit(commitCredentials)
-                }
-                GridRow {
-                    label("Password")
-                    SecureField("Password", text: $password)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 220)
-                        .focused($focus, equals: .password)
-                        .onSubmit(commitCredentials)
+                    label("Login")
+                    HStack(spacing: 8) {
+                        TextField("Username", text: $username)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 150)
+                            .focused($focus, equals: .username)
+                            .onSubmit(commitCredentials)
+                        SecureField("Password", text: $password)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 150)
+                            .focused($focus, equals: .password)
+                            .onSubmit(commitCredentials)
+                    }
                 }
             }
             if meta.needsKeyPassphrase {
@@ -202,12 +181,12 @@ struct OpenVPNDetailView: View {
                     error: $dnsError, focus: $focus, commit: commitDNS)
             }
             GridRow {
-                label("Config")
+                label("File")
                 HStack(spacing: 8) {
-                    Text("\(tunnel.createdAt.formatted(date: .abbreviated, time: .omitted)) · ")
-                        .foregroundStyle(.secondary)
-                        + Text(shortHash).font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                    Text(
+                        "Imported \(tunnel.createdAt.formatted(date: .abbreviated, time: .omitted))"
+                    )
+                    .foregroundStyle(.secondary)
                     Button("Replace…") {
                         Task { await model.replaceOpenVPNConfigFromPicker(tunnelID: tunnel.id) }
                     }
@@ -215,7 +194,7 @@ struct OpenVPNDetailView: View {
                 }
             }
             GridRow {
-                Text("")
+                label("Everything else")
                 DefaultTunnelToggle(tunnel: tunnel)
             }
             GridRow {
@@ -263,9 +242,9 @@ struct OpenVPNDetailView: View {
 
     private var rulesLink: some View {
         HStack(spacing: 6) {
-            Text(StatusText.count(model.ruleCount(for: tunnel.id), "rule"))
+            Text(StatusText.count(model.ruleCount(for: tunnel.id), "site"))
                 .foregroundStyle(.secondary)
-            Button("Show") { model.settingsSection = .rules }
+            Button("Show rules") { model.settingsSection = .rules }
                 .buttonStyle(.link)
         }
     }
@@ -273,13 +252,7 @@ struct OpenVPNDetailView: View {
     private var automaticLabel: String {
         let discovered = model.discoveredDNS(for: tunnel)
         return discovered.isEmpty
-            ? "Automatic" : "Automatic (\(discovered.joined(separator: ", ")))"
-    }
-
-    private var shortHash: String {
-        let hash = meta.configHash
-        guard hash.count > 8 else { return hash }
-        return "\(hash.prefix(4))…\(hash.suffix(4))"
+            ? "From the tunnel" : "From the tunnel (\(discovered.joined(separator: ", ")))"
     }
 
     private func label(_ text: String) -> some View {
@@ -404,19 +377,19 @@ struct WireGuardDetailView: View {
                 }
             }
             GridRow {
-                label("Config")
-                Button("Replace Config…", action: replace).controlSize(.small)
+                label("File")
+                Button("Replace…", action: replace).controlSize(.small)
             }
             GridRow {
-                Text("")
+                label("Everything else")
                 DefaultTunnelToggle(tunnel: tunnel)
             }
             GridRow {
                 Text("")
                 HStack(spacing: 8) {
-                    Text(StatusText.count(model.ruleCount(for: tunnel.id), "rule"))
+                    Text(StatusText.count(model.ruleCount(for: tunnel.id), "site"))
                         .foregroundStyle(.secondary)
-                    Button("Show") { model.settingsSection = .rules }.buttonStyle(.link)
+                    Button("Show rules") { model.settingsSection = .rules }.buttonStyle(.link)
                     Spacer()
                     Button("Delete…") { model.deleteTunnel(tunnel.id) }
                         .controlSize(.small)
@@ -451,7 +424,7 @@ struct WireGuardDetailView: View {
     private var automaticLabel: String {
         let discovered = model.discoveredDNS(for: tunnel)
         return discovered.isEmpty
-            ? "Automatic" : "Automatic (\(discovered.joined(separator: ", ")))"
+            ? "From the tunnel" : "From the tunnel (\(discovered.joined(separator: ", ")))"
     }
 
     private func label(_ text: String) -> some View {
@@ -572,15 +545,15 @@ struct ProxyLinkDetailView: View {
                 }
             }
             GridRow {
-                Text("")
+                label("Everything else")
                 DefaultTunnelToggle(tunnel: tunnel)
             }
             GridRow {
                 Text("")
                 HStack(spacing: 8) {
-                    Text(StatusText.count(model.ruleCount(for: tunnel.id), "rule"))
+                    Text(StatusText.count(model.ruleCount(for: tunnel.id), "site"))
                         .foregroundStyle(.secondary)
-                    Button("Show") { model.settingsSection = .rules }.buttonStyle(.link)
+                    Button("Show rules") { model.settingsSection = .rules }.buttonStyle(.link)
                     Spacer()
                     Button("Delete…") { model.deleteTunnel(tunnel.id) }
                         .controlSize(.small)
@@ -622,7 +595,7 @@ private func isIPAddress(_ text: String) -> Bool {
     return inet_pton(AF_INET, text, &v4) == 1 || inet_pton(AF_INET6, text, &v6) == 1
 }
 
-/// "Route everything else through this tunnel" (F8): only one tunnel can be the default;
+/// "Sites without a rule go through this tunnel" (F8): only one tunnel can be the default;
 /// turning it on here moves it from whichever tunnel had it.
 private struct DefaultTunnelToggle: View {
     @Environment(AppModel.self) private var model
@@ -632,7 +605,7 @@ private struct DefaultTunnelToggle: View {
         let hint = model.defaultTunnelHint(for: tunnel)
         VStack(alignment: .leading, spacing: 2) {
             Toggle(
-                "Route everything else through this tunnel",
+                "Sites without a rule go through this tunnel",
                 isOn: Binding(
                     get: { model.isDefaultTunnel(tunnel.id) },
                     set: { model.setDefaultTunnel($0 ? tunnel.id : nil) })

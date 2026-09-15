@@ -139,7 +139,7 @@ extension AppModel {
 
     func targetName(_ target: RuleTarget) -> String {
         switch target {
-        case .direct: "Direct"
+        case .direct: "Not via any tunnel"
         case .tunnel(let id): tunnelName(id)
         }
     }

@@ -65,6 +65,20 @@ struct TypeBadge: View {
     }
 }
 
+/// Accent marker for the tunnel handling sites without an explicit rule.
+struct AccentBadge: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 10, weight: .semibold))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .foregroundStyle(Color.accentColor)
+            .background(RoundedRectangle(cornerRadius: 4).fill(Color.accentColor.opacity(0.12)))
+    }
+}
+
 /// Small rounded chip for counts and warnings (`3 rules`, `shadowed`).
 struct Chip: View {
     let text: String

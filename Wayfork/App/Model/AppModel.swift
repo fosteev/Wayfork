@@ -199,7 +199,8 @@ final class AppModel {
         StatusText.rowSummary(
             tunnel: tunnel, state: tunnelState(tunnel.id), global: globalState,
             missingSecret: missingSecrets.contains(tunnel.id),
-            isDefault: effectiveDefaultTunnel?.id == tunnel.id)
+            isDefault: effectiveDefaultTunnel?.id == tunnel.id, ruleCount: ruleCount(for: tunnel.id)
+        )
     }
 
     // MARK: - Default tunnel (F8)
@@ -229,31 +230,23 @@ final class AppModel {
         }
     }
 
-    /// Hint under the "Route everything else" toggle (docs/design/02-ux.md, "Tunnels").
+    /// Hint under the "Everything else" toggle (docs/design/02-ux.md, "Tunnels").
     func defaultTunnelHint(for tunnel: Tunnel) -> (text: String, isWarning: Bool) {
         guard isDefaultTunnel(tunnel.id) else {
-            return ("Domains without a rule use this tunnel instead of going direct.", false)
+            return ("Sites without a rule use this tunnel instead of going direct.", false)
         }
         switch defaultTunnelIssue {
         case .disabled:
-            return ("Disabled — everything else goes direct.", true)
+            return ("Off — sites without a rule stay outside a tunnel.", true)
         case .missingSecret:
             let what = tunnel.kind.isOpenVPN ? "Config" : "UUID"
-            return ("\(what) missing — everything else goes direct.", true)
+            return ("\(what) missing — sites without a rule stay outside a tunnel.", true)
         case .missing, .none:
             return (
-                "Domains without a rule use this tunnel; add exceptions in Rules › Direct. While it is down, unmatched traffic is blocked.",
+                "Sites without a rule use this tunnel; add sites that must stay outside under \"Not via any tunnel\" in Rules. While it can't connect, those sites are blocked.",
                 false
             )
         }
-    }
-
-    /// Header hint of the Direct group in Settings › Rules.
-    var directGroupHint: String {
-        if let tunnel = effectiveDefaultTunnel {
-            return "Everything else goes through \(tunnel.name); these domains stay direct"
-        }
-        return "Overrides tunnel rules; everything unmatched already goes direct"
     }
 
     /// Discovered DNS for an OpenVPN or WireGuard tunnel (live status first).

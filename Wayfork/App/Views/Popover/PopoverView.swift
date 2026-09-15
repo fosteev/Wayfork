@@ -15,14 +15,16 @@ struct PopoverView: View {
             } else if enabledTunnels.isEmpty {
                 allDisabledState
             } else {
+                Text("Tunnels")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 2)
                 ForEach(enabledTunnels) { tunnel in
                     TunnelCardView(tunnel: tunnel)
                 }
                 if model.globalState.isRunning {
                     DirectRowView()
                 }
-            }
-            if !model.globalState.isOff, !enabledTunnels.isEmpty {
                 Divider()
                 QuickAddView()
             }
@@ -30,7 +32,7 @@ struct PopoverView: View {
             footer
         }
         .padding(12)
-        .frame(width: 320)
+        .frame(width: 360)
     }
 
     private var header: some View {
@@ -47,7 +49,7 @@ struct PopoverView: View {
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .labelsHidden()
-                .disabled(model.transition != nil)
+                .disabled(model.transition != nil || model.store.tunnels.isEmpty)
             }
             Text(model.summary)
                 .font(.system(size: 11))
@@ -62,7 +64,7 @@ struct PopoverView: View {
 
     private var allDisabledState: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("All tunnels are disabled.").font(.system(size: 12))
+            Text("Every tunnel is off.").font(.system(size: 12))
             Button("Manage tunnels…") { model.openSettings(section: .tunnels) }
                 .controlSize(.small)
         }
@@ -70,15 +72,31 @@ struct PopoverView: View {
     }
 
     private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("No tunnels yet.").font(.system(size: 12))
-            Text("Import an OpenVPN config or add a VLESS URL in Settings › Tunnels.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+        VStack(spacing: 8) {
+            Image(model.menuBarIconName)
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 40, height: 40)
+                .foregroundStyle(.tertiary)
+            Text("Add a VPN you already have")
+                .font(.system(size: 14, weight: .semibold))
+            Text(
+                "An OpenVPN file (.ovpn), a VLESS or WireGuard link, or a subscription URL. Then tell Wayfork which sites go through it — the rest of your traffic is not touched."
+            )
+            .font(.system(size: 12))
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 280)
             Button("Add a tunnel…") { model.openSettings(section: .tunnels) }
-                .controlSize(.small)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+            Text("or drop a .ovpn file on this window")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
         }
-        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
     }
 
     private var footer: some View {
@@ -114,34 +132,46 @@ private struct FooterButton: View {
     }
 }
 
-/// One tunnel card: glyph, name, badge, action; state details on the second line.
+/// One tunnel card: glyph, name and actions on line 1; status and facts on line 2.
 struct TunnelCardView: View {
     @Environment(AppModel.self) private var model
     let tunnel: Tunnel
 
     var body: some View {
         let card = model.card(for: tunnel)
+        let counters = model.trafficCounters(for: tunnel)
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 7) {
                 StatusGlyphView(glyph: card.glyph)
                 Text(tunnel.name).fontWeight(.semibold).lineLimit(1)
-                TypeBadge(kind: tunnel.kind)
+                if card.isDefault { AccentBadge(text: "Default") }
                 Spacer(minLength: 4)
-                if showsRate(card) {
-                    let counters = model.trafficCounters(for: tunnel)
+                actionButtons(card.actions)
+            }
+            HStack(spacing: 4) {
+                Text(card.status)
+                    .fontWeight(.medium)
+                    .foregroundStyle(card.isError ? Color.red : Color.primary)
+                if showsRate(card), counters?.isIdle == true {
+                    separator
+                    Text("Idle")
+                } else if showsRate(card) {
+                    separator
                     RateLabel(counters: counters)
                     if let counters, counters.oneWayUDPFlows > 0 {
                         OneWayUDPHint(count: counters.oneWayUDPFlows)
                     }
                 }
-                actionButton(card.action)
+                if !card.detail.isEmpty {
+                    separator
+                    Text(card.detail)
+                }
             }
-            Text(card.detail)
-                .font(.system(size: 11))
-                .foregroundStyle(card.isError ? Color.red : Color.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .padding(.leading, 17)
+            .font(.system(size: 11))
+            .foregroundStyle(card.isError ? Color.red : Color.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .padding(.leading, 17)
         }
         .padding(EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10))
         .background(
@@ -154,35 +184,34 @@ struct TunnelCardView: View {
         .onTapGesture { model.openSettings(section: .tunnels, tunnel: tunnel.id) }
     }
 
-    /// Rates only for connected / ready tunnels while routing is on (F9).
+    private var separator: some View { Text("·") }
+
+    /// Rates only for connected tunnels while routing is on (F9).
     private func showsRate(_ card: TunnelPresentation) -> Bool {
         model.globalState.isRunning && card.glyph == .up
     }
 
     @ViewBuilder
-    private func actionButton(_ action: TunnelCardAction?) -> some View {
-        switch action {
-        case .none:
-            EmptyView()
-        case .reconnect:
-            Button {
-                model.reconnect(tunnel.id)
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-            .controlSize(.small)
-            .help("Reconnect")
-        case .edit(let failure):
-            Button {
-                model.perform(failure, tunnel: tunnel)
-            } label: {
-                Image(systemName: failure == .showLog ? "doc.text.magnifyingglass" : "pencil")
-            }
-            .controlSize(.small)
-            .help(failure == .showLog ? "Show Log" : "Fix in Settings")
-        case .enable:
-            Button("Enable") { model.setEnabled(tunnelID: tunnel.id, true) }
+    private func actionButtons(_ actions: [TunnelCardAction]) -> some View {
+        ForEach(Array(actions.enumerated()), id: \.offset) { _, action in
+            switch action {
+            case .reconnect:
+                Button {
+                    model.reconnect(tunnel.id)
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
                 .controlSize(.small)
+                .help("Retry")
+            case .edit(let failure):
+                Button("Fix…") { model.perform(failure, tunnel: tunnel) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("Open this tunnel in Settings")
+            case .enable:
+                Button("Enable") { model.setEnabled(tunnelID: tunnel.id, true) }
+                    .controlSize(.small)
+            }
         }
     }
 }
@@ -203,8 +232,8 @@ struct RateLabel: View {
     }
 }
 
-/// Orange ⚠ between the rate and the action button when a tunnel has UDP flows that send
-/// but receive nothing — the signature of a server dropping UDP (H3, docs/design/02-ux.md).
+/// Orange ⚠ next to the rates when a tunnel has UDP flows that send but receive nothing —
+/// the signature of a server dropping UDP (H3, docs/design/02-ux.md).
 struct OneWayUDPHint: View {
     let count: Int
 
@@ -222,12 +251,12 @@ struct DirectRowView: View {
 
     var body: some View {
         HStack(spacing: 7) {
-            Text(
-                TrafficFormat.directRowTitle(hasDefaultTunnel: model.effectiveDefaultTunnel != nil)
-            )
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
+            StatusGlyphView(glyph: .idle)
+            Text("Not via any tunnel")
+                .font(.system(size: 12, weight: .medium))
+            Text("· \(StatusText.count(StatusText.activeExceptionCount(model.store), "site"))")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
             Spacer(minLength: 4)
             RateLabel(counters: model.directTraffic)
         }
@@ -236,7 +265,7 @@ struct DirectRowView: View {
     }
 }
 
-/// `[Route domain…] [Tunnel ▾] [Add]` (docs/design/02-ux.md, "Quick add").
+/// `[Site to route…] [Tunnel ▾] [Add]` (docs/design/02-ux.md, "Quick add").
 struct QuickAddView: View {
     @Environment(AppModel.self) private var model
     @State private var input = ""
@@ -248,7 +277,7 @@ struct QuickAddView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                TextField("Route domain or IP…", text: $input)
+                TextField("Site to route, e.g. example.com", text: $input)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
                     .invalidOutline(error != nil)
@@ -258,7 +287,7 @@ struct QuickAddView: View {
                         Text(tunnel.name).tag(Optional(RuleTarget.tunnel(tunnel.id)))
                     }
                     Divider()
-                    Text("Direct").tag(Optional(RuleTarget.direct))
+                    Text("Not via any tunnel").tag(Optional(RuleTarget.direct))
                 }
                 .labelsHidden()
                 .controlSize(.small)

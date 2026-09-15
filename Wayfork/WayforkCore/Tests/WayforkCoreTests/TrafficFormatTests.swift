@@ -37,8 +37,6 @@ import Testing
     #expect(
         TrafficFormat.tooltip(TrafficCounters(connections: 1))
             == "Since Turn On: ↓ 0 B ↑ 0 B · 1 connection")
-    #expect(TrafficFormat.directRowTitle(hasDefaultTunnel: false) == "Direct")
-    #expect(TrafficFormat.directRowTitle(hasDefaultTunnel: true) == "Direct · exceptions")
     #expect(TrafficCounters.zero.isIdle)
     #expect(!counters.isIdle)
 }

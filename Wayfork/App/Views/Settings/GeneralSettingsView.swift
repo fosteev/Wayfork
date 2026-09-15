@@ -17,23 +17,27 @@ struct GeneralSettingsView: View {
             PageTitle(text: "General").padding(.horizontal, 20).padding(.top, 20)
             Form {
                 Section("Startup") {
-                    Toggle("Launch Wayfork at login", isOn: setting(\.launchAtLogin))
-                    Toggle("Connect on launch", isOn: setting(\.connectOnLaunch))
+                    Toggle("Open Wayfork at login", isOn: setting(\.launchAtLogin))
+                    Toggle("Turn on when it opens", isOn: setting(\.connectOnLaunch))
                 }
                 Section("Reliability") {
-                    Toggle("Reconnect tunnels automatically", isOn: setting(\.autoReconnect))
-                    Toggle("Notify when a tunnel fails", isOn: setting(\.notifyOnTunnelFailure))
+                    Toggle("Reconnect tunnels on their own", isOn: setting(\.autoReconnect))
+                    Toggle(
+                        "Notify me when a tunnel stops working",
+                        isOn: setting(\.notifyOnTunnelFailure))
                 }
                 Section("DNS") {
                     Toggle(
                         "Use Wayfork as the system resolver while On",
                         isOn: setting(\.overrideSystemDNS))
-                    Picker("Direct traffic resolver", selection: dnsMode) {
-                        Text("System").tag(0)
+                    Picker("DNS for sites outside tunnels", selection: dnsMode) {
+                        Text("Same as macOS").tag(0)
                         Text("Custom").tag(1)
                     }
                     .pickerStyle(.radioGroup)
                     .horizontalRadioGroupLayout()
+                    Text("Sites that go through a tunnel always use that tunnel's DNS.")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
                     if case .custom = model.settings.directDNS {
                         LabeledContent("Resolvers") {
                             VStack(alignment: .trailing, spacing: 2) {
@@ -50,14 +54,14 @@ struct GeneralSettingsView: View {
                     }
                 }
                 Section("Logs") {
-                    Picker("Level", selection: setting(\.logLevel)) {
+                    Picker("Detail", selection: setting(\.logLevel)) {
                         ForEach(LogLevel.allCases, id: \.self) { level in
-                            Text(level.rawValue.capitalized).tag(level)
+                            Text(StatusText.logDetailName(level)).tag(level)
                         }
                     }
                     .frame(maxWidth: 260)
                     if model.settings.logLevel == .debug {
-                        Text("Debug logs may include hostnames.")
+                        Text("\"Everything\" may include the names of sites you open.")
                             .font(.system(size: 11)).foregroundStyle(.secondary)
                     }
                     LabeledContent("Keep logs for") {
@@ -79,20 +83,20 @@ struct GeneralSettingsView: View {
                 Section("Helper & About") {
                     helperRow
                     LabeledContent {
-                        Button("Export Diagnostics…") { diagnosticsSheet = true }
+                        HStack {
+                            Button("Export Diagnostics…") { diagnosticsSheet = true }
+                            // Export / Import of tunnels and rules (01-data-model.md, "Import / export").
+                            Menu("Backup…") {
+                                Button("Export…") { exportSheet = true }
+                                Button("Import…") {
+                                    Task { importDocument = await model.pickImportDocument() }
+                                }
+                            }
+                            .fixedSize()
+                        }
                     } label: {
                         Text("Wayfork \(model.appVersion)")
                         Text(binaryVersions).font(.system(size: 11)).foregroundStyle(.secondary)
-                    }
-                }
-                Section("Backup") {
-                    LabeledContent("Tunnels and rules") {
-                        HStack {
-                            Button("Export…") { exportSheet = true }
-                            Button("Import…") {
-                                Task { importDocument = await model.pickImportDocument() }
-                            }
-                        }
                     }
                 }
             }
@@ -125,8 +129,8 @@ struct GeneralSettingsView: View {
             HStack(spacing: 6) {
                 StatusGlyphView(glyph: helperGlyph)
                 Text(helperText)
-                if let info = model.daemonInfo, model.helperState == .enabled {
-                    Text("· v\(info.version)").foregroundStyle(.secondary)
+                if model.daemonInfo != nil, model.helperState == .enabled {
+                    Text("· up to date").foregroundStyle(.secondary)
                 }
             }
         }

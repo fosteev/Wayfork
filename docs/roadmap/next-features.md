@@ -1,9 +1,8 @@
 # Next features — F14–F18
 
 > Status: approved · created 2026-09-15 · F14–F18 approved 2026-09-15 (ROADMAP § F14–F18);
-> prototype variant C approved 2026-09-15 (stage 2 done) · stage 3 design notes written
-> 2026-09-15, awaiting approval · milestones M10–M14 / WM11–WM15 in the roadmaps ·
-> nothing built yet
+> prototype variant C approved 2026-09-15 (stage 2 done) · stage 3 design notes approved
+> 2026-09-15 · stage 4 in progress from M10 · milestones M10–M14 / WM11–WM15 in the roadmaps
 
 ## Goal
 
@@ -159,7 +158,9 @@ approval line goes into ROADMAP.md § UI prototype.
 Order: **M10 → F14 → F15 → F16 → F17 → F18**, see *Working order*. Milestones in
 ROADMAP.md: M10 (friendlier screens, existing features only), M9 (F14), M11–M14 (F15–F18).
 
-- [ ] M10: the friction-audit fixes on the existing screens, before any new feature.
+- [ ] M10: the friction-audit fixes on the existing screens, before any new feature. —
+      code done 2026-09-15 (ROADMAP.md § M10); the maintainer's walk against the boards
+      is owed, README screenshots move to stage 6.
 - [ ] F14 (M9 in ROADMAP.md).
 - [ ] F15: snapshot field + cap in `WayforkCore`, the panel, *Route via* creating the rule.
 - [ ] F16: model + generator + goldens, the group card, group in every tunnel picker,
