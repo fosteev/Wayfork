@@ -176,7 +176,27 @@ Written as user scenarios. Technical details belong to Phase 2.
   [roadmap/more-tunnel-types.md](roadmap/more-tunnel-types.md); design in
   [design/04-tunnels.md](design/04-tunnels.md).
 
+**F14. Tunnel latency** *(added 2026-09-15, promoted from L4; approved 2026-09-15)*
+- Every connected tunnel shows its current latency next to the F9 rates and a sparkline of
+  the last few minutes on its card; the popover and Settings show the same number.
+- Latency is measured *through* the tunnel, not to the server's address: one small HTTP
+  request to a fixed probe URL per sample, so the number is what a user feels and it doubles
+  as a liveness check. ICMP to the server is not used — hosters drop it, and a reachable
+  server says nothing about the tunnel inside.
+- A probe that fails N times in a row marks the tunnel *unreachable* on the card; the
+  tunnel itself is not restarted (failover is still L4).
+- Rules do not get a periodic latency: a pattern, an application or an IP range names no
+  host to probe, and probing every apex through the tunnel is traffic to third parties for a
+  number that is the tunnel's own latency plus the site's distance. Instead, rule testing
+  (L2) gets an on-demand **Probe**: one request to the entered host through the tunnel it
+  matches, result shown once, nothing in the background.
+- Windows client gets the same measurement and the same card.
+
 ### Later
+
+The next wave — F15–F18 (recent domains → rule, tunnel groups, local proxy ports, block
+lists) and the friendlier UI pass — is proposed in
+[roadmap/next-features.md](roadmap/next-features.md) and moves here on approval.
 
 **L1. Rule sources beyond a single domain**
 - Domain lists from a URL or file (e.g. GeoSite-style lists), auto-refreshed.
@@ -185,15 +205,17 @@ Written as user scenarios. Technical details belong to Phase 2.
 **L2. Rule testing**
 - "Where does `<domain>` go?" — resolve which rule/tunnel matches and why. Design:
   [design/07-rule-testing.md](design/07-rule-testing.md) (2026-08-25, not scheduled).
+  The on-demand **Probe** from F14 lives in this view.
 - Live connection view: active connections with domain, tunnel, bytes.
 
 **L3. More tunnel types** — promoted to **F13** (2026-09-07). WireGuard, Shadowsocks,
 Trojan, VMess, subscription URLs and XHTTP-via-Xray are all tracked there.
 
-**L4. Tunnel health**
-- Periodic latency/availability checks per tunnel.
-- Failover: a rule can list a fallback tunnel used when the primary is down.
+**L4. Tunnel health** — periodic latency checks promoted to **F14** (2026-09-15).
+- Failover: a rule can list a fallback tunnel used when the primary is down (builds on the
+  F14 *unreachable* state).
 - Traffic history per tunnel (sparkline, totals per day) on top of the F9 rates.
+- Refresh a subscription's server list (F13 stage 7 imports once).
 
 **L5. Profiles**
 - Named sets of rules (e.g. "work", "home") switchable from the menu bar.
@@ -590,3 +612,20 @@ and follows kind by kind, on the fixtures this milestone produces.
 - [ ] Manual check: one tunnel per kind the maintainer has a server for carries traffic
       through a domain rule; WireGuard as the default tunnel resolves DNS through the
       endpoint with no leak.
+
+### M9 — Tunnel latency (F14)
+
+Phase 1 above, § F14. Design first: measurement, sampling and the snapshot field in
+[design/05-daemon.md](design/05-daemon.md), the card, sparkline and *unreachable* state in
+[design/02-ux.md](design/02-ux.md), the Windows deltas in
+[design/08-windows.md](design/08-windows.md). Not started; the design is written and
+approved before any of the boxes below.
+
+- [ ] Design notes as listed above.
+- [ ] Daemon: periodic probe per connected tunnel, latency and probe failures in the
+      traffic snapshot.
+- [ ] App: current latency next to the rates, sparkline on the card, *unreachable* state.
+- [ ] Windows: the same in the Go service and the Flutter card
+      ([ROADMAP-windows.md](ROADMAP-windows.md)).
+- [ ] Manual check: the number tracks a known-slow tunnel; pulling the server's plug turns
+      the card *unreachable* within the designed window and back on reconnect.

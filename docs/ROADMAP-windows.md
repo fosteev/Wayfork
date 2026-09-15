@@ -563,3 +563,14 @@ step, so it can follow kind by kind rather than wait for all of macOS.
 - [ ] PC run (`ssh wf-pc`): a tunnel of each kind imported from the same links as on macOS
       carries traffic, and an MSI upgrade over a store written by the older build still
       loads (new → old is knowingly forward-only, old → new must work).
+
+### WM10 — Tunnel latency (F14)
+
+[ROADMAP.md](ROADMAP.md) § F14 / § M9. Follows the macOS design once it is approved; the
+deltas go to [design/08-windows.md](design/08-windows.md).
+
+- [ ] Service (Go): the same probe and snapshot field as the macOS daemon, in
+      `internal/core` where it does not touch Win32.
+- [ ] App (Flutter): current latency next to the rates, sparkline on the card,
+      *unreachable* state.
+- [ ] PC run (`ssh wf-pc`): same check as M9.
