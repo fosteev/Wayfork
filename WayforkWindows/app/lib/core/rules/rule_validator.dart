@@ -15,10 +15,11 @@ sealed class RuleIssue {
   /// first, so the later rule can never match.
   const factory RuleIssue.shadowed(String by) = RuleIssueShadowed;
 
-  /// The rule is inert because its tunnel is disabled.
+  /// The rule is inert because its tunnel (or group, F16 — also: a group
+  /// with no enabled member) is disabled.
   const factory RuleIssue.tunnelDisabled() = RuleIssueTunnelDisabled;
 
-  /// The rule points at a tunnel which no longer exists.
+  /// The rule points at a tunnel or group which no longer exists.
   const factory RuleIssue.tunnelMissing() = RuleIssueTunnelMissing;
 
   /// The pattern covers tunnel control traffic, which would try to route the
@@ -108,10 +109,27 @@ abstract final class RuleValidator {
   }) {
     final issues = <String, List<RuleIssue>>{};
     final tunnelsByID = {for (final tunnel in store.tunnels) tunnel.id: tunnel};
+    final groupsByID = {for (final group in store.groups) group.id: group};
+    // Section order for shadowing: Direct first, then tunnels, then groups
+    // (F16), each in store order.
     final groupOrder = <RuleTarget, int>{const RuleTargetDirect(): 0};
     for (var index = 0; index < store.tunnels.length; index++) {
       groupOrder[RuleTargetTunnel(store.tunnels[index].id)] = index + 1;
     }
+    for (var index = 0; index < store.groups.length; index++) {
+      groupOrder[RuleTargetGroup(store.groups[index].id)] =
+          store.tunnels.length + index + 1;
+    }
+    bool isSectionActive(RuleTarget target) => switch (target) {
+      RuleTargetDirect() => true,
+      RuleTargetTunnel(:final tunnelID) =>
+        tunnelsByID[tunnelID]?.isEnabled == true,
+      RuleTargetGroup(:final groupID) => switch (groupsByID[groupID]) {
+        null => false,
+        final group =>
+          group.isEnabled && store.enabledMembers(group).isNotEmpty,
+      },
+    };
 
     final seen = <_RuleKey, String>{};
     final duplicates = <String>{};
@@ -128,10 +146,7 @@ abstract final class RuleValidator {
 
     final firstActive = <_RuleKey, ({String ruleID, int group})>{};
     for (final rule in store.effectiveRules) {
-      final activeGroup =
-          rule.target.isDirect ||
-          (rule.tunnelID != null &&
-              tunnelsByID[rule.tunnelID]?.isEnabled == true);
+      final activeGroup = isSectionActive(rule.target);
       final group = groupOrder[rule.target];
       if (!rule.isEnabled ||
           duplicates.contains(rule.id) ||
@@ -171,13 +186,20 @@ abstract final class RuleValidator {
     }
 
     for (final rule in store.rules) {
-      final tunnelID = rule.tunnelID;
-      if (tunnelID == null) continue;
-      final tunnel = tunnelsByID[tunnelID];
-      if (tunnel == null) {
+      final exitID = rule.exitID;
+      if (exitID == null) continue;
+      final tunnel = tunnelsByID[exitID];
+      final group = groupsByID[exitID];
+      if (tunnel != null) {
+        if (!tunnel.isEnabled) {
+          (issues[rule.id] ??= []).add(const RuleIssue.tunnelDisabled());
+        }
+      } else if (group != null) {
+        if (!group.isEnabled || store.enabledMembers(group).isEmpty) {
+          (issues[rule.id] ??= []).add(const RuleIssue.tunnelDisabled());
+        }
+      } else {
         (issues[rule.id] ??= []).add(const RuleIssue.tunnelMissing());
-      } else if (!tunnel.isEnabled) {
-        (issues[rule.id] ??= []).add(const RuleIssue.tunnelDisabled());
       }
       if (rule.isIP) {
         final range = IPv4Prefix.parse(rule.pattern);
@@ -216,12 +238,13 @@ abstract final class RuleValidator {
     return issues;
   }
 
-  /// Active tunnel rules grouped by tunnel id, in effective order.
+  /// Active tunnel and group rules keyed by the tunnel or group id, in
+  /// effective order.
   static Map<String, List<Rule>> activeRules(Store store) {
     final result = <String, List<Rule>>{};
     for (final rule in _activeRulesInOrder(store)) {
-      final tunnelID = rule.tunnelID;
-      if (tunnelID != null) (result[tunnelID] ??= []).add(rule);
+      final exitID = rule.exitID;
+      if (exitID != null) (result[exitID] ??= []).add(rule);
     }
     return result;
   }

@@ -5,7 +5,9 @@ import 'package:wayfork/core/model/export_document.dart';
 import 'package:wayfork/core/model/rule.dart';
 import 'package:wayfork/core/model/settings.dart';
 import 'package:wayfork/core/model/store.dart';
+import 'package:wayfork/core/model/local_proxy.dart';
 import 'package:wayfork/core/model/tunnel.dart';
+import 'package:wayfork/core/model/tunnel_group.dart';
 import 'package:wayfork/core/platform.dart';
 import 'package:wayfork/core/secrets/secret_store.dart';
 import 'package:wayfork/core/support/uuid.dart';
@@ -61,6 +63,7 @@ ExportDocument document({
   Settings settings = const Settings(),
   bool includesSecrets = false,
   String? defaultTunnelID,
+  List<TunnelGroup> groups = const [],
 }) => ExportDocument(
   exportedAt: importDate,
   includesSecrets: includesSecrets,
@@ -68,6 +71,7 @@ ExportDocument document({
   rules: rules,
   settings: settings,
   defaultTunnelID: defaultTunnelID,
+  groups: groups,
 );
 
 void main() {
@@ -433,5 +437,76 @@ void main() {
     );
     expect(exported.defaultTunnelID, importedOpenVPNID);
     expect(exported.rules.any((r) => r.isException), isTrue);
+  });
+
+  test('import carries groups, drops the ones left too small (F16)', () {
+    final work = openVPNTunnel();
+    final home = vlessTunnel();
+    final group = TunnelGroup(
+      id: '20000000-0000-4000-8000-000000000001',
+      name: 'Streaming',
+      members: [work.id, home.id],
+      createdAt: importDate,
+    );
+    final tooSmall = TunnelGroup(
+      id: '20000000-0000-4000-8000-000000000002',
+      name: 'Backup',
+      members: [work.id, '30000000-0000-4000-8000-000000000009'],
+      createdAt: importDate,
+    );
+    final outcome = StoreImporter.apply(
+      document(
+        tunnels: [
+          ExportedTunnel.fromTunnel(work),
+          ExportedTunnel.fromTunnel(home),
+        ],
+        rules: [
+          Rule(pattern: 'video.example.com', target: RuleTargetGroup(group.id)),
+          Rule(pattern: 'x.example.com', target: RuleTargetGroup(tooSmall.id)),
+        ],
+        groups: [group, tooSmall],
+        defaultTunnelID: group.id,
+      ),
+      to: Store.empty,
+      mode: ImportMode.replace,
+    );
+    expect(outcome.store.groups.map((g) => g.name).toList(), ['Streaming']);
+    expect(outcome.store.rules.length, 1);
+    expect(outcome.rulesSkipped, 1);
+    expect(outcome.store.defaultTunnelID, group.id);
+    expect(outcome.warnings, contains(startsWith('Group Backup skipped')));
+    expect(outcome.warnings, contains(contains('group 2000… not found')));
+  });
+
+  test('import carries local proxy ports and drops collisions (F17)', () {
+    final work = openVPNTunnel().copyWith(
+      localProxy: const LocalProxy(isEnabled: true, port: 1081),
+    );
+    final home = vlessTunnel().copyWith(
+      localProxy: const LocalProxy(isEnabled: false, port: 1081),
+    );
+    final outcome = StoreImporter.apply(
+      document(
+        tunnels: [
+          ExportedTunnel.fromTunnel(work),
+          ExportedTunnel.fromTunnel(home),
+        ],
+      ),
+      to: Store.empty,
+      mode: ImportMode.replace,
+    );
+    expect(outcome.store.tunnel(work.id)?.localProxy?.port, 1081);
+    expect(outcome.store.tunnel(home.id)?.localProxy, isNull);
+    expect(
+      outcome.warnings,
+      contains(contains('1081 of Home dropped: already used by Work')),
+    );
+    final merged = StoreImporter.apply(
+      document(tunnels: [ExportedTunnel.fromTunnel(work)]),
+      to: outcome.store,
+      mode: ImportMode.merge,
+    );
+    expect(merged.store.tunnel(work.id)?.localProxy?.port, 1081);
+    expect(merged.warnings, isEmpty);
   });
 }

@@ -219,6 +219,7 @@ abstract final class RuntimePlanBuilder {
     List<String> systemDNSServers = const [],
     List<String> networkResolvers = const [],
     WayforkPlatform platform = WayforkPlatform.windows,
+    bool blockListAvailable = false,
   }) {
     final warnings = <PlanWarning>[];
     final openVPN = <OpenVPNRuntime>[];
@@ -282,6 +283,9 @@ abstract final class RuntimePlanBuilder {
         systemDNSServers: systemDNSServers,
         networkResolvers: networkResolvers,
         platform: platform,
+        blockListPath: blockListAvailable
+            ? platform.blockListPath(installDir)
+            : null,
       ),
     );
     final plan = RuntimePlan(

@@ -2,7 +2,9 @@ import 'package:collection/collection.dart';
 import 'package:wayfork/core/json_text.dart';
 import 'package:wayfork/core/model/settings.dart';
 import 'package:wayfork/core/model/store.dart';
+import 'package:wayfork/core/model/local_proxy.dart';
 import 'package:wayfork/core/model/tunnel.dart';
+import 'package:wayfork/core/model/tunnel_group.dart';
 import 'package:wayfork/core/platform.dart';
 import 'package:wayfork/core/rules/rule_validator.dart';
 import 'package:wayfork/core/singbox/constants.dart';
@@ -51,6 +53,7 @@ final class SingBoxInput {
     List<String> systemDNSServers = const [],
     List<String> networkResolvers = const [],
     this.platform = WayforkPlatform.windows,
+    this.blockListPath,
   }) : vlessUUIDs = Map.unmodifiable(
          vlessUUIDs.map((key, value) => MapEntry(key.toLowerCase(), value)),
        ),
@@ -84,6 +87,7 @@ final class SingBoxInput {
     systemDNSServers: _stringList(json['systemDNSServers'], 'systemDNSServers'),
     networkResolvers: _stringList(json['networkResolvers'], 'networkResolvers'),
     platform: platform,
+    blockListPath: json['blockListPath'] as String?,
   );
 
   final Store store;
@@ -109,6 +113,10 @@ final class SingBoxInput {
   /// Platform-specific interface names and application path matching.
   final WayforkPlatform platform;
 
+  /// Absolute path of the bundled `block-ads.srs` (F18); null when the build
+  /// has no list, in which case the switch emits nothing.
+  final String? blockListPath;
+
   Map<String, Object?> toJson() => {
     'store': store.toJson(),
     'vlessUUIDs': vlessUUIDs,
@@ -122,6 +130,7 @@ final class SingBoxInput {
     'resolvedServerAddresses': resolvedServerAddresses,
     'systemDNSServers': systemDNSServers,
     'networkResolvers': networkResolvers,
+    if (blockListPath != null) 'blockListPath': blockListPath,
   };
 }
 
@@ -130,14 +139,24 @@ final class SingBoxOutput {
     required this.config,
     required Map<String, String> ruleSets,
     required List<Tunnel> routedTunnels,
+    List<TunnelGroup> routedGroups = const [],
     required this.defaultTunnel,
+    this.defaultExit,
   }) : ruleSets = Map.unmodifiable(ruleSets),
-       routedTunnels = List.unmodifiable(routedTunnels);
+       routedTunnels = List.unmodifiable(routedTunnels),
+       routedGroups = List.unmodifiable(routedGroups);
 
   final String config;
   final Map<String, String> ruleSets;
   final List<Tunnel> routedTunnels;
+
+  /// Groups that made it into the config (enabled, with at least one routed
+  /// member), in store order (F16).
+  final List<TunnelGroup> routedGroups;
   final Tunnel? defaultTunnel;
+
+  /// The tunnel or group behind `route.final` (F8, F16); null means `direct`.
+  final RoutedExit? defaultExit;
 
   @override
   bool operator ==(Object other) =>
@@ -145,14 +164,21 @@ final class SingBoxOutput {
       config == other.config &&
       const MapEquality<String, String>().equals(ruleSets, other.ruleSets) &&
       const ListEquality<Tunnel>().equals(routedTunnels, other.routedTunnels) &&
-      defaultTunnel == other.defaultTunnel;
+      const ListEquality<TunnelGroup>().equals(
+        routedGroups,
+        other.routedGroups,
+      ) &&
+      defaultTunnel == other.defaultTunnel &&
+      defaultExit == other.defaultExit;
 
   @override
   int get hashCode => Object.hash(
     config,
     const MapEquality<String, String>().hash(ruleSets),
     const ListEquality<Tunnel>().hash(routedTunnels),
+    const ListEquality<TunnelGroup>().hash(routedGroups),
     defaultTunnel,
+    defaultExit,
   );
 }
 
@@ -182,12 +208,31 @@ abstract final class SingBoxConfigGenerator {
         TunnelKindVMess() => input.vmessUUIDs.containsKey(tunnel.id),
       };
     }).toList();
+    // F16: a group is routed when it is enabled and at least one member is;
+    // members that are not routed are left out of its outbound list.
+    final routedIDs = routed.map((tunnel) => tunnel.id).toSet();
+    final routedGroups = store.groups
+        .where(
+          (group) => group.isEnabled && group.members.any(routedIDs.contains),
+        )
+        .toList();
     final activeRules = RuleValidator.activeRules(store);
     final exceptions = RuleValidator.activeExceptions(store);
     final wantedDefault = store.effectiveDefaultTunnel;
     final defaultTunnel = wantedDefault == null
         ? null
         : routed.where((tunnel) => tunnel.id == wantedDefault.id).firstOrNull;
+    final defaultExit = switch (store.effectiveDefaultExit) {
+      DefaultExitTunnel() =>
+        defaultTunnel == null ? null : RoutedExit.tunnel(defaultTunnel),
+      DefaultExitGroup(:final group) => switch (routedGroups
+          .where((routed) => routed.id == group.id)
+          .firstOrNull) {
+        null => null,
+        final routed => RoutedExit.group(routed),
+      },
+      null => null,
+    };
 
     final dnsServers = <Map<String, Object?>>[
       directDNSServer(
@@ -204,6 +249,23 @@ abstract final class SingBoxConfigGenerator {
       {'action': 'sniff'},
       {'protocol': 'dns', 'action': 'hijack-dns'},
     ];
+    // F17: one `mixed` inbound per enabled local proxy port, and a rule that
+    // sends whatever came in through it to that exit before any domain rule,
+    // exception or block list can redirect it.
+    final proxyInbounds = <Map<String, Object?>>[];
+    final proxyExits = <(String, LocalProxy?)>[
+      for (final tunnel in routed) (tunnel.outboundTag, tunnel.localProxy),
+      for (final group in routedGroups) (group.outboundTag, group.localProxy),
+    ];
+    for (final (outboundTag, proxy) in proxyExits) {
+      if (proxy == null || !proxy.isEnabled) continue;
+      final tag = LocalProxy.inboundTag(outboundTag);
+      proxyInbounds.add(mixedInbound(tag: tag, port: proxy.port));
+      routeRules.add({
+        'inbound': [tag],
+        'outbound': outboundTag,
+      });
+    }
     if (input.systemDNSServers.isNotEmpty) {
       // Refuse cached DDR upgrades before any rule can route them elsewhere.
       routeRules.add({
@@ -241,6 +303,22 @@ abstract final class SingBoxConfigGenerator {
         path: RuleSetGenerator.directIPFileName,
       ),
     ];
+    // F18: listed names are rejected after the exceptions and before every
+    // tunnel rule-set, so the list wins whichever tunnel a rule would send
+    // them to.
+    final blockList = blockListRules(
+      store.settings.blockList,
+      path: input.blockListPath,
+    );
+    if (blockList != null) {
+      routeRules.add(blockList.route);
+      ruleSetRefs.add({
+        'type': 'local',
+        'tag': SingBoxConstants.blockListTag,
+        'format': 'binary',
+        'path': blockList.path,
+      });
+    }
 
     for (final tunnel in routed) {
       switch (tunnel.kind) {
@@ -321,6 +399,44 @@ abstract final class SingBoxConfigGenerator {
         localRuleSet(tag: tunnel.ipRuleSetTag, path: tunnel.ipRuleSetFileName),
       );
     }
+    for (final group in routedGroups) {
+      final members = group.members
+          .where(routedIDs.contains)
+          .map((id) => '${Tunnel.outboundTagPrefix}$id')
+          .toList();
+      switch (group.policy) {
+        case GroupPolicy.fastest:
+          outbounds.add({
+            'type': 'urltest',
+            'tag': group.outboundTag,
+            'outbounds': members,
+            'url': SingBoxConstants.probeURL,
+            'interval': SingBoxConstants.groupProbeInterval,
+            'tolerance': SingBoxConstants.groupTolerance,
+            'idle_timeout': SingBoxConstants.groupIdleTimeout,
+            'interrupt_exist_connections': false,
+          });
+        case GroupPolicy.firstLive:
+          // The service moves the selection after every probe round.
+          outbounds.add({
+            'type': 'selector',
+            'tag': group.outboundTag,
+            'outbounds': members,
+            'default': members.first,
+            'interrupt_exist_connections': false,
+          });
+      }
+      routeRules.add({
+        'rule_set': [group.ruleSetTag, group.ipRuleSetTag],
+        'outbound': group.outboundTag,
+      });
+      ruleSetRefs.add(
+        localRuleSet(tag: group.ruleSetTag, path: group.ruleSetFileName),
+      );
+      ruleSetRefs.add(
+        localRuleSet(tag: group.ipRuleSetTag, path: group.ipRuleSetFileName),
+      );
+    }
     routeRules.add({'ip_is_private': true, 'outbound': 'direct'});
 
     // Tunnel IP rules inside LAN ranges must enter the TUN. Direct IP rules do
@@ -365,27 +481,34 @@ abstract final class SingBoxConfigGenerator {
     if (directDNSHosts.isNotEmpty) {
       dnsRules.add({'domain': directDNSHosts, 'server': 'dns-direct'});
     }
+    if (blockList != null) {
+      dnsRules.add(blockList.dns);
+    }
     if (routed.isNotEmpty) {
       dnsRules.add({
-        'rule_set': routed.map((tunnel) => tunnel.ruleSetTag).toList(),
+        'rule_set': [
+          ...routed.map((tunnel) => tunnel.ruleSetTag),
+          ...routedGroups.map((group) => group.ruleSetTag),
+        ],
         'query_type': ['A', 'AAAA'],
         'server': 'fakeip',
       });
     }
 
     var dnsFinal = 'dns-direct';
-    if (defaultTunnel != null) {
+    if (defaultExit != null) {
       dnsRules.add({
         'query_type': ['A', 'AAAA'],
         'server': 'fakeip',
       });
-      final tag = 'dns-${defaultTunnel.outboundTag}';
-      if (!defaultTunnel.kind.hasOwnResolver) {
+      final tag = 'dns-${defaultExit.outboundTag}';
+      // A group dials the DoT server through whichever member is active (F16).
+      if (defaultTunnel?.kind.hasOwnResolver != true) {
         dnsServers.add({
           'type': 'tls',
           'tag': tag,
           'server': defaultTunnelDoTServer,
-          'detour': defaultTunnel.outboundTag,
+          'detour': defaultExit.outboundTag,
         });
       }
       dnsFinal = tag;
@@ -402,13 +525,13 @@ abstract final class SingBoxConfigGenerator {
       // Real-answer name mappings keep unsniffable flows to Direct exceptions
       // out of the default tunnel; without one they only let a poisoned ISP
       // answer mislabel raw-IP flows (H4, docs/design/03-routing.md).
-      if (defaultTunnel != null) 'reverse_mapping': true,
+      if (defaultExit != null) 'reverse_mapping': true,
     };
     final route = <String, Object?>{
       'rules': routeRules,
       'rule_set': ruleSetRefs,
       // A missing default fails closed by construction instead of leaking.
-      'final': defaultTunnel?.outboundTag ?? 'direct',
+      'final': defaultExit?.outboundTag ?? 'direct',
       'auto_detect_interface': true,
       'default_domain_resolver': 'dns-direct',
       'find_process': true,
@@ -416,7 +539,10 @@ abstract final class SingBoxConfigGenerator {
     final config = <String, Object?>{
       'log': {'level': store.settings.logLevel.singBoxLevel, 'timestamp': true},
       'dns': dns,
-      'inbounds': [tunInbound(carving: carved, platform: input.platform)],
+      'inbounds': [
+        tunInbound(carving: carved, platform: input.platform),
+        ...proxyInbounds,
+      ],
       'outbounds': outbounds,
       if (endpoints.isNotEmpty) 'endpoints': endpoints,
       'route': route,
@@ -431,16 +557,66 @@ abstract final class SingBoxConfigGenerator {
 
     return SingBoxOutput(
       config: '${JsonText.render(config)}\n',
-      ruleSets: RuleSetGenerator.generate(
-        tunnels: routed,
+      ruleSets: RuleSetGenerator.generateForExits(
+        exits: [
+          ...routed.map(RoutedExit.tunnel),
+          ...routedGroups.map(RoutedExit.group),
+        ],
         activeRules: activeRules,
         exceptions: exceptions,
         platform: input.platform,
       ),
       routedTunnels: routed,
+      routedGroups: routedGroups,
       defaultTunnel: defaultTunnel,
+      defaultExit: defaultExit,
     );
   }
+
+  /// The block list's DNS rule (NXDOMAIN) and route rule (reject), the
+  /// exceptions folded in as an inverted half of a logical `and` (F18). Null
+  /// while the switch is off or the build ships no list.
+  static ({Map<String, Object?> dns, Map<String, Object?> route, String path})?
+  blockListRules(BlockListSettings settings, {required String? path}) {
+    if (!settings.isEnabled || path == null) return null;
+    final exceptions = settings.exceptions;
+    Map<String, Object?> rule(Map<String, Object?> action) {
+      if (exceptions.isEmpty) {
+        return {'rule_set': SingBoxConstants.blockListTag, ...action};
+      }
+      return {
+        'type': 'logical',
+        'mode': 'and',
+        'rules': [
+          {'rule_set': SingBoxConstants.blockListTag},
+          {
+            'domain': exceptions,
+            'domain_suffix': exceptions.map((host) => '.$host').toList(),
+            'invert': true,
+          },
+        ],
+        ...action,
+      };
+    }
+
+    return (
+      dns: rule({'action': 'predefined', 'rcode': 'NXDOMAIN'}),
+      route: rule({'action': 'reject'}),
+      path: path,
+    );
+  }
+
+  /// SOCKS5 + HTTP CONNECT on one loopback port, no authentication (F17). No
+  /// `domain_strategy`: the outbound dials by the name the client handed over.
+  static Map<String, Object?> mixedInbound({
+    required String tag,
+    required int port,
+  }) => {
+    'type': 'mixed',
+    'tag': tag,
+    'listen': LocalProxy.listenAddress,
+    'listen_port': port,
+  };
 
   /// OpenVPN remotes split into address CIDRs and lowercased hostnames,
   /// unique in store order. Resolved addresses are sorted beside each name.

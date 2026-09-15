@@ -1,5 +1,6 @@
 import 'package:collection/collection.dart';
 import 'package:wayfork/core/json_text.dart';
+import 'package:wayfork/core/model/local_proxy.dart';
 import 'package:wayfork/core/support/uuid.dart';
 
 final class Remote {
@@ -816,6 +817,7 @@ final class Tunnel {
     required int slot,
     required TunnelKind kind,
     DateTime? createdAt,
+    LocalProxy? localProxy,
   }) => Tunnel._(
     id: _uuid(id ?? Uuid.generate(), 'id'),
     name: name,
@@ -825,6 +827,7 @@ final class Tunnel {
     createdAt: createdAt == null
         ? _wholeSeconds(DateTime.now())
         : createdAt.toUtc(),
+    localProxy: localProxy,
   );
 
   const Tunnel._({
@@ -834,6 +837,7 @@ final class Tunnel {
     required this.slot,
     required this.kind,
     required this.createdAt,
+    required this.localProxy,
   });
 
   factory Tunnel.fromJson(Map<String, Object?> json) => Tunnel(
@@ -843,6 +847,9 @@ final class Tunnel {
     slot: _int(json, 'slot'),
     kind: TunnelKind.fromJson(_map(json['kind'], 'kind')),
     createdAt: JsonCoding.decodeDate(_string(json, 'createdAt')),
+    localProxy: json['localProxy'] == null
+        ? null
+        : LocalProxy.fromJson(_map(json['localProxy'], 'localProxy')),
   );
 
   static const maxSlots = 32;
@@ -855,6 +862,10 @@ final class Tunnel {
   final int slot;
   final TunnelKind kind;
   final DateTime createdAt;
+
+  /// F17: a loopback port that sends an app through this tunnel; null = never
+  /// turned on.
+  final LocalProxy? localProxy;
 
   String get outboundTag => '$outboundTagPrefix$id';
 
@@ -877,6 +888,7 @@ final class Tunnel {
     'slot': slot,
     'kind': kind.toJson(),
     'createdAt': JsonCoding.encodeDate(createdAt),
+    if (localProxy != null) 'localProxy': localProxy!.toJson(),
   };
 
   Tunnel copyWith({
@@ -886,6 +898,7 @@ final class Tunnel {
     int? slot,
     TunnelKind? kind,
     DateTime? createdAt,
+    Object? localProxy = _unsetProxy,
   }) => Tunnel(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -893,6 +906,9 @@ final class Tunnel {
     slot: slot ?? this.slot,
     kind: kind ?? this.kind,
     createdAt: createdAt ?? this.createdAt,
+    localProxy: identical(localProxy, _unsetProxy)
+        ? this.localProxy
+        : localProxy as LocalProxy?,
   );
 
   @override
@@ -903,11 +919,15 @@ final class Tunnel {
       isEnabled == other.isEnabled &&
       slot == other.slot &&
       kind == other.kind &&
-      createdAt == other.createdAt;
+      createdAt == other.createdAt &&
+      localProxy == other.localProxy;
 
   @override
-  int get hashCode => Object.hash(id, name, isEnabled, slot, kind, createdAt);
+  int get hashCode =>
+      Object.hash(id, name, isEnabled, slot, kind, createdAt, localProxy);
 }
+
+const _unsetProxy = Object();
 
 DateTime _wholeSeconds(DateTime value) => DateTime.fromMillisecondsSinceEpoch(
   value.toUtc().millisecondsSinceEpoch ~/ 1000 * 1000,

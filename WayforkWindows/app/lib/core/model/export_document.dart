@@ -2,7 +2,9 @@ import 'package:collection/collection.dart';
 import 'package:wayfork/core/json_text.dart';
 import 'package:wayfork/core/model/rule.dart';
 import 'package:wayfork/core/model/settings.dart';
+import 'package:wayfork/core/model/local_proxy.dart';
 import 'package:wayfork/core/model/tunnel.dart';
+import 'package:wayfork/core/model/tunnel_group.dart';
 import 'package:wayfork/core/support/uuid.dart';
 
 final class Credentials {
@@ -111,6 +113,7 @@ final class ExportedTunnel {
     required DateTime createdAt,
     required TunnelKind kind,
     TunnelSecrets secrets = TunnelSecrets.none,
+    LocalProxy? localProxy,
   }) => ExportedTunnel._(
     id: _uuid(id, 'id'),
     name: name,
@@ -118,6 +121,7 @@ final class ExportedTunnel {
     createdAt: createdAt.toUtc(),
     kind: kind,
     secrets: secrets,
+    localProxy: localProxy,
   );
 
   factory ExportedTunnel.fromTunnel(
@@ -130,6 +134,7 @@ final class ExportedTunnel {
     createdAt: tunnel.createdAt,
     kind: tunnel.kind,
     secrets: secrets,
+    localProxy: tunnel.localProxy,
   );
 
   const ExportedTunnel._({
@@ -139,6 +144,7 @@ final class ExportedTunnel {
     required this.createdAt,
     required this.kind,
     required this.secrets,
+    required this.localProxy,
   });
 
   factory ExportedTunnel.fromJson(Map<String, Object?> json) => ExportedTunnel(
@@ -148,6 +154,9 @@ final class ExportedTunnel {
     createdAt: JsonCoding.decodeDate(_string(json, 'createdAt')),
     kind: TunnelKind.fromJson(_map(json['kind'], 'kind')),
     secrets: TunnelSecrets.fromJson(_map(json['secrets'], 'secrets')),
+    localProxy: json['localProxy'] == null
+        ? null
+        : LocalProxy.fromJson(_map(json['localProxy'], 'localProxy')),
   );
 
   final String id;
@@ -157,6 +166,9 @@ final class ExportedTunnel {
   final TunnelKind kind;
   final TunnelSecrets secrets;
 
+  /// F17; absent in files written before it.
+  final LocalProxy? localProxy;
+
   Map<String, Object?> toJson() => {
     'id': Uuid.encode(id),
     'name': name,
@@ -164,6 +176,7 @@ final class ExportedTunnel {
     'createdAt': JsonCoding.encodeDate(createdAt),
     'kind': kind.toJson(),
     'secrets': secrets.toJson(),
+    if (localProxy != null) 'localProxy': localProxy!.toJson(),
   };
 
   @override
@@ -174,11 +187,12 @@ final class ExportedTunnel {
       isEnabled == other.isEnabled &&
       createdAt == other.createdAt &&
       kind == other.kind &&
-      secrets == other.secrets;
+      secrets == other.secrets &&
+      localProxy == other.localProxy;
 
   @override
   int get hashCode =>
-      Object.hash(id, name, isEnabled, createdAt, kind, secrets);
+      Object.hash(id, name, isEnabled, createdAt, kind, secrets, localProxy);
 }
 
 enum ExportDocumentError { unknownFormat, newerVersion }
@@ -215,6 +229,7 @@ final class ExportDocument {
     required List<Rule> rules,
     required Settings settings,
     String? defaultTunnelID,
+    List<TunnelGroup> groups = const [],
   }) => ExportDocument._(
     format: formatName,
     version: currentVersion,
@@ -226,6 +241,7 @@ final class ExportDocument {
     defaultTunnelID: defaultTunnelID == null
         ? null
         : _uuid(defaultTunnelID, 'defaultTunnelID'),
+    groups: List.unmodifiable(groups),
   );
 
   const ExportDocument._({
@@ -237,6 +253,7 @@ final class ExportDocument {
     required this.rules,
     required this.settings,
     required this.defaultTunnelID,
+    required this.groups,
   });
 
   factory ExportDocument.fromJson(Map<String, Object?> json) =>
@@ -261,6 +278,14 @@ final class ExportDocument {
         defaultTunnelID: json['defaultTunnelID'] == null
             ? null
             : _uuid(_string(json, 'defaultTunnelID'), 'defaultTunnelID'),
+        groups: json['groups'] == null
+            ? const []
+            : List.unmodifiable(
+                _list(
+                  json,
+                  'groups',
+                ).map((value) => TunnelGroup.fromJson(_map(value, 'group'))),
+              ),
       );
 
   static const formatName = 'wayfork-export';
@@ -274,6 +299,9 @@ final class ExportDocument {
   final List<Rule> rules;
   final Settings settings;
   final String? defaultTunnelID;
+
+  /// F16; absent in files written before it.
+  final List<TunnelGroup> groups;
 
   static ExportDocument decode(String text) {
     final value = JsonCoding.decode(text);
@@ -302,6 +330,8 @@ final class ExportDocument {
     'settings': settings.toJson(),
     if (defaultTunnelID != null)
       'defaultTunnelID': Uuid.encode(defaultTunnelID!),
+    if (groups.isNotEmpty)
+      'groups': groups.map((group) => group.toJson()).toList(),
   };
 
   @override
@@ -314,7 +344,8 @@ final class ExportDocument {
       const ListEquality<ExportedTunnel>().equals(tunnels, other.tunnels) &&
       const ListEquality<Rule>().equals(rules, other.rules) &&
       settings == other.settings &&
-      defaultTunnelID == other.defaultTunnelID;
+      defaultTunnelID == other.defaultTunnelID &&
+      const ListEquality<TunnelGroup>().equals(groups, other.groups);
 
   @override
   int get hashCode => Object.hash(
@@ -326,6 +357,7 @@ final class ExportDocument {
     const ListEquality<Rule>().hash(rules),
     settings,
     defaultTunnelID,
+    const ListEquality<TunnelGroup>().hash(groups),
   );
 }
 

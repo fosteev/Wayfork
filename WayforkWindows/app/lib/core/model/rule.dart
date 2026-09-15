@@ -30,7 +30,34 @@ sealed class RuleTarget {
   const RuleTarget();
 
   String? get tunnelID;
+
+  /// F16: the group this target names, null otherwise.
+  String? get groupID;
+
+  /// The tunnel or group id; null for Direct.
+  String? get exitID => tunnelID ?? groupID;
   bool get isDirect;
+}
+
+/// A rule routed through a tunnel group (F16).
+final class RuleTargetGroup extends RuleTarget {
+  RuleTargetGroup(String groupID) : groupID = _uuid(groupID, 'groupID');
+
+  @override
+  final String groupID;
+
+  @override
+  String? get tunnelID => null;
+
+  @override
+  bool get isDirect => false;
+
+  @override
+  bool operator ==(Object other) =>
+      other is RuleTargetGroup && groupID == other.groupID;
+
+  @override
+  int get hashCode => groupID.hashCode ^ 0x5a5a;
 }
 
 final class RuleTargetTunnel extends RuleTarget {
@@ -38,6 +65,9 @@ final class RuleTargetTunnel extends RuleTarget {
 
   @override
   final String tunnelID;
+
+  @override
+  String? get groupID => null;
 
   @override
   bool get isDirect => false;
@@ -55,6 +85,9 @@ final class RuleTargetDirect extends RuleTarget {
 
   @override
   String? get tunnelID => null;
+
+  @override
+  String? get groupID => null;
 
   @override
   bool get isDirect => true;
@@ -118,6 +151,8 @@ final class Rule {
       target = const RuleTargetDirect();
     } else if (json['tunnelID'] case final String tunnelID) {
       target = RuleTargetTunnel(tunnelID);
+    } else if (json['groupID'] case final String groupID) {
+      target = RuleTargetGroup(groupID);
     } else {
       throw const FormatException('Rule needs a tunnelID or target: direct');
     }
@@ -139,6 +174,9 @@ final class Rule {
   final String? note;
 
   String? get tunnelID => target.tunnelID;
+
+  /// The tunnel or group this rule routes to; null for an exception (F16).
+  String? get exitID => target.exitID;
   bool get isException => target.isDirect;
   bool get isApp => match.isApp;
   bool get isIP => match.isIP;
@@ -149,6 +187,8 @@ final class Rule {
     'match': match.jsonValue,
     if (target case RuleTargetTunnel(:final tunnelID))
       'tunnelID': Uuid.encode(tunnelID)
+    else if (target case RuleTargetGroup(:final groupID))
+      'groupID': Uuid.encode(groupID)
     else
       'target': 'direct',
     'isEnabled': isEnabled,

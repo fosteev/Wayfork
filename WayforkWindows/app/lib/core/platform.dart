@@ -17,6 +17,12 @@ final class WayforkPlatform {
       ? '$directory\\bin\\openvpn.exe'
       : '$directory/Contents/Resources/bin/openvpn';
 
+  /// The bundled block list (F18); the service derives the same path from its
+  /// own install directory and accepts no other.
+  String blockListPath(String directory) => _windows
+      ? '$directory\\rulesets\\block-ads.srs'
+      : '$directory/Contents/Resources/rulesets/block-ads.srs';
+
   String normalizeAppPath(String raw) {
     if (_windows) return _normalizeWindowsAppPath(raw);
     return _normalizeMacOSAppPath(raw);

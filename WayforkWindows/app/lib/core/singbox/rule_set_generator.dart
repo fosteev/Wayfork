@@ -1,6 +1,7 @@
 import 'package:wayfork/core/json_text.dart';
 import 'package:wayfork/core/model/rule.dart';
 import 'package:wayfork/core/model/tunnel.dart';
+import 'package:wayfork/core/model/tunnel_group.dart';
 import 'package:wayfork/core/platform.dart';
 import 'package:wayfork/core/rules/rule_pattern.dart';
 import 'package:wayfork/core/support/ipv4_prefix.dart';
@@ -33,15 +34,29 @@ abstract final class RuleSetGenerator {
     required Map<String, List<Rule>> activeRules,
     List<Rule> exceptions = const [],
     WayforkPlatform platform = WayforkPlatform.windows,
+  }) => generateForExits(
+    exits: tunnels.map(RoutedExit.tunnel).toList(),
+    activeRules: activeRules,
+    exceptions: exceptions,
+    platform: platform,
+  );
+
+  /// The same for tunnels and groups alike (F16): `rules-t-<id>` /
+  /// `rules-g-<id>`.
+  static Map<String, String> generateForExits({
+    required List<RoutedExit> exits,
+    required Map<String, List<Rule>> activeRules,
+    List<Rule> exceptions = const [],
+    WayforkPlatform platform = WayforkPlatform.windows,
   }) {
     final files = <String, String>{
       directFileName: renderDirect(exceptions: exceptions, platform: platform),
       directIPFileName: renderIP(exceptions),
     };
-    for (final tunnel in tunnels) {
-      final rules = activeRules[tunnel.id] ?? const [];
-      files[tunnel.ruleSetFileName] = render(rules, platform: platform);
-      files[tunnel.ipRuleSetFileName] = renderIP(rules);
+    for (final exit in exits) {
+      final rules = activeRules[exit.id] ?? const [];
+      files[exit.ruleSetFileName] = render(rules, platform: platform);
+      files[exit.ipRuleSetFileName] = renderIP(rules);
     }
     return files;
   }

@@ -30,4 +30,21 @@ abstract final class SingBoxConstants {
 
   /// The DDR special-use name mDNSResponder queries to upgrade to DoH/DoT.
   static const ddrDiscoveryName = '_dns.resolver.arpa';
+
+  /// Constants shared by the service's prober and the `urltest` groups (F14,
+  /// F16): the same URL, so the numbers on the cards and the choice inside a
+  /// group agree.
+  static const probeURL = 'https://cp.cloudflare.com/generate_204';
+  static const probeIntervalSeconds = 10;
+  static const probeTimeoutSeconds = 5;
+  static const probeHistoryLength = 12;
+  static const probeFailureThreshold = 3;
+
+  /// `urltest` options of a *fastest* group (docs/design/03-routing.md).
+  static const groupProbeInterval = '${probeIntervalSeconds}s';
+  static const groupTolerance = 50;
+  static const groupIdleTimeout = '30m';
+
+  /// The bundled block list's rule-set tag (F18).
+  static const blockListTag = 'block-ads';
 }

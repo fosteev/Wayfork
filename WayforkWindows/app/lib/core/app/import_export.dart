@@ -3,7 +3,9 @@ import 'package:wayfork/core/model/export_document.dart';
 import 'package:wayfork/core/model/rule.dart';
 import 'package:wayfork/core/model/store.dart';
 import 'package:wayfork/core/platform.dart';
+import 'package:wayfork/core/model/local_proxy.dart';
 import 'package:wayfork/core/model/tunnel.dart';
+import 'package:wayfork/core/model/tunnel_group.dart';
 import 'package:wayfork/core/rules/rule_pattern_error.dart';
 import 'package:wayfork/core/secrets/secret_store.dart';
 
@@ -128,6 +130,13 @@ abstract final class StoreImporter {
           isEnabled: exported.isEnabled,
           kind: exported.kind,
           createdAt: exported.createdAt,
+          localProxy: _importedProxy(
+            exported.localProxy,
+            name: exported.name,
+            id: exported.id,
+            store: result,
+            warnings: warnings,
+          ),
         );
         result = result.copyWith(tunnels: tunnels);
         tunnelsUpdated += 1;
@@ -154,6 +163,13 @@ abstract final class StoreImporter {
           slot: slot,
           kind: exported.kind,
           createdAt: exported.createdAt,
+          localProxy: _importedProxy(
+            exported.localProxy,
+            name: exported.name,
+            id: exported.id,
+            store: result,
+            warnings: warnings,
+          ),
         ),
       );
       result = result.copyWith(tunnels: tunnels);
@@ -161,16 +177,61 @@ abstract final class StoreImporter {
       _collect(exported.secrets, id: exported.id, into: secrets);
     }
 
+    // F16: a group comes in when at least two of its members did; a colliding
+    // name is suffixed like a tunnel's. On Merge an existing group is replaced
+    // by id.
+    final tunnelIDs = result.tunnels.map((tunnel) => tunnel.id).toSet();
+    final groups = mode == ImportMode.replace
+        ? <TunnelGroup>[]
+        : [...result.groups];
+    result = result.copyWith(groups: groups);
+    for (final group in document.groups) {
+      final members = group.members.where(tunnelIDs.contains).toList();
+      if (members.length < TunnelGroup.minimumMembers) {
+        warnings.add(
+          'Group ${group.name} skipped: fewer than two of its tunnels made it '
+          'in',
+        );
+        continue;
+      }
+      var imported = group.copyWith(
+        members: members,
+        localProxy: _importedProxy(
+          group.localProxy,
+          name: group.name,
+          id: group.id,
+          store: result,
+          warnings: warnings,
+        ),
+      );
+      final index = groups.indexWhere((existing) => existing.id == group.id);
+      if (index >= 0) {
+        groups[index] = imported;
+      } else {
+        imported = imported.copyWith(
+          name: _availableName(
+            group.name,
+            id: group.id,
+            store: result,
+            warnings: warnings,
+          ),
+        );
+        groups.add(imported);
+      }
+      result = result.copyWith(groups: groups);
+    }
+    final exitIDs = {...tunnelIDs, ...result.groups.map((group) => group.id)};
+
     var rulesAdded = 0;
     var rulesUpdated = 0;
     var rulesSkipped = 0;
     final rules = mode == ImportMode.replace ? <Rule>[] : [...result.rules];
-    final tunnelIDs = result.tunnels.map((tunnel) => tunnel.id).toSet();
     for (final rule in document.rules) {
-      final tunnelID = rule.tunnelID;
-      if (tunnelID != null && !tunnelIDs.contains(tunnelID)) {
+      final exitID = rule.exitID;
+      if (exitID != null && !exitIDs.contains(exitID)) {
+        final what = rule.target.groupID == null ? 'tunnel' : 'group';
         warnings.add(
-          'Rule ${rule.pattern} skipped: tunnel ${_short(tunnelID)}… not found',
+          'Rule ${rule.pattern} skipped: $what ${_short(exitID)}… not found',
         );
         rulesSkipped += 1;
         continue;
@@ -192,7 +253,7 @@ abstract final class StoreImporter {
     // tunnel that made it in; on Replace the fresh store has none to begin with.
     final wanted = document.defaultTunnelID;
     if (wanted != null) {
-      if (tunnelIDs.contains(wanted)) {
+      if (exitIDs.contains(wanted)) {
         result = result.copyWith(defaultTunnelID: wanted);
       } else {
         warnings.add(
@@ -215,6 +276,33 @@ abstract final class StoreImporter {
   }
 
   static String _short(String id) => id.substring(0, 4);
+
+  /// F17: a port that another tunnel or group already holds is dropped with a
+  /// warning (the address is machine-local anyway); an invalid one too.
+  static LocalProxy? _importedProxy(
+    LocalProxy? proxy, {
+    required String name,
+    required String id,
+    required Store store,
+    required List<String> warnings,
+  }) {
+    if (proxy == null) return null;
+    if (!LocalProxy.isValidPort(proxy.port)) {
+      warnings.add(
+        'Local proxy port ${proxy.port} of $name dropped: outside 1024–65535',
+      );
+      return null;
+    }
+    final owner = store.localProxyPortOwner(proxy.port, excluding: id);
+    if (owner != null) {
+      warnings.add(
+        'Local proxy port ${proxy.port} of $name dropped: already used by '
+        '$owner',
+      );
+      return null;
+    }
+    return proxy;
+  }
 
   static String _availableName(
     String requested, {
@@ -315,6 +403,7 @@ abstract final class StoreExporter {
       rules: store.rules,
       settings: store.settings,
       defaultTunnelID: store.defaultTunnelID,
+      groups: store.groups,
     );
   }
 }

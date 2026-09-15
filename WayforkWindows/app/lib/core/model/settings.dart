@@ -98,6 +98,7 @@ final class Settings {
     this.overrideSystemDNS = true,
     this.logLevel = LogLevel.info,
     this.logRetentionDays = 7,
+    this.blockList = const BlockListSettings(),
   });
 
   factory Settings.fromJson(Map<String, Object?> json) => Settings(
@@ -113,6 +114,9 @@ final class Settings {
         ? LogLevel.info
         : LogLevel.fromJson(json['logLevel']),
     logRetentionDays: _intOr(json, 'logRetentionDays', 7),
+    blockList: json['blockList'] == null
+        ? const BlockListSettings()
+        : BlockListSettings.fromJson(_map(json['blockList'], 'blockList')),
   );
 
   final bool launchAtLogin;
@@ -124,6 +128,11 @@ final class Settings {
   final LogLevel logLevel;
   final int logRetentionDays;
 
+  /// F18: block ads and trackers, with the sites the list gets wrong.
+  final BlockListSettings blockList;
+
+  /// `blockList` is written only when it differs from the default, so a store
+  /// without it is byte-identical to one written before F18.
   Map<String, Object?> toJson() => {
     'launchAtLogin': launchAtLogin,
     'connectOnLaunch': connectOnLaunch,
@@ -133,6 +142,7 @@ final class Settings {
     'overrideSystemDNS': overrideSystemDNS,
     'logLevel': logLevel.jsonValue,
     'logRetentionDays': logRetentionDays,
+    if (blockList != const BlockListSettings()) 'blockList': blockList.toJson(),
   };
 
   Settings copyWith({
@@ -144,6 +154,7 @@ final class Settings {
     bool? overrideSystemDNS,
     LogLevel? logLevel,
     int? logRetentionDays,
+    BlockListSettings? blockList,
   }) => Settings(
     launchAtLogin: launchAtLogin ?? this.launchAtLogin,
     connectOnLaunch: connectOnLaunch ?? this.connectOnLaunch,
@@ -153,6 +164,7 @@ final class Settings {
     overrideSystemDNS: overrideSystemDNS ?? this.overrideSystemDNS,
     logLevel: logLevel ?? this.logLevel,
     logRetentionDays: logRetentionDays ?? this.logRetentionDays,
+    blockList: blockList ?? this.blockList,
   );
 
   @override
@@ -165,7 +177,8 @@ final class Settings {
       directDNS == other.directDNS &&
       overrideSystemDNS == other.overrideSystemDNS &&
       logLevel == other.logLevel &&
-      logRetentionDays == other.logRetentionDays;
+      logRetentionDays == other.logRetentionDays &&
+      blockList == other.blockList;
 
   @override
   int get hashCode => Object.hash(
@@ -177,7 +190,54 @@ final class Settings {
     overrideSystemDNS,
     logLevel,
     logRetentionDays,
+    blockList,
   );
+}
+
+/// The ads & trackers switch and its exceptions (F18,
+/// docs/design/01-data-model.md, "Block list"). The list itself ships with the
+/// app, not in the store.
+final class BlockListSettings {
+  const BlockListSettings({this.isEnabled = false, this.exceptions = const []});
+
+  factory BlockListSettings.fromJson(Map<String, Object?> json) {
+    final exceptions = json['exceptions'];
+    return BlockListSettings(
+      isEnabled: _boolOr(json, 'isEnabled', false),
+      exceptions: exceptions == null
+          ? const []
+          : (exceptions is List<Object?>
+                ? exceptions.map(_string).toList()
+                : throw const FormatException('exceptions must be an array')),
+    );
+  }
+
+  final bool isEnabled;
+
+  /// Normalized hostnames with suffix semantics: *Never block* these and their
+  /// subdomains.
+  final List<String> exceptions;
+
+  Map<String, Object?> toJson() => {
+    'isEnabled': isEnabled,
+    'exceptions': exceptions,
+  };
+
+  BlockListSettings copyWith({bool? isEnabled, List<String>? exceptions}) =>
+      BlockListSettings(
+        isEnabled: isEnabled ?? this.isEnabled,
+        exceptions: exceptions ?? this.exceptions,
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is BlockListSettings &&
+      isEnabled == other.isEnabled &&
+      const ListEquality<String>().equals(exceptions, other.exceptions);
+
+  @override
+  int get hashCode =>
+      Object.hash(isEnabled, const ListEquality<String>().hash(exceptions));
 }
 
 Map<String, Object?> _map(Object? value, String name) {

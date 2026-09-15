@@ -178,8 +178,9 @@ extension AppModelRules on AppModel {
   String tunnelName(String id) => _store.tunnel(id)?.name ?? '?';
 
   String targetName(RuleTarget target) => switch (target) {
-    RuleTargetDirect() => 'Direct',
+    RuleTargetDirect() => 'Not via any tunnel',
     RuleTargetTunnel(:final tunnelID) => tunnelName(tunnelID),
+    RuleTargetGroup(:final groupID) => _store.group(groupID)?.name ?? 'Group',
   };
 
   Future<void> _updateRule(String id, Rule Function(Rule rule) mutate) =>
