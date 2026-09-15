@@ -85,6 +85,14 @@ struct TunnelRowView: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer()
+            // F14: the same number as the popover card, for connected tunnels only.
+            if model.globalState.isRunning,
+                summary.glyph == .up || summary.text.hasPrefix("Not reachable")
+            {
+                let latency = model.latency(for: tunnel)
+                LatencyLabel(sample: latency)
+                if let latency { SparklineView(sample: latency) }
+            }
             Toggle(
                 "Enabled",
                 isOn: Binding(

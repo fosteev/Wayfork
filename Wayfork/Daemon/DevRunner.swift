@@ -81,6 +81,12 @@ final class ConsoleClient: NSObject, WayforkClientXPC, Sendable {
             parts.append("\(id.prefix(8)) \(Self.describe(counters))")
         }
         parts.append("direct \(Self.describe(snapshot.direct))")
+        // F14: the last probe per tunnel, so the prober can be verified without the app.
+        for (id, sample) in snapshot.latency.sorted(by: { $0.key < $1.key }) {
+            let value =
+                sample.unreachable ? "unreachable" : sample.milliseconds.map { "\($0) ms" } ?? "—"
+            parts.append("\(id.prefix(8)) \(value)")
+        }
         print(parts.joined(separator: "  "))
     }
 

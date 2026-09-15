@@ -124,3 +124,106 @@ extension View {
         )
     }
 }
+
+/// `62 ms` in the band colour, or the red words when the tunnel is unreachable; `—` in
+/// tertiary while no probe has answered yet (F14, docs/design/02-ux.md, "Variant C").
+struct LatencyLabel: View {
+    let sample: LatencySample?
+
+    var body: some View {
+        Group {
+            if let sample, sample.unreachable {
+                Text("Not reachable").fontWeight(.semibold).foregroundStyle(.red)
+            } else if let sample, let milliseconds = sample.milliseconds {
+                (Text("\(milliseconds)").fontWeight(.medium) + Text(" ms").font(.system(size: 10)))
+                    .foregroundStyle(bandColor(LatencyBand(milliseconds: milliseconds)))
+                    .monospacedDigit()
+            } else {
+                Text("—").foregroundStyle(.tertiary)
+            }
+        }
+        .font(.system(size: 13))
+        .lineLimit(1)
+        .help(
+            sample.map(LatencyFormat.tooltip)
+                ?? "Measured through the tunnel every \(Int(LatencyProbe.interval)) s")
+    }
+}
+
+/// Last 2 minutes of probes, 64 × 24 pt, newest at the right edge; failed probes leave a
+/// dashed baseline segment (F14).
+struct SparklineView: View {
+    let sample: LatencySample
+    nonisolated static let size = CGSize(width: 64, height: 24)
+    /// Values above this are drawn at the top edge.
+    nonisolated static let ceiling = 400.0
+
+    var body: some View {
+        let points = sample.history
+        let latest = sample.milliseconds ?? points.compactMap { $0 }.last ?? 0
+        let color = sample.unreachable ? Color.red : bandColor(LatencyBand(milliseconds: latest))
+        Canvas { context, size in
+            let slots = max(LatencyProbe.historyLength, 2)
+            let step = size.width / CGFloat(slots - 1)
+            let offset = slots - points.count
+            let baseline = size.height - 2
+            func point(_ index: Int, _ value: Int) -> CGPoint {
+                let share = min(Double(value), Self.ceiling) / Self.ceiling
+                return CGPoint(
+                    x: CGFloat(index + offset) * step,
+                    y: baseline - CGFloat(share) * (size.height - 4))
+            }
+            var line = Path()
+            var gaps = Path()
+            var open = false
+            for (index, value) in points.enumerated() {
+                if let value {
+                    let p = point(index, value)
+                    if open { line.addLine(to: p) } else { line.move(to: p) }
+                    open = true
+                } else {
+                    open = false
+                    let x = CGFloat(index + offset) * step
+                    gaps.move(to: CGPoint(x: x, y: baseline))
+                    gaps.addLine(to: CGPoint(x: min(x + step, size.width), y: baseline))
+                }
+            }
+            context.stroke(
+                line, with: .color(color),
+                style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+            context.stroke(
+                gaps, with: .color(.secondary.opacity(0.5)),
+                style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
+            if let last = points.last, let value = last {
+                let p = point(points.count - 1, value)
+                context.fill(
+                    Path(ellipseIn: CGRect(x: p.x - 1.6, y: p.y - 1.6, width: 3.2, height: 3.2)),
+                    with: .color(color))
+            }
+        }
+        .frame(width: Self.size.width, height: Self.size.height)
+    }
+}
+
+/// Text colours for the latency bands: darker than the status dots so they read on white,
+/// lighter in dark mode (the prototype's `--okt` / `--warnt` / `--badt`).
+func bandColor(_ band: LatencyBand) -> Color {
+    Color(
+        nsColor: NSColor(name: nil) { appearance in
+            let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            switch band {
+            case .good:
+                return dark
+                    ? NSColor(red: 0.19, green: 0.82, blue: 0.35, alpha: 1)
+                    : NSColor(red: 0.12, green: 0.56, blue: 0.24, alpha: 1)
+            case .fair:
+                return dark
+                    ? NSColor(red: 1.0, green: 0.70, blue: 0.25, alpha: 1)
+                    : NSColor(red: 0.66, green: 0.35, blue: 0.0, alpha: 1)
+            case .poor:
+                return dark
+                    ? NSColor(red: 1.0, green: 0.41, blue: 0.38, alpha: 1)
+                    : NSColor(red: 0.82, green: 0.20, blue: 0.17, alpha: 1)
+            }
+        })
+}

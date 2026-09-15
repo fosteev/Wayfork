@@ -4,7 +4,8 @@ import WayforkDaemonCore
 
 /// Polls sing-box's Clash API once a second while it runs and pushes per-exit aggregates to
 /// the subscribed client (docs/design/05-daemon.md, "Traffic sampling"). Totals survive
-/// sing-box restarts (`pause` + `start`) and go back to zero on `reset` (Turn Off).
+/// sing-box restarts (`pause` + `start`) and go back to zero on `reset` (Turn Off). The
+/// latency prober (F14) runs alongside and its samples ride in every snapshot.
 actor TrafficSampler {
     static let interval: Duration = .seconds(1)
     static let requestTimeout: TimeInterval = 0.9
@@ -15,6 +16,7 @@ actor TrafficSampler {
     }
 
     private let hub: ClientHub
+    private let prober: LatencyProber
     private let session: URLSession
     private var accumulator = TrafficAccumulator()
     private var poll: Task<Void, Never>?
@@ -25,8 +27,9 @@ actor TrafficSampler {
     /// so each streak logs once (H3).
     private var oneWayWarned: Set<String> = []
 
-    init(hub: ClientHub) {
+    init(hub: ClientHub, prober: LatencyProber) {
         self.hub = hub
+        self.prober = prober
         let configuration = URLSessionConfiguration.ephemeral
         configuration.connectionProxyDictionary = [:]  // loopback only, never via a proxy
         configuration.timeoutIntervalForRequest = TrafficSampler.requestTimeout
@@ -36,9 +39,10 @@ actor TrafficSampler {
     }
 
     /// sing-box is up on `endpoint`: (re)start polling; the per-connection map starts over.
-    func start(_ endpoint: ClashAPIEndpoint) {
-        pause()
+    func start(_ endpoint: ClashAPIEndpoint) async {
+        await pause()
         accumulator.restartConnections(at: Date())
+        await prober.start(endpoint)
         generation += 1
         let generation = generation
         poll = Task { [weak self] in
@@ -51,17 +55,19 @@ actor TrafficSampler {
     }
 
     /// sing-box went down: stop polling, keep the totals.
-    func pause() {
+    func pause() async {
         poll?.cancel()
         poll = nil
         failing = false
         oneWayWarned = []
+        await prober.pause()
     }
 
     /// Turn Off: stop and forget everything.
-    func reset() {
-        pause()
+    func reset() async {
+        await pause()
         accumulator.reset()
+        await prober.reset()
     }
 
     private func sample(_ endpoint: ClashAPIEndpoint, generation: Int) async {
@@ -75,7 +81,8 @@ actor TrafficSampler {
             let decoded = try ClashConnections.decode(data)
             // Paused or restarted while the request was in flight: drop the sample.
             guard generation == self.generation, poll != nil else { return }
-            let snapshot = accumulator.ingest(decoded.connections, at: Date())
+            var snapshot = accumulator.ingest(decoded.connections, at: Date())
+            snapshot.latency = await prober.current()
             if failing {
                 failing = false
                 hub.post(.info, "traffic: clash api reachable again")

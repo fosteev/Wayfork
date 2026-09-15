@@ -20,6 +20,7 @@ actor Supervisor {
     let hub: ClientHub
     private let engine: SingBoxEngine
     private let sampler: TrafficSampler
+    private let prober: LatencyProber
     private let resolver: ResolverOverride
     private let events: AsyncStream<SupervisorEvent>
     private let eventSink: AsyncStream<SupervisorEvent>.Continuation
@@ -41,7 +42,8 @@ actor Supervisor {
         buildID = CodeSignature.uniqueIdentifier(ofExecutableAt: env.executablePath)
         (events, eventSink) = AsyncStream.makeStream(
             of: SupervisorEvent.self, bufferingPolicy: .unbounded)
-        sampler = TrafficSampler(hub: hub)
+        prober = LatencyProber(hub: hub)
+        sampler = TrafficSampler(hub: hub, prober: prober)
         engine = SingBoxEngine(env: env, hub: hub, events: eventSink, sampler: sampler)
         resolver = ResolverOverride(env: env, hub: hub, events: eventSink)
     }
@@ -51,6 +53,7 @@ actor Supervisor {
     /// Kills leftovers from a previous daemon, wipes `run/`, removes stale routes.
     func bootstrap() async {
         startEventPump()
+        await prober.setTunnelSource { [weak self] in await self?.probeTargets() ?? [] }
         await resolver.restoreLeftover()
         await killLeftovers()
         wipeRunDirectory()
@@ -177,12 +180,25 @@ actor Supervisor {
     }
 
     func reconnect(tunnelID: String) async -> ApplyResult {
-        await serialized {
+        await prober.retry(tunnel: tunnelID)
+        return await serialized {
             guard let session = await self.sessions[tunnelID] else {
-                return .failure(.tunnelNotFound(id: tunnelID))
+                // A proxy or WireGuard tunnel has no process: Retry only clears the probe streak.
+                return await self.plan?.routedTunnelIDs.contains(tunnelID) == true
+                    ? .success : .failure(.tunnelNotFound(id: tunnelID))
             }
             await session.reconnect()
             return .success
+        }
+    }
+
+    /// Tunnels the prober measures: routed by the plan, and connected when OpenVPN (F14).
+    private func probeTargets() -> [String] {
+        guard let plan else { return [] }
+        return plan.routedTunnelIDs.filter { id in
+            guard sessions[id] != nil else { return true }
+            if case .connected = status.tunnels[id] { return true }
+            return false
         }
     }
 

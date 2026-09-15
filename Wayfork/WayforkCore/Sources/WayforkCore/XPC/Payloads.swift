@@ -243,18 +243,72 @@ public struct TrafficSnapshot: Codable, Sendable, Hashable {
     public var tunnels: [String: TrafficCounters]
     /// Everything that bypasses the tunnels.
     public var direct: TrafficCounters
+    /// Latency probes by tunnel id (F14); only tunnels the prober has looked at. Absent in
+    /// a payload from a build that predates it.
+    public var latency: [String: LatencySample]
 
     public init(
         sampledAt: Date, interval: TimeInterval, tunnels: [String: TrafficCounters],
-        direct: TrafficCounters
+        direct: TrafficCounters, latency: [String: LatencySample] = [:]
     ) {
         self.sampledAt = sampledAt
         self.interval = interval
         self.tunnels = tunnels
         self.direct = direct
+        self.latency = latency
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sampledAt, interval, tunnels, direct, latency
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sampledAt = try c.decode(Date.self, forKey: .sampledAt)
+        interval = try c.decode(TimeInterval.self, forKey: .interval)
+        tunnels = try c.decode([String: TrafficCounters].self, forKey: .tunnels)
+        direct = try c.decode(TrafficCounters.self, forKey: .direct)
+        latency = try c.decodeIfPresent([String: LatencySample].self, forKey: .latency) ?? [:]
     }
 
     public func counters(forTunnel id: String) -> TrafficCounters {
         tunnels[id] ?? .zero
     }
+}
+
+/// What the daemon's prober knows about one tunnel (docs/design/05-daemon.md, "Tunnel
+/// latency"): one HTTP request through the tunnel every `LatencyProbe.interval`.
+public struct LatencySample: Codable, Sendable, Hashable {
+    /// The last probe's round trip; nil when it failed.
+    public var milliseconds: Int?
+    /// The last `LatencyProbe.historyLength` probes, oldest first; nil entries failed.
+    public var history: [Int?]
+    public var failedInARow: Int
+    /// `failedInARow >= LatencyProbe.failureThreshold`.
+    public var unreachable: Bool
+    public var lastSuccess: Date?
+
+    public init(
+        milliseconds: Int? = nil, history: [Int?] = [], failedInARow: Int = 0,
+        unreachable: Bool = false, lastSuccess: Date? = nil
+    ) {
+        self.milliseconds = milliseconds
+        self.history = history
+        self.failedInARow = failedInARow
+        self.unreachable = unreachable
+        self.lastSuccess = lastSuccess
+    }
+}
+
+/// Constants shared by the daemon's prober, the `urltest` groups the generator emits (F16)
+/// and the card (docs/design/03-routing.md, "Tunnel latency probe").
+public enum LatencyProbe {
+    /// Small, anycast, no cookies; the same URL sing-box's `urltest` groups use.
+    public static let url = "https://cp.cloudflare.com/generate_204"
+    public static let interval: TimeInterval = 10
+    public static let timeout: TimeInterval = 5
+    /// 2 minutes at `interval`.
+    public static let historyLength = 12
+    /// Failures in a row that mark a tunnel *unreachable*.
+    public static let failureThreshold = 3
 }

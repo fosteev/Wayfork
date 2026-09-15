@@ -180,6 +180,11 @@ final class AppModel {
 
     var directTraffic: TrafficCounters? { traffic?.direct }
 
+    /// Latest probe of a tunnel (F14); nil before the first round or without a fresh sample.
+    func latency(for tunnel: Tunnel) -> LatencySample? {
+        traffic?.latency[tunnel.id.uuidString.lowercased()]
+    }
+
     func ruleCount(for tunnelID: UUID) -> Int {
         store.rules(for: tunnelID).count
     }
@@ -192,15 +197,16 @@ final class AppModel {
         StatusText.card(
             tunnel: tunnel, state: tunnelState(tunnel.id), global: globalState,
             ruleCount: ruleCount(for: tunnel.id), missingSecret: missingSecrets.contains(tunnel.id),
-            isDefault: effectiveDefaultTunnel?.id == tunnel.id)
+            isDefault: effectiveDefaultTunnel?.id == tunnel.id, latency: latency(for: tunnel))
     }
 
     func rowSummary(for tunnel: Tunnel) -> (text: String, glyph: StatusGlyph, isError: Bool) {
         StatusText.rowSummary(
             tunnel: tunnel, state: tunnelState(tunnel.id), global: globalState,
             missingSecret: missingSecrets.contains(tunnel.id),
-            isDefault: effectiveDefaultTunnel?.id == tunnel.id, ruleCount: ruleCount(for: tunnel.id)
-        )
+            isDefault: effectiveDefaultTunnel?.id == tunnel.id,
+            ruleCount: ruleCount(for: tunnel.id),
+            latency: latency(for: tunnel))
     }
 
     // MARK: - Default tunnel (F8)

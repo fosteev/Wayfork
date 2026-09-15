@@ -140,12 +140,17 @@ struct TunnelCardView: View {
     var body: some View {
         let card = model.card(for: tunnel)
         let counters = model.trafficCounters(for: tunnel)
+        let latency = model.latency(for: tunnel)
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 7) {
                 StatusGlyphView(glyph: card.glyph)
                 Text(tunnel.name).fontWeight(.semibold).lineLimit(1)
                 if card.isDefault { AccentBadge(text: "Default") }
                 Spacer(minLength: 4)
+                if showsLatency(card) {
+                    LatencyLabel(sample: latency)
+                    if let latency { SparklineView(sample: latency) }
+                }
                 actionButtons(card.actions)
             }
             HStack(spacing: 4) {
@@ -189,6 +194,11 @@ struct TunnelCardView: View {
     /// Rates only for connected tunnels while routing is on (F9).
     private func showsRate(_ card: TunnelPresentation) -> Bool {
         model.globalState.isRunning && card.glyph == .up
+    }
+
+    /// Latency for connected and unreachable tunnels while routing is on (F14).
+    private func showsLatency(_ card: TunnelPresentation) -> Bool {
+        model.globalState.isRunning && (card.glyph == .up || card.status == "Not reachable")
     }
 
     @ViewBuilder

@@ -462,3 +462,42 @@ private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased()
             "bank.example.org", match: .suffix, target: .tunnel(work.id), store: withException,
             excluding: nil) == .success("bank.example.org"))
 }
+
+// MARK: - F14
+
+@Test func unreachableTunnelCardsAndRows() {
+    let (_, work, home, _) = sampleStore()
+    let now = Date()
+    let down = LatencySample(
+        history: [62, nil, nil, nil], failedInARow: 3, unreachable: true,
+        lastSuccess: now.addingTimeInterval(-130))
+    let card = StatusText.card(
+        tunnel: home, state: nil, global: .on, ruleCount: 1, latency: down, now: now)
+    #expect(card.status == "Not reachable")
+    #expect(card.detail == "No answer through the tunnel for 2 min · 1 site waits")
+    #expect(card.isError && card.glyph == .failed)
+    #expect(card.actions == [.reconnect])
+
+    // An OpenVPN tunnel that is not connected keeps its own state; its probes are skipped.
+    let reconnecting = StatusText.card(
+        tunnel: work, state: .reconnecting(attempt: 2, nextIn: 4, reason: nil), global: .on,
+        ruleCount: 3, latency: down, now: now)
+    #expect(reconnecting.status == "Reconnecting…")
+    let connected = StatusText.card(
+        tunnel: work, state: .connected(since: now, ip: nil, interface: "utun101"), global: .on,
+        ruleCount: 3, latency: down, now: now)
+    #expect(connected.status == "Not reachable")
+    #expect(connected.detail == "No answer through the tunnel for 2 min · 3 sites wait")
+
+    let fine = LatencySample(milliseconds: 62, history: [60, 62], lastSuccess: now)
+    let up = StatusText.card(tunnel: home, state: nil, global: .on, ruleCount: 1, latency: fine)
+    #expect(up.status == "Connected")
+
+    let row = StatusText.rowSummary(
+        tunnel: home, state: nil, global: .on, ruleCount: 1, latency: down, now: now)
+    #expect(row.text == "Not reachable · No answer through the tunnel for 2 min · VLESS · 1 site")
+    #expect(row.isError)
+    // Off: no probes are shown at all.
+    let off = StatusText.card(tunnel: home, state: nil, global: .off, ruleCount: 1, latency: down)
+    #expect(off.status == "Not running")
+}

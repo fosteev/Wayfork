@@ -315,7 +315,8 @@ runs and the Clash API is up:
   is re-evaluated at once rather than after three more rounds.
 - A round is skipped while an `apply` or `stop` is in flight; a sing-box restart clears
   the histories.
-- **On-demand Probe** (07-rule-testing.md): `probe(host:, via:)` is a new XPC call —
+- **On-demand Probe** (07-rule-testing.md; lands together with the L2 tester, not with
+  M9): `probe(host:, via:)` is a new XPC call —
   `GET /proxies/<tag>/delay?url=https://<host>/&timeout=10000` once, result or error
   returned in the reply, nothing stored. The tag is the exit the resolver named (`t-<id>`,
   `g-<id>`, or `direct` — sing-box lists `direct` under `/proxies` too). The daemon

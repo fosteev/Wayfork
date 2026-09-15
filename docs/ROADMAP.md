@@ -684,15 +684,22 @@ approved before any of the boxes below.
 
 - [x] Design notes as listed above (written 2026-09-15; 03-routing.md § Tunnel latency
       probe, 05-daemon.md § Tunnel latency, 07-rule-testing.md § Probe).
-- [ ] Daemon: periodic probe per connected tunnel, latency and probe failures in the
-      traffic snapshot.
-- [ ] App: current latency next to the rates, sparkline on the card, *unreachable* state —
+- [x] Daemon: periodic probe per connected tunnel, latency and probe failures in the
+      traffic snapshot (2026-09-15: `LatencyProber` + `LatencyTracker`, Clash API
+      `/proxies/<tag>/delay`, 10 s rounds, 3 strikes → unreachable, `latency` in
+      `TrafficSnapshot`; Retry/reconnect clears the streak; dev mode prints the numbers).
+- [x] App: current latency next to the rates, sparkline on the card, *unreachable* state —
       the card of variant C board C1 (number + unit, band colour, 2-minute sparkline at
-      24 pt); the Probe line of board C5 in rule testing.
+      24 pt) (2026-09-15: `LatencyLabel`, `SparklineView`, the same on the Settings row).
+- [ ] The Probe line of board C5 in rule testing — waits for the L2 tester itself
+      (07-rule-testing.md, nothing in the code yet); the daemon-side `probe` call and the
+      Probe button land together with L2.
 - [ ] Windows: the same in the Go service and the Flutter card
       ([ROADMAP-windows.md](ROADMAP-windows.md)).
 - [ ] Manual check: the number tracks a known-slow tunnel; pulling the server's plug turns
-      the card *unreachable* within the designed window and back on reconnect.
+      the card *unreachable* within the designed window (30 s) and back on reconnect.
+      Code done 2026-09-15 (238 core tests, Debug build clean); the maintainer runs it —
+      `wayforkctl` / dev mode prints `<id> 62 ms` per snapshot.
 
 ### M10 — Friendlier screens (variant C, existing features only)
 

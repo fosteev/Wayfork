@@ -20,6 +20,21 @@ public struct ClashAPIEndpoint: Sendable, Hashable {
         URL(string: "http://\(externalController)/connections")!
     }
 
+    /// `GET /proxies/<tag>/delay?url=…&timeout=<ms>`: sing-box sends one request to `url`
+    /// through the outbound `tag` and answers `{"delay": <ms>}` (F14).
+    public func delayURL(outboundTag tag: String, probeURL: String, timeout: TimeInterval) -> URL {
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = "127.0.0.1"
+        components.port = Int(port)
+        components.path = "/proxies/\(tag)/delay"
+        components.queryItems = [
+            URLQueryItem(name: "url", value: probeURL),
+            URLQueryItem(name: "timeout", value: String(Int(timeout * 1000))),
+        ]
+        return components.url!
+    }
+
     /// A free loopback port and a fresh 32-byte secret.
     public static func generate() throws(ClashAPIError) -> ClashAPIEndpoint {
         ClashAPIEndpoint(port: try freeLoopbackPort(), secret: randomSecret())
@@ -101,5 +116,14 @@ public enum ClashAPIConfig {
             throw .serialization("\(error)")
         }
         return String(decoding: data, as: UTF8.self) + "\n"
+    }
+}
+
+/// `{"delay": 62}` from the delay endpoint; a non-200 answer means the probe failed.
+public enum ClashDelay {
+    private struct Body: Decodable { var delay: Int }
+
+    public static func decode(_ data: Data) throws -> Int {
+        try JSONDecoder().decode(Body.self, from: data).delay
     }
 }

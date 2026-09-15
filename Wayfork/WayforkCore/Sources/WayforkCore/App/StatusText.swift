@@ -196,10 +196,12 @@ public enum StatusText {
 
     // MARK: - Tunnel cards and rows
 
-    /// Popover card for one tunnel.
+    /// Popover card for one tunnel. `latency` (F14) turns a connected card into *Not
+    /// reachable* while its probes fail; `now` dates the "for N min" in that line.
     public static func card(
         tunnel: Tunnel, state: TunnelState?, global: GlobalState, ruleCount: Int,
-        missingSecret: Bool = false, isDefault: Bool = false
+        missingSecret: Bool = false, isDefault: Bool = false, latency: LatencySample? = nil,
+        now: Date = Date()
     ) -> TunnelPresentation {
         let sites = count(ruleCount, "site")
         if !tunnel.isEnabled {
@@ -232,6 +234,14 @@ public enum StatusText {
         case .starting, .on, .degraded:
             break
         }
+        // F14: probes through the tunnel failed N times in a row.
+        if let latency, latency.unreachable, !tunnel.kind.isOpenVPN || state?.isConnected == true {
+            return TunnelPresentation(
+                glyph: .failed, status: "Not reachable",
+                detail:
+                    "\(LatencyFormat.unreachableDetail(latency, now: now)) · \(waiting(ruleCount))",
+                isError: true, actions: [.reconnect], isDefault: isDefault)
+        }
         guard tunnel.kind.isOpenVPN else {
             return TunnelPresentation(
                 glyph: .up, status: "Connected", detail: sites, isDefault: isDefault)
@@ -261,18 +271,26 @@ public enum StatusText {
         }
     }
 
+    /// `1 site waits` / `3 sites wait` — what a tunnel that cannot deliver holds up.
+    static func waiting(_ ruleCount: Int) -> String {
+        "\(count(ruleCount, "site")) wait\(ruleCount == 1 ? "s" : "")"
+    }
+
     /// One-line summary for a Settings › Tunnels row.
     public static func rowSummary(
         tunnel: Tunnel, state: TunnelState?, global: GlobalState, missingSecret: Bool = false,
-        isDefault: Bool = false, ruleCount: Int = 0
+        isDefault: Bool = false, ruleCount: Int = 0, latency: LatencySample? = nil,
+        now: Date = Date()
     ) -> (text: String, glyph: StatusGlyph, isError: Bool) {
         let presentation = card(
             tunnel: tunnel, state: state, global: global, ruleCount: ruleCount,
-            missingSecret: missingSecret, isDefault: isDefault)
+            missingSecret: missingSecret, isDefault: isDefault, latency: latency, now: now)
         // The card's detail repeats the site count for the quiet states; the row appends it
         // itself, so only a reason or an attempt is carried over.
         var parts = [presentation.status]
-        if presentation.isError || presentation.glyph == .transitioning {
+        if presentation.status == "Not reachable", let latency {
+            parts.append(LatencyFormat.unreachableDetail(latency, now: now))
+        } else if presentation.isError || presentation.glyph == .transitioning {
             parts.append(presentation.detail)
         }
         parts.append(typeBadge(tunnel.kind))

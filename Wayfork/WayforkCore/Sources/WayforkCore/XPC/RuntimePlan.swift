@@ -51,6 +51,18 @@ public struct RuntimePlan: Codable, Sendable, Hashable {
         overrideSystemDNS = try c.decodeIfPresent(Bool.self, forKey: .overrideSystemDNS) ?? true
     }
 
+    /// Ids of the tunnels the config routes: every routed tunnel has a `rules-t-<id>.json`
+    /// (docs/design/03-routing.md, "Rule-set files"), so the daemon needs no separate list
+    /// to know whom to probe (F14).
+    public var routedTunnelIDs: [String] {
+        singBox.ruleSets.keys.compactMap { name in
+            guard name.hasPrefix("rules-t-"), name.hasSuffix(".json"), !name.hasSuffix("-ip.json")
+            else { return nil }
+            return String(name.dropFirst("rules-t-".count).dropLast(".json".count))
+        }
+        .sorted()
+    }
+
     /// Hash over everything the daemon acts on; reported back as `RuntimeStatus.planHash`.
     public var planHash: String {
         var parts = [singBox.configHash]
