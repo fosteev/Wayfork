@@ -434,5 +434,611 @@ body { background:#eaeaea; }
 </div></div>
 <div class="note" style="max-width:720px;margin-top:10px">Two Windows-only states. <b>First run</b>: an empty Tunnels page (no popover-first onboarding as on macOS) with drag-to-import and the two add buttons. <b>Service-missing</b>: the analogue of the macOS helper-approval alert — but Windows has no <code>SMAppService</code> approval, so the failure mode is "the service is stopped / not installed", resolved by a UAC-elevated restart or repair. Shown whenever the app cannot reach <code>\\.\pipe\wayfork</code>.</div></section>
 
+<!-- ==== variant C port (W9-W15) ==== -->
+<style>
+.vc .bd {background:#dcdcdc; padding:20px; box-sizing:border-box; display:flex; flex-direction:column; gap:14px; align-items:flex-start; border-radius:8px; }
+.vc .bd.dk {background:#3a3a3c; }
+.vc .note {font-size:11px; color:rgba(0,0,0,0.55); line-height:14px; max-width:720px; }
+.vc .bd.dk .note {color:rgba(255,255,255,0.7); }
+.vc .t {--bg:rgba(246,246,246,0.97); --win:#ececec; --side:#e3e3e5; --card:#fff; --card2:#f6f6f7; --fg:rgba(0,0,0,0.85); --fg2:rgba(0,0,0,0.52); --fg3:rgba(0,0,0,0.3);
+     --sep:rgba(0,0,0,0.09); --line:rgba(0,0,0,0.14); --field:#fff; --fieldb:rgba(0,0,0,0.16); --btn:#fff; --btnsh:0 0 0 0.5px rgba(0,0,0,0.18),0 0.5px 1px rgba(0,0,0,0.18);
+     --hl:rgba(0,0,0,0.06); --acc:#0a60ff; --onacc:#fff; --ok:#34c759; --okt:#1e8e3e; --warn:#ff9500; --warnt:#a85a00; --bad:#ff3b30; --badt:#d0342c; --dim:#8e8e93;
+     --cardsh:0 0 0 0.5px rgba(0,0,0,0.08),0 1px 2px rgba(0,0,0,0.06); --winsh:0 12px 36px rgba(0,0,0,0.28); color:var(--fg); }
+.vc .t.dark {--bg:rgba(40,40,42,0.97); --win:#2a2a2c; --side:#232325; --card:rgba(255,255,255,0.07); --card2:rgba(255,255,255,0.04); --fg:rgba(255,255,255,0.9); --fg2:rgba(255,255,255,0.56); --fg3:rgba(255,255,255,0.32);
+     --sep:rgba(255,255,255,0.1); --line:rgba(255,255,255,0.16); --field:rgba(255,255,255,0.08); --fieldb:rgba(255,255,255,0.18); --btn:rgba(255,255,255,0.12); --btnsh:0 0 0 0.5px rgba(255,255,255,0.1);
+     --hl:rgba(255,255,255,0.08); --acc:#3d7bff; --onacc:#fff; --ok:#30d158; --okt:#30d158; --warn:#ff9f0a; --warnt:#ffb340; --bad:#ff453a; --badt:#ff6961; --dim:#98989d;
+     --cardsh:0 0 0 0.5px rgba(255,255,255,0.06); --winsh:0 12px 36px rgba(0,0,0,0.6); }
+.vc .sec {color:var(--fg2); }
+.vc .ter {color:var(--fg3); }
+.vc .okt {color:var(--okt); }
+.vc .warnt {color:var(--warnt); }
+.vc .badt {color:var(--badt); }
+.vc .btn {display:inline-flex; align-items:center; justify-content:center; gap:5px; height:20px; padding:0 10px; border-radius:5px; background:var(--btn); box-shadow:var(--btnsh); font-size:13px; color:var(--fg); white-space:nowrap; flex:none; }
+.vc .btn.pri {background:var(--acc); color:var(--onacc); box-shadow:0 0 0 0.5px rgba(0,0,0,0.1),0 0.5px 1px rgba(0,0,0,0.2); }
+.vc .btn.big {height:26px; padding:0 16px; font-weight:500; }
+.vc .btn.sq {width:22px; padding:0; }
+.vc .btn.dis {opacity:0.45; }
+.vc .btn.danger {color:var(--badt); }
+.vc .btn svg {width:12px; height:12px; }
+.vc .tf {display:flex; align-items:center; gap:6px; height:22px; padding:0 7px; background:var(--field); border:1px solid var(--fieldb); border-radius:5px; font-size:13px; box-sizing:border-box; color:var(--fg); }
+.vc .tf.ph {color:var(--fg3); }
+.vc .tf.focus {border-color:transparent; box-shadow:0 0 0 3.5px rgba(10,96,255,0.35),0 0 0 1px var(--acc); }
+.vc .tf.err {border-color:transparent; box-shadow:0 0 0 3px rgba(255,59,48,0.3),0 0 0 1px var(--bad); }
+.vc .tf.round {border-radius:11px; }
+.vc .pop {display:inline-flex; align-items:center; height:20px; padding:0 2px 0 8px; border-radius:5px; background:var(--btn); box-shadow:var(--btnsh); gap:6px; font-size:13px; white-space:nowrap; color:var(--fg); flex:none; }
+.vc .pop .chev {width:16px; height:16px; border-radius:4px; background:var(--acc); display:flex; align-items:center; justify-content:center; flex:none; }
+.vc .pop .chev svg {width:10px; height:10px; }
+.vc .pop.plain {box-shadow:none; background:transparent; padding-left:4px; }
+.vc .pop.plain .chev {background:transparent; }
+.vc .sw {width:26px; height:15px; border-radius:8px; background:var(--hl); position:relative; box-shadow:0 0 0 0.5px rgba(0,0,0,0.1) inset; flex:none; }
+.vc .sw i {position:absolute; top:1px; left:1px; width:13px; height:13px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,0.3); }
+.vc .sw.on {background:var(--acc); }
+.vc .sw.on i {left:12px; }
+.vc .sw.dis {opacity:0.4; }
+.vc .t.dark .sw {background:rgba(255,255,255,0.2); }
+.vc .t.dark .sw.on {background:var(--acc); }
+.vc .cb {width:14px; height:14px; border-radius:3.5px; background:var(--field); box-shadow:0 0 0 0.5px rgba(0,0,0,0.25),0 0.5px 1px rgba(0,0,0,0.15); display:inline-flex; align-items:center; justify-content:center; flex:none; }
+.vc .cb.on {background:var(--acc); box-shadow:none; }
+.vc .cb svg {width:10px; height:10px; }
+.vc .rd {width:14px; height:14px; border-radius:50%; background:var(--field); box-shadow:0 0 0 0.5px rgba(0,0,0,0.25),0 0.5px 1px rgba(0,0,0,0.15); display:inline-flex; align-items:center; justify-content:center; flex:none; }
+.vc .rd.on {background:var(--acc); box-shadow:none; }
+.vc .rd.on i {width:5px; height:5px; border-radius:50%; background:#fff; display:block; }
+.vc .seg {display:inline-flex; background:var(--hl); border-radius:6px; padding:2px; gap:2px; }
+.vc .seg span {white-space:nowrap; padding:1px 10px; border-radius:5px; font-size:12px; color:var(--fg2); }
+.vc .seg span.on {background:var(--card); box-shadow:0 0.5px 2px rgba(0,0,0,0.2); color:var(--fg); }
+.vc .t.dark .seg span.on {background:rgba(255,255,255,0.16); }
+.vc .badge {font-size:10px; font-weight:600; padding:1px 5px; border-radius:4px; background:var(--hl); color:var(--fg2); letter-spacing:0.2px; white-space:nowrap; }
+.vc .badge.acc {background:rgba(10,96,255,0.12); color:var(--acc); }
+.vc .chip {font-size:11px; padding:2px 8px; border-radius:10px; background:var(--hl); color:var(--fg2); white-space:nowrap; }
+.vc .chip.warn {background:rgba(255,149,0,0.14); color:var(--warnt); }
+.vc .chip.bad {background:rgba(255,59,48,0.12); color:var(--badt); }
+.vc .chip.ok {background:rgba(52,199,89,0.14); color:var(--okt); }
+.vc .d {width:9px; height:9px; border-radius:50%; flex:none; display:inline-block; }
+.vc .d.ok {background:var(--ok); }
+.vc .d.bad {background:var(--bad); }
+.vc .d.warn {background:var(--warn); }
+.vc .d.off {box-shadow:0 0 0 1.2px var(--dim) inset; }
+.vc .d.half {box-shadow:0 0 0 1.2px var(--warn) inset; background:linear-gradient(90deg,var(--warn) 50%,transparent 50%); }
+.vc .d.grp {border-radius:2px; background:var(--acc); }
+.vc .icn {width:14px; height:14px; flex:none; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.vc .icn.sm {width:12px; height:12px; }
+.vc .ai {width:16px; height:16px; border-radius:4px; display:inline-flex; align-items:center; justify-content:center; font-size:9px; font-weight:700; color:#fff; flex:none; letter-spacing:0; }
+.vc .grip {color:var(--fg3); font-size:12px; letter-spacing:-2px; }
+.vc .link {color:var(--acc); text-decoration:none; }
+.vc .lat {display:inline-flex; align-items:baseline; gap:2px; font-variant-numeric:tabular-nums; white-space:nowrap; font-weight:500; }
+.vc .lat small {font-size:10px; font-weight:400; opacity:0.85; }
+.vc .lat.ok {color:var(--okt); }
+.vc .lat.warn {color:var(--warnt); }
+.vc .lat.bad {color:var(--badt); }
+.vc .lat.none {color:var(--fg3); font-weight:400; }
+.vc .spark {width:64px; height:24px; flex:none; display:block; }
+.vc .spark polyline {fill:none; stroke-width:1.5; stroke-linejoin:round; stroke-linecap:round; }
+.vc .spark .base {stroke:var(--sep); stroke-width:1; }
+.vc .spark .gap {stroke:var(--fg3); stroke-width:1; stroke-dasharray:2 2; }
+.vc .spark.ok polyline.v {stroke:var(--okt); }
+.vc .spark.warn polyline.v {stroke:var(--warnt); }
+.vc .spark.bad polyline.v {stroke:var(--badt); }
+.vc .spark circle {fill:currentColor; }
+.vc .spark.ok circle {fill:var(--okt); }
+.vc .spark.warn circle {fill:var(--warnt); }
+.vc .pv {width:360px; border-radius:12px; padding:12px; box-sizing:border-box; display:flex; flex-direction:column; gap:8px; background:var(--bg); box-shadow:0 0 0 0.5px rgba(0,0,0,0.25),0 12px 32px rgba(0,0,0,0.25); }
+.vc .t.dark .pv {box-shadow:0 0 0 0.5px rgba(255,255,255,0.15),0 12px 32px rgba(0,0,0,0.5); }
+.vc .pv .hd {display:flex; align-items:center; gap:8px; }
+.vc .pv .hd .t {font-weight:600; font-size:13px; flex:1; }
+.vc .pv .sub {font-size:11px; color:var(--fg2); margin-top:-5px; padding-left:26px; line-height:14px; }
+.vc .pv .sep {height:1px; background:var(--sep); }
+.vc .pv .sh {display:flex; align-items:center; font-size:11px; font-weight:600; color:var(--fg2); padding:2px 2px 0; gap:6px; }
+.vc .pv .sh .r {margin-left:auto; font-weight:400; }
+.vc .card {background:var(--card); border-radius:8px; padding:7px 10px; display:flex; flex-direction:column; gap:3px; box-shadow:var(--cardsh); }
+.vc .card .l1 {display:flex; align-items:center; gap:7px; min-height:24px; }
+.vc .card .l1 .n {font-weight:600; }
+.vc .card .l1 .fill {flex:1; }
+.vc .card .l2 {font-size:11px; color:var(--fg2); padding-left:16px; display:flex; gap:6px; align-items:center; white-space:nowrap; line-height:14px; }
+.vc .card .l2 b {font-weight:500; color:var(--fg); }
+.vc .card.dim {opacity:0.55; }
+.vc .card .mem {display:flex; align-items:center; gap:7px; font-size:11px; padding:2px 0 0 16px; color:var(--fg2); min-height:18px; }
+.vc .card .mem .n {color:var(--fg); font-weight:500; width:44px; }
+.vc .card .mem .lat {font-weight:400; margin-left:auto; }
+.vc .card .mem.active .n {color:var(--fg); }
+.vc .card .mem .tick {color:var(--acc); font-weight:600; }
+.vc .pv .ib {width:22px; height:20px; border-radius:5px; background:var(--btn); box-shadow:var(--btnsh); display:flex; align-items:center; justify-content:center; flex:none; }
+.vc .pv .drow {display:flex; align-items:center; gap:7px; padding:0 10px; font-size:11px; color:var(--fg2); min-height:20px; }
+.vc .pv .drow .dn {font-weight:500; color:var(--fg); font-size:12px; }
+.vc .pv .drow .rate {margin-left:auto; }
+.vc .rate {font-size:11px; color:var(--fg2); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.vc .pv .rec {display:flex; align-items:center; gap:8px; min-height:26px; padding:0 4px 0 2px; border-radius:6px; }
+.vc .pv .rec .dom {font-size:12px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.vc .pv .rec .app {font-size:11px; color:var(--fg2); white-space:nowrap; }
+.vc .pv .rec .x {color:var(--fg3); font-size:13px; width:12px; text-align:center; }
+.vc .pv .rec.hov {background:var(--hl); }
+.vc .pv .empty {font-size:11px; color:var(--fg2); line-height:14px; padding:6px 10px 8px; background:var(--card2); border-radius:8px; display:flex; gap:8px; align-items:flex-start; }
+.vc .pv .empty svg {margin-top:1px; }
+.vc .pv .ft {display:flex; align-items:center; gap:14px; font-size:12px; color:var(--fg2); }
+.vc .pv .ft span b {font-weight:500; color:var(--fg); }
+.vc .pv .ft .q {margin-left:auto; }
+.vc .pv .qa {display:flex; gap:6px; align-items:center; }
+.vc .pv .qa .tf {flex:1; }
+.vc .pv .first {display:flex; flex-direction:column; align-items:center; text-align:center; gap:8px; padding:18px 12px 14px; }
+.vc .pv .first .h {font-weight:600; font-size:14px; }
+.vc .pv .first p {margin:0; font-size:12px; color:var(--fg2); line-height:16px; max-width:280px; }
+.vc .mbar {width:520px; height:24px; background:rgba(240,240,240,0.92); border-bottom:1px solid rgba(0,0,0,0.1); display:flex; align-items:center; justify-content:flex-end; gap:2px; padding:0 10px; box-sizing:border-box; border-radius:8px 8px 0 0; font-size:13px; color:rgba(0,0,0,0.85); }
+.vc .mbar > div {height:20px; padding:0 5px; display:flex; align-items:center; border-radius:4px; }
+.vc .mbar .cur {background:rgba(0,0,0,0.12); }
+.vc .t.dark .mbar {background:rgba(50,50,52,0.92); border-color:rgba(255,255,255,0.1); color:rgba(255,255,255,0.9); }
+.vc .t.dark .mbar .cur {background:rgba(255,255,255,0.2); }
+.vc .win {width:720px; height:480px; background:var(--win); border:1px solid rgba(0,0,0,0.18); border-radius:10px; box-shadow:var(--winsh); overflow:hidden; display:flex; flex-direction:column; box-sizing:border-box; position:relative; }
+.vc .t.dark .win {border-color:rgba(255,255,255,0.12); }
+.vc .tl {display:flex; gap:8px; }
+.vc .tl span {width:12px; height:12px; border-radius:50%; display:block; }
+.vc .titlebar {height:28px; display:flex; align-items:center; padding:0 12px; position:relative; flex:none; }
+.vc .title {position:absolute; left:0; right:0; text-align:center; font-weight:600; font-size:13px; pointer-events:none; }
+.vc .content {flex:1; display:flex; min-height:0; border-top:1px solid var(--sep); }
+.vc .side {width:150px; background:var(--side); border-right:1px solid var(--sep); padding:8px 6px; display:flex; flex-direction:column; gap:2px; flex:none; box-sizing:border-box; }
+.vc .sitem {display:flex; align-items:center; gap:8px; height:28px; padding:0 8px; border-radius:6px; font-size:13px; }
+.vc .sitem svg {width:20px; height:20px; stroke:var(--fg2); fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.vc .sitem.on {background:var(--hl); }
+.vc .main {flex:1; padding:14px 18px 16px; display:flex; flex-direction:column; gap:10px; overflow:hidden; min-width:0; }
+.vc .main > * {flex:none; }
+.vc .ph1 {font-size:20px; font-weight:700; }
+.vc .phd {display:flex; align-items:center; gap:10px; }
+.vc .phd .ph1 {flex:1; }
+.vc .group {background:var(--card); border:1px solid var(--sep); border-radius:6px; overflow:hidden; }
+.vc .row {display:flex; align-items:center; gap:12px; min-height:32px; padding:5px 12px; }
+.vc .row + .row {border-top:1px solid var(--sep); }
+.vc .row .lbl {flex:1; }
+.vc .row .hint {font-size:11px; color:var(--fg2); margin-top:1px; line-height:14px; }
+.vc .gh {font-size:11px; font-weight:600; color:var(--fg2); padding:0 0 4px 2px; }
+.vc .list {display:flex; flex-direction:column; }
+.vc .trow {display:flex; align-items:center; gap:10px; padding:0 12px; min-height:36px; }
+.vc .trow + .trow, .vc .trow + .xp, .vc .xp + .trow, .vc .xp + .trow2, .vc .trow2 + .trow {border-top:1px solid var(--sep); }
+.vc .trow .n {font-weight:600; width:64px; }
+.vc .trow .s {flex:1; color:var(--fg2); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.vc .trow .s b {font-weight:500; color:var(--fg); }
+.vc .trow .chv {color:var(--fg3); width:10px; height:10px; }
+.vc .trow.newg {color:var(--acc); font-size:13px; min-height:32px; border-top:1px solid var(--sep); }
+.vc .xp {background:var(--card2); padding:8px 12px 10px 33px; display:grid; grid-template-columns:96px 1fr; gap:6px 12px; align-items:center; font-size:12px; border-top:1px solid var(--sep); }
+.vc .xp .k {color:var(--fg2); text-align:right; }
+.vc .xp .v {display:flex; align-items:center; gap:8px; min-height:22px; }
+.vc .xp .tf {height:20px; }
+.vc .xp .hint {font-size:11px; color:var(--fg2); }
+.vc .xp .mrow {display:flex; align-items:center; gap:8px; min-height:22px; font-size:12px; }
+.vc .xp .mrow .n {font-weight:500; width:52px; }
+.vc .xp .mrow .lat {margin-left:auto; }
+.vc .rg .h {display:flex; align-items:center; gap:8px; padding:5px 12px; background:var(--card2); font-weight:600; border-bottom:1px solid var(--sep); min-height:20px; }
+.vc .rg .h {white-space:nowrap; }
+.vc .rg .h .hint {font-weight:400; font-size:11px; color:var(--fg2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.vc .rg .r {display:flex; align-items:center; gap:10px; padding:0 12px; height:26px; border-bottom:1px solid var(--sep); font-size:12px; }
+.vc .rg .r:last-child {border-bottom:none; }
+.vc .rg .r .p {width:190px; font-family:"SF Mono",Menlo,Monaco,Consolas,monospace; font-size:12px; }
+.vc .rg .r .m {width:110px; color:var(--fg2); }
+.vc .rg .r .w {flex:1; font-size:11px; color:var(--fg2); }
+.vc .rg .r.empty {color:var(--fg2); height:30px; }
+.vc .rg.dim {opacity:0.55; }
+.vc .strip {background:var(--card); border:1px solid var(--sep); border-radius:6px; overflow:hidden; }
+.vc .strip .h {display:flex; align-items:center; gap:8px; padding:5px 12px; font-weight:600; min-height:20px; border-bottom:1px solid var(--sep); }
+.vc .strip .h .hint {font-weight:400; font-size:11px; color:var(--fg2); }
+.vc .strip .rows {display:flex; flex-direction:column; }
+.vc .strip .rec {display:flex; align-items:center; gap:8px; height:26px; padding:0 12px; font-size:12px; border-bottom:1px solid var(--sep); }
+.vc .strip .rec:last-child {border-bottom:none; }
+.vc .strip .rec .dom {flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.vc .strip .rec .app {color:var(--fg2); font-size:11px; }
+.vc .strip .rec .x {color:var(--fg3); }
+.vc .tester {display:flex; align-items:center; gap:8px; font-size:13px; }
+.vc .tester .tf {width:230px; }
+.vc .res {display:flex; align-items:center; gap:8px; font-size:12px; padding:0 0 0 2px; min-height:20px; white-space:nowrap; }
+.vc .states .res {white-space:normal; }
+.vc .res b {font-weight:600; }
+.vc .res .arrow {color:var(--fg3); }
+.vc .disc {font-size:12px; color:var(--fg2); padding-left:14px; display:flex; flex-direction:column; gap:3px; }
+.vc .disc .ln {display:flex; gap:6px; }
+.vc .spin {width:12px; height:12px; border-radius:50%; border:1.5px solid var(--fg3); border-top-color:var(--fg); flex:none; }
+.vc .states {display:flex; flex-direction:column; gap:10px; width:360px; }
+.vc .states .st {background:var(--card); border-radius:6px; box-shadow:var(--cardsh); padding:6px 10px; display:flex; flex-direction:column; gap:4px; }
+.vc .states .cap {font-size:10px; font-weight:600; color:var(--fg3); text-transform:uppercase; letter-spacing:0.4px; }
+.vc .scrim {position:absolute; inset:0; background:rgba(0,0,0,0.18); }
+.vc .sheet {position:absolute; left:50%; top:0; transform:translateX(-50%); width:440px; background:var(--win); border-radius:0 0 10px 10px; box-shadow:0 10px 30px rgba(0,0,0,0.3),0 0 0 0.5px rgba(0,0,0,0.2); padding:16px 18px 14px; box-sizing:border-box; display:flex; flex-direction:column; gap:12px; }
+.vc .sheet .h {font-weight:600; font-size:14px; }
+.vc .sheet .frm {display:grid; grid-template-columns:72px 1fr; gap:10px 12px; align-items:start; font-size:13px; }
+.vc .sheet .frm .k {color:var(--fg2); text-align:right; padding-top:3px; }
+.vc .sheet .mem {display:flex; align-items:center; gap:8px; height:26px; padding:0 8px; font-size:12px; }
+.vc .sheet .mem + .mem {border-top:1px solid var(--sep); }
+.vc .sheet .mem .n {font-weight:500; flex:1; }
+.vc .sheet .mem.drag {background:var(--card); box-shadow:0 2px 8px rgba(0,0,0,0.2); border-radius:5px; transform:rotate(-0.6deg); }
+.vc .sheet .pol {display:flex; gap:8px; align-items:flex-start; font-size:12px; }
+.vc .sheet .pol .rd {margin-top:1px; }
+.vc .sheet .pol .x {color:var(--fg2); line-height:15px; }
+.vc .sheet .pol b {display:block; color:var(--fg); font-weight:500; }
+.vc .sheet .ft {display:flex; gap:8px; justify-content:flex-end; }
+.vc .callout {background:var(--card); border-radius:8px; box-shadow:var(--cardsh); padding:8px 12px; display:flex; flex-direction:column; gap:6px; font-size:12px; width:300px; box-sizing:border-box; }
+.vc .t.dark .callout {background:var(--win); box-shadow:0 0 0 0.5px rgba(255,255,255,0.15),0 6px 20px rgba(0,0,0,0.4); }
+.vc .callout .cap {font-size:10px; font-weight:600; color:var(--fg3); text-transform:uppercase; letter-spacing:0.4px; }
+
+/* ---- Windows 11 chrome for the variant C port ---- */
+.vc { font-family:"Segoe UI Variable","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif; }
+.vc .t { --win:#f3f3f3; --side:#ebebeb; --bg:rgba(249,249,249,0.97); --winsh:0 18px 50px rgba(0,0,0,0.30); }
+.vc .t.dark { --win:#202020; --side:#1c1c1c; --bg:rgba(43,43,43,0.97); --card:rgba(255,255,255,0.06); --card2:rgba(255,255,255,0.035); }
+.vc .win { width:860px; height:600px; border-radius:8px; border:1px solid rgba(0,0,0,0.14); }
+.vc .t.dark .win { border-color:rgba(255,255,255,0.1); }
+.vc .titlebar { height:32px; padding:0 0 0 12px; gap:8px; }
+.vc .titlebar .nm { font-size:12px; color:var(--fg2); flex:1; }
+.vc .wcap { display:flex; height:32px; margin-left:auto; }
+.vc .wcap span { width:46px; height:32px; display:flex; align-items:center; justify-content:center; color:var(--fg2); }
+.vc .wcap svg { width:10px; height:10px; stroke:currentColor; fill:none; stroke-width:1; }
+.vc .content { border-top:none; }
+.vc .side { width:200px; padding:8px; gap:3px; border-right:1px solid var(--sep); }
+.vc .sitem { height:36px; padding:0 10px; gap:10px; border-radius:5px; position:relative; }
+.vc .sitem svg { width:18px; height:18px; }
+.vc .sitem.on::before { content:""; position:absolute; left:-4px; top:8px; bottom:8px; width:3px; border-radius:2px; background:var(--acc); }
+.vc .sitem .cnt { margin-left:auto; font-size:11px; color:var(--fg3); }
+.vc .main { padding:20px 26px; gap:14px; background:var(--card2); }
+.vc .t.dark .main { background:transparent; }
+.vc .ph1 { font-size:22px; font-weight:600; }
+.vc .group, .vc .strip { border-radius:6px; }
+.vc .btn, .vc .tf, .vc .pop { border-radius:4px; }
+.vc .btn { height:24px; padding:0 12px; }
+.vc .btn.sq { width:26px; }
+.vc .tf { height:24px; }
+.vc .tf.focus { box-shadow:0 2px 0 -1px var(--acc) inset, 0 0 0 1px var(--fieldb); border-color:var(--fieldb); }
+.vc .pop { height:24px; }
+.vc .sw { width:36px; height:18px; border-radius:9px; }
+.vc .sw i { width:12px; height:12px; top:3px; left:3px; }
+.vc .sw.on i { left:21px; }
+.vc .pv { border-radius:8px; padding:10px; gap:9px; --bg:inherit; --fg:inherit; --fg2:inherit; --fg3:inherit; --card:inherit; --sep:inherit; --cardsh:inherit; --field:inherit; --fieldb:inherit; --btn:inherit; --btnsh:inherit; }
+.vc .pv .ib { width:24px; height:22px; border-radius:4px; }
+.vc .flyrow { display:flex; flex-direction:column-reverse; align-items:flex-end; width:520px; }
+.vc .flyrow .fly { margin:0 6px 8px 0; }
+.vc .taskbar { width:520px; height:48px; background:rgba(243,243,243,0.92); border-top:1px solid rgba(0,0,0,0.08); border-radius:0 0 8px 8px; display:flex; align-items:center; justify-content:flex-end; gap:16px; padding:0 16px; box-sizing:border-box; color:rgba(0,0,0,0.7); }
+.vc .taskbar .ticon { width:16px; height:16px; opacity:0.75; }
+.vc .taskbar .ticon.cur { opacity:1; outline:1px solid rgba(0,0,0,0.25); outline-offset:4px; border-radius:2px; }
+.vc .taskbar .clk { font-size:11px; text-align:right; line-height:13px; }
+.vc .t.dark .taskbar { background:rgba(32,32,32,0.94); border-color:rgba(255,255,255,0.08); color:rgba(255,255,255,0.85); }
+.vc .t.dark .taskbar .ticon.cur { outline-color:rgba(255,255,255,0.35); }
+.vc .sheet { top:50%; left:50%; transform:translate(-50%,-50%); border-radius:8px; width:460px; padding:20px 22px 18px; box-shadow:0 18px 50px rgba(0,0,0,0.3),0 0 0 1px rgba(0,0,0,0.12); }
+.vc .sheet .h { font-size:18px; font-weight:600; }
+.vc .sheet .ft { border-top:1px solid var(--sep); margin:4px -22px -18px; padding:14px 22px; background:var(--card2); border-radius:0 0 8px 8px; }
+.vc .sheet .ft .btn { min-width:90px; height:28px; }
+.vc .scrim { background:rgba(0,0,0,0.3); }
+.vc .card .l1 .n { flex:none; }
+.vc .pv .empty { flex:none; flex-direction:row; justify-content:flex-start; text-align:left; }
+</style>
+<div class="vc">
+
+<h1 id="vc" style="margin-top:56px">Variant C port (W9–W15)</h1>
+<div class="intro">The Windows twin of <a href="variant-c.html">variant C</a> — the friendlier redraw for F14–F18 — drawn after the macOS boards, board for board, with only the chrome changed: tray flyout anchored above the taskbar, one main window with the left NavigationView (Dashboard · Tunnels · Rules · General · Logs) at 860 × 600, Fluent controls (4 px radii, 36 × 18 toggles, accent bar in the nav), a centred ContentDialog for the new group. Strings are the same as on macOS except where the platform names differ ("Same as Windows", "Open Wayfork at sign-in", "Service installed"). The Dashboard page, Logs, the right-click menu and the service-missing alert (W2, W3, W7, W8) are unchanged by this wave. The friction audit that drove the redraw is the comment at the top of variant-c.html.</div>
+<ol class="toc">
+<li><a href="#W9">9 · Tray flyout, on — light (Recent filled) and dark (Recent empty)</a></li>
+<li><a href="#W10">10 · Flyout states: off · can't connect · no tunnels yet</a></li>
+<li><a href="#W11">11 · Main window › Tunnels — light (tunnel expanded, local proxy on) and dark (group expanded)</a></li>
+<li><a href="#W12">12 · Main window › Rules with the Recent strip</a></li>
+<li><a href="#W13">13 · Rule test with Probe</a></li>
+<li><a href="#W14">14 · Main window › General — Block ads and trackers</a></li>
+<li><a href="#W15">15 · New group dialog</a></li>
+</ol>
+<section id="W9" class="board"><h2>9 · Tray flyout, on — light (Recent filled) and dark (Recent empty)</h2>
+<div class="bd" style="width:1120px"><div style="display:flex;gap:40px;align-items:flex-start">
+
+<div class="t"><div class="flyrow"><div class="taskbar"><svg class="ticon cur" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 16V9.5M9 9.5L4 3.5M9 9.5L14 3.5"/><circle cx="4" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="14" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="9" cy="16" r="1.9" fill="currentColor" stroke="none"/></svg><svg class="ticon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0"/><circle cx="12" cy="19" r="0.8" fill="currentColor"/></svg><svg class="ticon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg><div class="clk">11:42<br>15.09.2026</div></div>
+<div class="fly"><div class="pv">
+  <div class="hd"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M9 16V9.5M9 9.5L4 3.5M9 9.5L14 3.5"/><circle cx="4" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="14" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="9" cy="16" r="1.9" fill="currentColor" stroke="none"/></svg><span class="t">Wayfork</span><div class="sw on"><i></i></div></div>
+  <div class="sub">On — everything goes via Work, 8 sites via other tunnels</div>
+  <div class="sep"></div>
+  <div class="sh">Tunnels</div>
+  <div class="card"><div class="l1"><span class="d ok"></span><span class="n">Work</span><span class="badge acc">Default</span><span class="fill"></span><span class="lat ok">62<small>ms</small></span><svg class="spark ok" viewBox="0 0 64 24"><polyline class="v" points="0.0,18.8 2.8,19.3 5.6,18.5 8.3,18.5 11.1,19.1 13.9,19.2 16.7,19.0 19.5,18.6 22.3,18.9 25.0,19.2 27.8,18.8 30.6,18.3 33.4,18.6 36.2,19.3 39.0,19.0 41.7,19.3 44.5,19.0 47.3,18.6 50.1,18.8 52.9,19.0 55.7,18.7 58.4,18.1 61.2,19.2 64.0,18.5"/><circle cx="64" cy="18.5" r="1.6"/></svg></div>
+    <div class="l2"><b>Connected</b><span>·</span><span class="rate">↓ 1.2 MB/s ↑ 85 KB/s</span><span>·</span><span>3 sites</span></div></div>
+  <div class="card"><div class="l1"><span class="d ok"></span><span class="n">Home</span><span class="fill"></span><span class="lat warn">180<small>ms</small></span><svg class="spark warn" viewBox="0 0 64 24"><polyline class="v" points="0.0,12.6 2.8,13.8 5.6,12.8 8.3,11.1 11.1,12.3 13.9,12.9 16.7,11.5 19.5,11.3 22.3,14.7 25.0,11.0 27.8,14.2 30.6,14.2 33.4,11.0 36.2,14.8 39.0,13.5 41.7,14.9 44.5,14.7 47.3,12.3 50.1,11.3 52.9,11.3 55.7,14.5 58.4,13.6 61.2,12.3 64.0,12.5"/><circle cx="64" cy="12.5" r="1.6"/></svg></div>
+    <div class="l2"><b>Connected</b><span>·</span><span>Idle</span><span>·</span><span>2 sites</span></div></div>
+  <div class="card"><div class="l1"><span class="d grp"></span><span class="n">Streaming</span><span class="badge">Group</span><span class="fill"></span><span class="lat warn">180<small>ms</small></span><svg class="spark warn" viewBox="0 0 64 24"><polyline class="v" points="0.0,12.6 2.8,13.8 5.6,12.8 8.3,11.1 11.1,12.3 13.9,12.9 16.7,11.5 19.5,11.3 22.3,14.7 25.0,11.0 27.8,14.2 30.6,14.2 33.4,11.0 36.2,14.8 39.0,13.5 41.7,14.9 44.5,14.7 47.3,12.3 50.1,11.3 52.9,11.3 55.7,14.5 58.4,13.6 61.2,12.3 64.0,12.5"/><circle cx="64" cy="12.5" r="1.6"/></svg></div>
+    <div class="l2"><b>Fastest</b><span>·</span><span>using Home</span><span>·</span><span class="rate">↓ 640 KB/s ↑ 20 KB/s</span><span>·</span><span>3 sites</span></div>
+    <div class="mem active"><span class="d ok"></span><span class="n">Home</span><span class="tick">✓ in use</span><span class="lat warn">180<small>ms</small></span></div>
+    <div class="mem"><span class="d bad"></span><span class="n">Lab</span><span>skipped — not reachable</span><span class="lat none">—</span></div></div>
+  <div class="card"><div class="l1"><span class="d bad"></span><span class="n">Lab</span><span class="fill"></span><span class="lat bad" style="font-weight:600">Not reachable</span><svg class="spark bad" viewBox="0 0 64 24"><polyline class="v" points="0,17 3,18 6,16.1 8.5,17.8 11,16.3 14,18.4 17,17.3 19.5,17.4 22,17.5 25,18.1 28,18.1 30.5,17.5 33,16.8 36,17.8"/><polyline class="gap" points="38,22 64,22"/></svg><div class="ib" title="Retry"><svg class="icn sm" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg></div></div>
+    <div class="l2"><span class="badt">No answer through the tunnel for 2 min</span><span>·</span><span>1 site waits</span></div></div>
+  <div class="drow"><span class="d off"></span><span class="dn">Not via any tunnel</span><span class="sec">· 2 sites</span><span class="rate">↓ 200 KB/s ↑ 12 KB/s</span></div>
+  <div class="sep"></div>
+  <div class="sh">Recent <span class="ter" style="font-weight:400">— went via Work, last 5 min</span><span class="r">5 of 12</span></div>
+  <div class="rec hov"><span class="ai" style="background:#0f6cbd">E</span><span class="dom">news.example.com</span><span class="app">Edge</span><div class="pop"><span>Route via</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></div><span class="x">×</span></div>
+  <div class="rec"><span class="ai" style="background:#0f6cbd">E</span><span class="dom">static.cdn.example.net</span><span class="app">Edge</span><div class="pop"><span>Route via</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></div><span class="x" style="visibility:hidden">×</span></div>
+  <div class="rec"><span class="ai" style="background:#2aa3e0">T</span><span class="dom">api.telegram.org</span><span class="app">Telegram</span><div class="pop"><span>Route via</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></div><span class="x" style="visibility:hidden">×</span></div>
+  <div class="rec"><span class="ai" style="background:#4a154b">S</span><span class="dom">files.slack.com</span><span class="app">Slack</span><div class="pop"><span>Route via</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></div><span class="x" style="visibility:hidden">×</span></div>
+  <div class="rec"><span class="ai" style="background:#3a3a3c">›_</span><span class="dom">registry.npmjs.org</span><span class="app">Terminal</span><div class="pop"><span>Route via</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></div><span class="x" style="visibility:hidden">×</span></div>
+  <div class="sep"></div>
+  <div class="qa"><div class="tf ph">Site to route, e.g. example.com</div><div class="pop"><span>Work</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10l5-5 5 5"/><path d="M7 14l5 5 5-5"/></svg></span></div><div class="btn pri">Add</div></div>
+  <div class="sep"></div>
+  <div class="ft"><span><b>Settings</b></span><span><b>Logs</b></span><span class="q"><b>Quit</b></span></div>
+</div></div></div></div>
+
+<div class="t dark"><div class="flyrow"><div class="taskbar"><svg class="ticon cur" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 16V9.5M9 9.5L4 3.5M9 9.5L14 3.5"/><circle cx="4" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="14" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="9" cy="16" r="1.9" fill="currentColor" stroke="none"/></svg><svg class="ticon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0"/><circle cx="12" cy="19" r="0.8" fill="currentColor"/></svg><svg class="ticon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg><div class="clk">11:42<br>15.09.2026</div></div>
+<div class="fly"><div class="pv">
+  <div class="hd"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M9 16V9.5M9 9.5L4 3.5M9 9.5L14 3.5"/><circle cx="4" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="14" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="9" cy="16" r="1.9" fill="currentColor" stroke="none"/></svg><span class="t">Wayfork</span><div class="sw on"><i></i></div></div>
+  <div class="sub">On — everything goes via Work, 8 sites via other tunnels</div>
+  <div class="sep"></div>
+  <div class="sh">Tunnels</div>
+  <div class="card"><div class="l1"><span class="d ok"></span><span class="n">Work</span><span class="badge acc">Default</span><span class="fill"></span><span class="lat ok">62<small>ms</small></span><svg class="spark ok" viewBox="0 0 64 24"><polyline class="v" points="0.0,18.8 2.8,19.3 5.6,18.5 8.3,18.5 11.1,19.1 13.9,19.2 16.7,19.0 19.5,18.6 22.3,18.9 25.0,19.2 27.8,18.8 30.6,18.3 33.4,18.6 36.2,19.3 39.0,19.0 41.7,19.3 44.5,19.0 47.3,18.6 50.1,18.8 52.9,19.0 55.7,18.7 58.4,18.1 61.2,19.2 64.0,18.5"/><circle cx="64" cy="18.5" r="1.6"/></svg></div>
+    <div class="l2"><b>Connected</b><span>·</span><span class="rate">↓ 1.2 MB/s ↑ 85 KB/s</span><span>·</span><span>3 sites</span></div></div>
+  <div class="card"><div class="l1"><span class="d ok"></span><span class="n">Home</span><span class="fill"></span><span class="lat warn">180<small>ms</small></span><svg class="spark warn" viewBox="0 0 64 24"><polyline class="v" points="0.0,12.6 2.8,13.8 5.6,12.8 8.3,11.1 11.1,12.3 13.9,12.9 16.7,11.5 19.5,11.3 22.3,14.7 25.0,11.0 27.8,14.2 30.6,14.2 33.4,11.0 36.2,14.8 39.0,13.5 41.7,14.9 44.5,14.7 47.3,12.3 50.1,11.3 52.9,11.3 55.7,14.5 58.4,13.6 61.2,12.3 64.0,12.5"/><circle cx="64" cy="12.5" r="1.6"/></svg></div>
+    <div class="l2"><b>Connected</b><span>·</span><span>Idle</span><span>·</span><span>2 sites</span></div></div>
+  <div class="card"><div class="l1"><span class="d grp"></span><span class="n">Streaming</span><span class="badge">Group</span><span class="fill"></span><span class="lat warn">180<small>ms</small></span><svg class="spark warn" viewBox="0 0 64 24"><polyline class="v" points="0.0,12.6 2.8,13.8 5.6,12.8 8.3,11.1 11.1,12.3 13.9,12.9 16.7,11.5 19.5,11.3 22.3,14.7 25.0,11.0 27.8,14.2 30.6,14.2 33.4,11.0 36.2,14.8 39.0,13.5 41.7,14.9 44.5,14.7 47.3,12.3 50.1,11.3 52.9,11.3 55.7,14.5 58.4,13.6 61.2,12.3 64.0,12.5"/><circle cx="64" cy="12.5" r="1.6"/></svg></div>
+    <div class="l2"><b>Fastest</b><span>·</span><span>using Home</span><span>·</span><span class="rate">↓ 640 KB/s ↑ 20 KB/s</span><span>·</span><span>3 sites</span></div>
+    <div class="mem active"><span class="d ok"></span><span class="n">Home</span><span class="tick">✓ in use</span><span class="lat warn">180<small>ms</small></span></div>
+    <div class="mem"><span class="d bad"></span><span class="n">Lab</span><span>skipped — not reachable</span><span class="lat none">—</span></div></div>
+  <div class="card"><div class="l1"><span class="d bad"></span><span class="n">Lab</span><span class="fill"></span><span class="lat bad" style="font-weight:600">Not reachable</span><svg class="spark bad" viewBox="0 0 64 24"><polyline class="v" points="0,17 3,18 6,16.1 8.5,17.8 11,16.3 14,18.4 17,17.3 19.5,17.4 22,17.5 25,18.1 28,18.1 30.5,17.5 33,16.8 36,17.8"/><polyline class="gap" points="38,22 64,22"/></svg><div class="ib" title="Retry"><svg class="icn sm" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg></div></div>
+    <div class="l2"><span class="badt">No answer through the tunnel for 2 min</span><span>·</span><span>1 site waits</span></div></div>
+  <div class="drow"><span class="d off"></span><span class="dn">Not via any tunnel</span><span class="sec">· 2 sites</span><span class="rate">↓ 200 KB/s ↑ 12 KB/s</span></div>
+  <div class="sep"></div>
+  <div class="sh">Recent</div>
+  <div class="empty"><svg class="icn" viewBox="0 0 24 24" style="color:var(--fg3)"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Sites you open from now on show up here — the ones that went via Work because no rule said otherwise. One click sends any of them through another tunnel.</span></div>
+  <div class="sep"></div>
+  <div class="qa"><div class="tf ph">Site to route, e.g. example.com</div><div class="pop"><span>Work</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10l5-5 5 5"/><path d="M7 14l5 5 5-5"/></svg></span></div><div class="btn pri">Add</div></div>
+  <div class="sep"></div>
+  <div class="ft"><span><b>Settings</b></span><span><b>Logs</b></span><span class="q"><b>Quit</b></span></div>
+</div></div></div></div>
+
+</div>
+<div class="note"><b>Card:</b> dot + name + <i>Default</i> badge; on the right the latency (F14) — number, unit, band colour (green ≤ 100 ms, amber ≤ 300, red above), 2-minute sparkline at 24 px. Line 2 is a status word and at most two facts; an idle tunnel says <i>Idle</i> instead of zero rates. Retry appears only on a card that has something to retry. <b>Group card</b> (F16): the active member is ticked, a skipped member says why; the group's number and rates are the active member's. <b>Recent</b> (F15): five newest domains that went the default way, app that opened them, one <i>Route via ▾</i> menu; hover shows × to hide for the session; the header says the window ("last 5 min") and the count. The dark board shows the empty state before any traffic was seen.</div>
+</div></section>
+<section id="W10" class="board"><h2>10 · Flyout states: off · can't connect · no tunnels yet</h2>
+<div class="bd" style="width:1200px"><div style="display:flex;gap:30px;align-items:flex-start">
+
+<div class="t"><div class="pv">
+  <div class="hd"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;opacity:0.5"><path d="M9 16V9.5M9 9.5L4 3.5M9 9.5L14 3.5"/><circle cx="4" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="14" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="9" cy="16" r="1.9" fill="currentColor" stroke="none"/></svg><span class="t">Wayfork</span><div class="sw"><i></i></div></div>
+  <div class="sub">Off — nothing goes through a tunnel. Turn on to send your 8 sites through their tunnels; everything else stays as it is.</div>
+  <div class="sep"></div>
+  <div class="sh">Tunnels</div>
+  <div class="card dim"><div class="l1"><span class="d off"></span><span class="n">Work</span><span class="badge acc">Default</span><span class="fill"></span><span class="lat none">—</span></div><div class="l2"><span>Not running</span><span>·</span><span>3 sites</span></div></div>
+  <div class="card dim"><div class="l1"><span class="d off"></span><span class="n">Home</span><span class="fill"></span><span class="lat none">—</span></div><div class="l2"><span>Not running</span><span>·</span><span>2 sites</span></div></div>
+  <div class="card dim"><div class="l1"><span class="d grp" style="opacity:0.5"></span><span class="n">Streaming</span><span class="badge">Group</span><span class="fill"></span><span class="lat none">—</span></div><div class="l2"><span>Fastest of Home, Lab</span><span>·</span><span>3 sites</span></div></div>
+  <div class="card dim"><div class="l1"><span class="d off"></span><span class="n">Lab</span><span class="fill"></span><span class="lat none">—</span></div><div class="l2"><span>Not running</span><span>·</span><span>1 site</span></div></div>
+  <div class="sep"></div>
+  <div class="qa"><div class="tf ph">Site to route, e.g. example.com</div><div class="pop"><span>Work</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10l5-5 5 5"/><path d="M7 14l5 5 5-5"/></svg></span></div><div class="btn pri">Add</div></div>
+  <div class="sep"></div>
+  <div class="ft"><span><b>Settings</b></span><span><b>Logs</b></span><span class="q"><b>Quit</b></span></div>
+</div></div>
+
+<div class="t dark"><div class="pv">
+  <div class="hd"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M9 16V9.5M9 9.5L4 3.5M9 9.5L14 3.5"/><circle cx="4" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="14" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="9" cy="16" r="1.9" fill="currentColor" stroke="none"/></svg><span class="t">Wayfork</span><div class="sw on"><i></i></div></div>
+  <div class="sub"><span class="badt">Lab can't connect</span> — 2 of 3 tunnels up, everything else via Work</div>
+  <div class="sep"></div>
+  <div class="sh">Tunnels</div>
+  <div class="card"><div class="l1"><span class="d ok"></span><span class="n">Work</span><span class="badge acc">Default</span><span class="fill"></span><span class="lat ok">58<small>ms</small></span><svg class="spark ok" viewBox="0 0 64 24"><polyline class="v" points="0.0,18.8 2.8,19.3 5.6,18.5 8.3,18.5 11.1,19.1 13.9,19.2 16.7,19.0 19.5,18.6 22.3,18.9 25.0,19.2 27.8,18.8 30.6,18.3 33.4,18.6 36.2,19.3 39.0,19.0 41.7,19.3 44.5,19.0 47.3,18.6 50.1,18.8 52.9,19.0 55.7,18.7 58.4,18.1 61.2,19.2 64.0,18.5"/><circle cx="64" cy="18.5" r="1.6"/></svg></div><div class="l2"><b>Connected</b><span>·</span><span class="rate">↓ 340 KB/s ↑ 41 KB/s</span><span>·</span><span>3 sites</span></div></div>
+  <div class="card"><div class="l1"><span class="d ok"></span><span class="n">Home</span><span class="fill"></span><span class="lat warn">176<small>ms</small></span><svg class="spark warn" viewBox="0 0 64 24"><polyline class="v" points="0.0,12.6 2.8,13.8 5.6,12.8 8.3,11.1 11.1,12.3 13.9,12.9 16.7,11.5 19.5,11.3 22.3,14.7 25.0,11.0 27.8,14.2 30.6,14.2 33.4,11.0 36.2,14.8 39.0,13.5 41.7,14.9 44.5,14.7 47.3,12.3 50.1,11.3 52.9,11.3 55.7,14.5 58.4,13.6 61.2,12.3 64.0,12.5"/><circle cx="64" cy="12.5" r="1.6"/></svg></div><div class="l2"><b>Connected</b><span>·</span><span class="rate">↓ 2.8 MB/s ↑ 96 KB/s</span><span>·</span><span>2 sites</span></div></div>
+  <div class="card"><div class="l1"><span class="d bad"></span><span class="n">Lab</span><span class="fill"></span><div class="btn">Fix…</div><div class="ib" title="Retry"><svg class="icn sm" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg></div></div><div class="l2"><span class="badt">Server refused the login</span><span>·</span><span>1 site waits</span></div></div>
+  <div class="card"><div class="l1"><span class="d half"></span><span class="n">Backup</span><span class="fill"></span><span class="lat none">—</span></div><div class="l2"><b>Connecting…</b><span>·</span><span>2nd try</span></div></div>
+  <div class="drow"><span class="d off"></span><span class="dn">Not via any tunnel</span><span class="sec">· 2 sites</span><span class="rate">↓ 1.1 MB/s ↑ 220 KB/s</span></div>
+  <div class="sep"></div>
+  <div class="sh">Recent <span class="ter" style="font-weight:400">— went via Work, last 5 min</span><span class="r">2</span></div>
+  <div class="rec"><span class="ai" style="background:#0f6cbd">E</span><span class="dom">news.example.com</span><span class="app">Edge</span><div class="pop"><span>Route via</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></div><span class="x" style="visibility:hidden">×</span></div>
+  <div class="rec"><span class="ai" style="background:#3a3a3c">›_</span><span class="dom">registry.npmjs.org</span><span class="app">Terminal</span><div class="pop"><span>Route via</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></div><span class="x" style="visibility:hidden">×</span></div>
+  <div class="sep"></div>
+  <div class="qa"><div class="tf ph">Site to route, e.g. example.com</div><div class="pop"><span>Work</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10l5-5 5 5"/><path d="M7 14l5 5 5-5"/></svg></span></div><div class="btn pri">Add</div></div>
+  <div class="sep"></div>
+  <div class="ft"><span><b>Settings</b></span><span><b>Logs</b></span><span class="q"><b>Quit</b></span></div>
+</div></div>
+
+<div class="t"><div class="pv">
+  <div class="hd"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;opacity:0.5"><path d="M9 16V9.5M9 9.5L4 3.5M9 9.5L14 3.5"/><circle cx="4" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="14" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="9" cy="16" r="1.9" fill="currentColor" stroke="none"/></svg><span class="t">Wayfork</span><div class="sw dis"><i></i></div></div>
+  <div class="sub">Off — no tunnels yet</div>
+  <div class="sep"></div>
+  <div class="first">
+    <svg width="40" height="40" viewBox="0 0 40 40" fill="none" stroke="var(--fg3)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 34V21M20 21L9 9M20 21L31 9"/><circle cx="9" cy="9" r="3.5"/><circle cx="31" cy="9" r="3.5"/><circle cx="20" cy="34" r="3.5"/></svg>
+    <div class="h">Add a VPN you already have</div>
+    <p>An OpenVPN file (.ovpn), a VLESS or WireGuard link, or a subscription URL. Then tell Wayfork which sites go through it — the rest of your traffic is not touched.</p>
+    <div class="btn pri big" style="margin-top:4px">Add a tunnel…</div>
+    <div class="ter" style="font-size:11px">or drop a .ovpn file on the Wayfork window</div>
+  </div>
+  <div class="sep"></div>
+  <div class="ft"><span><b>Settings</b></span><span><b>Logs</b></span><span class="q"><b>Quit</b></span></div>
+</div></div>
+
+</div>
+<div class="note"><b>Off:</b> the summary is one sentence about what the switch will do, with the count of sites that would be routed. Cards dim, no numbers, "Not running". <b>Can't connect</b> (dark, was "Degraded"): the failing tunnel is named in the summary, its card says the reason in plain words and offers <i>Fix…</i> (opens its credentials) next to Retry; a tunnel still connecting shows the half dot and the attempt in words. <b>No tunnels yet</b> (first run): the switch is disabled, the body is one heading, one sentence and one primary action; quick add and Recent are hidden until there is a tunnel to route to.</div>
+</div></section>
+<section id="W11" class="board"><h2>11 · Main window › Tunnels — light (tunnel expanded, local proxy on) and dark (group expanded)</h2>
+<div class="bd" style="width:1790px"><div style="display:flex;gap:30px;align-items:flex-start">
+
+<div class="t"><div class="win">
+  <div class="titlebar"><svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;opacity:0.8"><path d="M9 16V9.5M9 9.5L4 3.5M9 9.5L14 3.5"/><circle cx="4" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="14" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="9" cy="16" r="1.9" fill="currentColor" stroke="none"/></svg><span class="nm">Wayfork</span><div class="wcap"><span><svg viewBox="0 0 10 10"><path d="M0 5h10"/></svg></span><span><svg viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9"/></svg></span><span><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10"/></svg></span></div></div>
+  <div class="content">
+    <div class="side"><div class="sitem"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/></svg><span>Dashboard</span></div><div class="sitem on"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18" cy="17" r="2.5" fill="var(--acc)" stroke="none"/></svg><span>Tunnels</span><span class="cnt">4</span></div><div class="sitem"><svg viewBox="0 0 24 24"><path d="M4 6h5M13 6h7M4 12h11M19 12h1M4 18h3M11 18h9"/><circle cx="11" cy="6" r="2"/><circle cx="17" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg><span>Rules</span><span class="cnt">9</span></div><div class="sitem"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span>General</span></div><div style="flex:1"></div><div class="sitem"><svg viewBox="0 0 24 24"><path d="M5 3h9l5 5v13H5z"/><path d="M14 3v5h5M8 13h8M8 17h5"/></svg><span>Logs</span></div></div>
+    <div class="main">
+      <div class="phd"><div class="ph1">Tunnels</div><div class="pop"><span>+ Add</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></div></div>
+      <div class="group list">
+        <div class="trow"><span class="d ok"></span><span class="n">Work</span><span class="s"><b>Connected</b> · OpenVPN · routes everything else and 3 sites</span><span class="lat ok">62<small>ms</small></span><svg class="spark ok" viewBox="0 0 64 24"><polyline class="v" points="0.0,18.8 2.8,19.3 5.6,18.5 8.3,18.5 11.1,19.1 13.9,19.2 16.7,19.0 19.5,18.6 22.3,18.9 25.0,19.2 27.8,18.8 30.6,18.3 33.4,18.6 36.2,19.3 39.0,19.0 41.7,19.3 44.5,19.0 47.3,18.6 50.1,18.8 52.9,19.0 55.7,18.7 58.4,18.1 61.2,19.2 64.0,18.5"/><circle cx="64" cy="18.5" r="1.6"/></svg><div class="sw on"><i></i></div><svg class="chv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></div>
+        <div class="xp">
+          <div class="k">Name</div><div class="v"><div class="tf" style="width:200px">Work</div></div>
+          <div class="k">Login</div><div class="v"><div class="tf" style="width:200px">alice</div><div class="tf" style="width:120px">••••••••••</div></div>
+          <div class="k">DNS</div><div class="v"><div style="display:flex;align-items:center;gap:6px"><div class="rd on"><i></i></div><span>From the tunnel <span class="sec">(10.8.0.1)</span></span></div><div style="display:flex;align-items:center;gap:6px;margin-left:10px"><div class="rd"></div><span>Custom</span></div><div class="tf ph" style="width:100px">1.1.1.1</div></div>
+          <div class="k">Everything else</div><div class="v"><div class="sw on"><i></i></div><span>Sites without a rule go through this tunnel</span></div>
+          <div class="k">Local proxy</div><div class="v"><div class="sw on"><i></i></div><div class="tf mono" style="width:130px;gap:0">127.0.0.1:<span style="font-weight:600">1081</span></div><div class="btn sq" title="Copy"><svg class="icn sm" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></div><span class="hint">for curl, a browser profile, Telegram — uses Work, no rule needed</span></div>
+          <div class="k">File</div><div class="v"><span class="sec">Imported Aug 25, 2026</span><div class="btn">Replace…</div></div>
+          <div class="k"></div><div class="v"><span class="sec">3 sites</span><a href="#" class="link">Show rules</a><span style="flex:1"></span><div class="btn">Reconnect</div><div class="btn danger">Delete…</div></div>
+        </div>
+        <div class="trow"><span class="d ok"></span><span class="n">Home</span><span class="s"><b>Connected</b> · idle · VLESS · 2 sites</span><span class="lat warn">180<small>ms</small></span><svg class="spark warn" viewBox="0 0 64 24"><polyline class="v" points="0.0,12.6 2.8,13.8 5.6,12.8 8.3,11.1 11.1,12.3 13.9,12.9 16.7,11.5 19.5,11.3 22.3,14.7 25.0,11.0 27.8,14.2 30.6,14.2 33.4,11.0 36.2,14.8 39.0,13.5 41.7,14.9 44.5,14.7 47.3,12.3 50.1,11.3 52.9,11.3 55.7,14.5 58.4,13.6 61.2,12.3 64.0,12.5"/><circle cx="64" cy="12.5" r="1.6"/></svg><div class="sw on"><i></i></div><svg class="chv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+        <div class="trow"><span class="d bad"></span><span class="n">Lab</span><span class="s"><span class="badt">Not reachable</span> · no answer through the tunnel for 2 min · OpenVPN · 1 site</span><span class="lat bad" style="font-weight:600">—</span><svg class="spark bad" viewBox="0 0 64 24"><polyline class="v" points="0,17 3,18 6,16.1 8.5,17.8 11,16.3 14,18.4 17,17.3 19.5,17.4 22,17.5 25,18.1 28,18.1 30.5,17.5 33,16.8 36,17.8"/><polyline class="gap" points="38,22 64,22"/></svg><div class="sw on"><i></i></div><svg class="chv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+        <div class="trow"><span class="d grp"></span><span class="n">Streaming</span><span class="s"><b>Group</b> · fastest of Home, Lab · using Home · 3 sites</span><span class="lat warn">180<small>ms</small></span><svg class="spark warn" viewBox="0 0 64 24"><polyline class="v" points="0.0,12.6 2.8,13.8 5.6,12.8 8.3,11.1 11.1,12.3 13.9,12.9 16.7,11.5 19.5,11.3 22.3,14.7 25.0,11.0 27.8,14.2 30.6,14.2 33.4,11.0 36.2,14.8 39.0,13.5 41.7,14.9 44.5,14.7 47.3,12.3 50.1,11.3 52.9,11.3 55.7,14.5 58.4,13.6 61.2,12.3 64.0,12.5"/><circle cx="64" cy="12.5" r="1.6"/></svg><div class="sw on"><i></i></div><svg class="chv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+        <div class="trow newg"><svg class="icn sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>New group…</span><span class="hint sec" style="font-size:11px;font-weight:400">— several tunnels behind one name, the fastest or the first live one is used</span></div>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<div class="t dark" style="display:flex;flex-direction:column;gap:16px;align-items:flex-start"><div class="win">
+  <div class="titlebar"><svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;opacity:0.8"><path d="M9 16V9.5M9 9.5L4 3.5M9 9.5L14 3.5"/><circle cx="4" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="14" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="9" cy="16" r="1.9" fill="currentColor" stroke="none"/></svg><span class="nm">Wayfork</span><div class="wcap"><span><svg viewBox="0 0 10 10"><path d="M0 5h10"/></svg></span><span><svg viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9"/></svg></span><span><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10"/></svg></span></div></div>
+  <div class="content">
+    <div class="side"><div class="sitem"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/></svg><span>Dashboard</span></div><div class="sitem on"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18" cy="17" r="2.5" fill="var(--acc)" stroke="none"/></svg><span>Tunnels</span><span class="cnt">4</span></div><div class="sitem"><svg viewBox="0 0 24 24"><path d="M4 6h5M13 6h7M4 12h11M19 12h1M4 18h3M11 18h9"/><circle cx="11" cy="6" r="2"/><circle cx="17" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg><span>Rules</span><span class="cnt">9</span></div><div class="sitem"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span>General</span></div><div style="flex:1"></div><div class="sitem"><svg viewBox="0 0 24 24"><path d="M5 3h9l5 5v13H5z"/><path d="M14 3v5h5M8 13h8M8 17h5"/></svg><span>Logs</span></div></div>
+    <div class="main">
+      <div class="phd"><div class="ph1">Tunnels</div><div class="pop"><span>+ Add</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></div></div>
+      <div class="group list">
+        <div class="trow"><span class="d ok"></span><span class="n">Work</span><span class="s"><b>Connected</b> · OpenVPN · routes everything else and 3 sites</span><span class="lat ok">62<small>ms</small></span><svg class="spark ok" viewBox="0 0 64 24"><polyline class="v" points="0.0,18.8 2.8,19.3 5.6,18.5 8.3,18.5 11.1,19.1 13.9,19.2 16.7,19.0 19.5,18.6 22.3,18.9 25.0,19.2 27.8,18.8 30.6,18.3 33.4,18.6 36.2,19.3 39.0,19.0 41.7,19.3 44.5,19.0 47.3,18.6 50.1,18.8 52.9,19.0 55.7,18.7 58.4,18.1 61.2,19.2 64.0,18.5"/><circle cx="64" cy="18.5" r="1.6"/></svg><div class="sw on"><i></i></div><svg class="chv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+        <div class="trow"><span class="d ok"></span><span class="n">Home</span><span class="s"><b>Connected</b> · idle · VLESS · 2 sites</span><span class="lat warn">180<small>ms</small></span><svg class="spark warn" viewBox="0 0 64 24"><polyline class="v" points="0.0,12.6 2.8,13.8 5.6,12.8 8.3,11.1 11.1,12.3 13.9,12.9 16.7,11.5 19.5,11.3 22.3,14.7 25.0,11.0 27.8,14.2 30.6,14.2 33.4,11.0 36.2,14.8 39.0,13.5 41.7,14.9 44.5,14.7 47.3,12.3 50.1,11.3 52.9,11.3 55.7,14.5 58.4,13.6 61.2,12.3 64.0,12.5"/><circle cx="64" cy="12.5" r="1.6"/></svg><div class="sw on"><i></i></div><svg class="chv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+        <div class="trow"><span class="d bad"></span><span class="n">Lab</span><span class="s"><span class="badt">Not reachable</span> · no answer for 2 min · OpenVPN · 1 site</span><span class="lat bad" style="font-weight:600">—</span><svg class="spark bad" viewBox="0 0 64 24"><polyline class="v" points="0,17 3,18 6,16.1 8.5,17.8 11,16.3 14,18.4 17,17.3 19.5,17.4 22,17.5 25,18.1 28,18.1 30.5,17.5 33,16.8 36,17.8"/><polyline class="gap" points="38,22 64,22"/></svg><div class="sw on"><i></i></div><svg class="chv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+        <div class="trow"><span class="d grp"></span><span class="n">Streaming</span><span class="s"><b>Group</b> · fastest of Home, Lab · using Home · 3 sites</span><span class="lat warn">180<small>ms</small></span><svg class="spark warn" viewBox="0 0 64 24"><polyline class="v" points="0.0,12.6 2.8,13.8 5.6,12.8 8.3,11.1 11.1,12.3 13.9,12.9 16.7,11.5 19.5,11.3 22.3,14.7 25.0,11.0 27.8,14.2 30.6,14.2 33.4,11.0 36.2,14.8 39.0,13.5 41.7,14.9 44.5,14.7 47.3,12.3 50.1,11.3 52.9,11.3 55.7,14.5 58.4,13.6 61.2,12.3 64.0,12.5"/><circle cx="64" cy="12.5" r="1.6"/></svg><div class="sw on"><i></i></div><svg class="chv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></div>
+        <div class="xp">
+          <div class="k">Name</div><div class="v"><div class="tf" style="width:200px">Streaming</div></div>
+          <div class="k">Pick by</div><div class="v"><div class="seg"><span class="on">Fastest</span><span>First live</span></div><span class="hint">the member that answers quickest right now</span></div>
+          <div class="k" style="align-self:start;padding-top:4px">Members</div><div class="v" style="flex-direction:column;align-items:stretch;gap:2px">
+            <div class="mrow"><span class="grip">⠿</span><span class="d ok"></span><span class="n">Home</span><span class="okt" style="font-size:11px">✓ in use</span><span class="lat warn">180<small>ms</small></span><span class="badge" style="visibility:hidden">x</span></div>
+            <div class="mrow"><span class="grip">⠿</span><span class="d bad"></span><span class="n">Lab</span><span class="sec" style="font-size:11px">skipped — not reachable</span><span class="lat none">—</span></div>
+            <div class="mrow" style="color:var(--acc);font-size:12px"><span class="grip" style="visibility:hidden">⠿</span><svg class="icn sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Add member…</span></div>
+          </div>
+          <div class="k">Local proxy</div><div class="v"><div class="sw"><i></i></div><span>Off</span><span class="hint">— gives the group its own 127.0.0.1 port that apps can use directly</span></div>
+          <div class="k"></div><div class="v"><span class="sec">3 sites</span><a href="#" class="link">Show rules</a><span style="flex:1"></span><div class="btn danger">Delete…</div></div>
+        </div>
+        <div class="trow newg"><svg class="icn sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>New group…</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="callout" style="width:860px;flex-direction:row;gap:24px"><div style="flex:1"><div class="cap">Detail · tunnel card, local proxy off</div>
+  <div class="xp" style="padding:6px 0 0;grid-template-columns:80px 1fr;background:transparent;border:none"><div class="k">Local proxy</div><div class="v"><div class="sw"><i></i></div><span>Off</span></div><div class="k"></div><div class="v"><span class="hint">Turn on to get a 127.0.0.1 address that sends an app through Work without a rule — for <span class="mono">curl</span>, a browser profile, Telegram.</span></div></div>
+  </div><div style="flex:1"><div class="cap">Detail · group with no live member</div>
+  <div class="trow" style="padding:0;min-height:30px"><span class="d bad"></span><span class="n" style="width:auto">Streaming</span><span class="s"><span class="badt">No member reachable</span> · its 3 sites go via Work for now</span></div></div>
+</div></div>
+
+</div>
+<div class="note"><b>Row:</b> name, status in words, protocol demoted to the subtitle, latency + sparkline right-aligned, enable switch, disclosure chevron. <b>Expanded tunnel</b> (light): Login and password on one line, DNS "From the tunnel" instead of "Automatic", "Everything else" instead of "Default", and the F17 <i>Local proxy</i> row — switch, address with the port in bold, Copy, one line saying what it is for. "Imported Aug 25" replaces the config hash. <b>Expanded group</b> (dark): policy as a segmented control with a one-line meaning, ordered members with grips, the member in use ticked, a skipped member says why; a group can hold a local proxy too. <b>New group…</b> is the last row of the list, with a hint on the light board only (first time; hidden once a group exists). The callout carries the two states the boards had no room for.</div>
+</div></section>
+<section id="W12" class="board"><h2>12 · Main window › Rules with the Recent strip</h2>
+<div class="bd" style="width:920px">
+<div class="t"><div class="win">
+  <div class="titlebar"><svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;opacity:0.8"><path d="M9 16V9.5M9 9.5L4 3.5M9 9.5L14 3.5"/><circle cx="4" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="14" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="9" cy="16" r="1.9" fill="currentColor" stroke="none"/></svg><span class="nm">Wayfork</span><div class="wcap"><span><svg viewBox="0 0 10 10"><path d="M0 5h10"/></svg></span><span><svg viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9"/></svg></span><span><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10"/></svg></span></div></div>
+  <div class="content">
+    <div class="side"><div class="sitem"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/></svg><span>Dashboard</span></div><div class="sitem"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18" cy="17" r="2.5" fill="var(--acc)" stroke="none"/></svg><span>Tunnels</span><span class="cnt">4</span></div><div class="sitem on"><svg viewBox="0 0 24 24"><path d="M4 6h5M13 6h7M4 12h11M19 12h1M4 18h3M11 18h9"/><circle cx="11" cy="6" r="2"/><circle cx="17" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg><span>Rules</span><span class="cnt">9</span></div><div class="sitem"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span>General</span></div><div style="flex:1"></div><div class="sitem"><svg viewBox="0 0 24 24"><path d="M5 3h9l5 5v13H5z"/><path d="M14 3v5h5M8 13h8M8 17h5"/></svg><span>Logs</span></div></div>
+    <div class="main" style="gap:8px">
+      <div class="phd"><div class="ph1">Rules</div><div class="tf ph round" style="width:170px"><svg class="icn sm" viewBox="0 0 24 24" style="color:var(--fg3)"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>Search sites and apps</div></div>
+      <div class="strip"><div class="h"><svg class="icn sm" viewBox="0 0 24 24" style="color:var(--fg2)"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Recent</span><span class="hint">went via Work in the last 5 min — pick a tunnel to make a rule</span><span style="flex:1"></span><a href="#" class="link" style="font-weight:400;font-size:12px">Show all 12</a></div>
+        <div class="rows">
+          <div class="rec"><span class="ai" style="background:#0f6cbd">E</span><span class="dom">news.example.com</span><span class="app">Edge</span><div class="pop"><span>Route via</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></div><span class="x">×</span></div>
+          <div class="rec"><span class="ai" style="background:#2aa3e0">T</span><span class="dom">api.telegram.org</span><span class="app">Telegram</span><div class="pop"><span>Route via</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></div><span class="x">×</span></div>
+          <div class="rec" style="border-bottom:none"><span class="ai" style="background:#0f6cbd">E</span><span class="dom">static.cdn.example.net</span><span class="app">Edge</span><div class="pop"><span>Route via</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></div><span class="x">×</span></div>
+                  </div>
+      </div>
+      <div class="group rg"><div class="h"><span class="d off"></span><span>Not via any tunnel</span><span class="hint">stay on your normal connection, whatever other rules say</span><span style="flex:1"></span><div class="btn"><svg class="icn sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add site</div></div>
+        <div class="r"><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg></div><span class="p">bank.example</span><span class="m">and subdomains</span><span class="w"></span><span class="grip">⠿</span></div>
+        <div class="r"><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg></div><span class="p">api.internal.example.com</span><span class="m">exactly this</span><span class="w"></span><span class="grip">⠿</span></div>
+      </div>
+      <div class="group rg"><div class="h"><span class="d ok"></span><span>Work</span><span class="badge acc">Default</span><span class="hint">everything without a rule goes here, plus:</span><span style="flex:1"></span><div class="btn"><svg class="icn sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add site</div></div>
+        <div class="r"><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg></div><span class="p">example.com</span><span class="m">and subdomains</span><span class="w"></span><span class="grip">⠿</span></div>
+        <div class="r"><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg></div><span class="p" style="display:flex;align-items:center;gap:6px;font-family:inherit"><span class="ai" style="background:#2aa3e0">T</span>Telegram</span><span class="m">the app</span><span class="w"></span><span class="grip">⠿</span></div>
+        <div class="r"><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg></div><span class="p">bank.example</span><span class="m">and subdomains</span><span class="w"><span class="chip warn">never used — "Not via any tunnel" has it</span></span><span class="grip">⠿</span></div>
+      </div>
+      <div class="group rg"><div class="h"><span class="d grp"></span><span>Streaming</span><span class="badge">Group</span><span class="hint">fastest of Home, Lab · using Home right now</span><span style="flex:1"></span><div class="btn"><svg class="icn sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add site</div></div>
+        <div class="r"><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg></div><span class="p">video.example.com</span><span class="m">and subdomains</span><span class="w"></span><span class="grip">⠿</span></div>
+        <div class="r"><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg></div><span class="p">*.cdn.example.net</span><span class="m">pattern</span><span class="w"></span><span class="grip">⠿</span></div>
+      </div>
+      <div class="group rg"><div class="h"><span class="d ok"></span><span>Home</span><span style="flex:1"></span><div class="btn"><svg class="icn sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add site</div></div>
+        <div class="r"><div class="cb"></div><span class="p" style="opacity:0.5">old.example.com</span><span class="m">exactly this</span><span class="w">paused</span><span class="grip">⠿</span></div>
+        <div class="r"><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg></div><span class="p">news.example.org</span><span class="m">and subdomains</span><span class="w"></span><span class="grip">⠿</span></div>
+      </div>
+      <div class="group rg"><div class="h"><span class="d bad"></span><span>Lab</span><span class="hint badt">not reachable — its sites wait</span><span style="flex:1"></span><div class="btn"><svg class="icn sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add site</div></div>
+        <div class="r empty"><span>No sites yet — add one, or pick a tunnel for a site in Recent above.</span></div>
+      </div>
+    </div>
+  </div>
+</div></div>
+<div class="note"><b>Recent as a strip, not a side column:</b> at 720 px a column would squeeze the pattern to ~280 px and sit empty most of the day; a strip goes where the eye starts, holds three rows, and shrinks to its one-line header when there is nothing to show (the same rows as the flyout, so the user meets them twice and learns the gesture). <b>Groups</b> say what they mean in the header ("everything without a rule goes here"); the old <i>Direct / Exceptions</i> is <i>Not via any tunnel</i>. Match kinds read "and subdomains / exactly this / pattern / the app"; the shadowed chip is a sentence. A rule whose target is a group sits in the group's section, with the member in use in the header. The disabled row is greyed and says <i>paused</i>; the tunnel with no rules has an empty state that points at the strip. The real page scrolls.</div>
+</div></section>
+<section id="W13" class="board"><h2>13 · Rule test with Probe</h2>
+<div class="bd" style="width:1290px"><div style="display:flex;gap:30px;align-items:flex-start">
+<div class="t"><div class="win">
+  <div class="titlebar"><svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;opacity:0.8"><path d="M9 16V9.5M9 9.5L4 3.5M9 9.5L14 3.5"/><circle cx="4" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="14" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="9" cy="16" r="1.9" fill="currentColor" stroke="none"/></svg><span class="nm">Wayfork</span><div class="wcap"><span><svg viewBox="0 0 10 10"><path d="M0 5h10"/></svg></span><span><svg viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9"/></svg></span><span><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10"/></svg></span></div></div>
+  <div class="content">
+    <div class="side"><div class="sitem"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/></svg><span>Dashboard</span></div><div class="sitem"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18" cy="17" r="2.5" fill="var(--acc)" stroke="none"/></svg><span>Tunnels</span><span class="cnt">4</span></div><div class="sitem on"><svg viewBox="0 0 24 24"><path d="M4 6h5M13 6h7M4 12h11M19 12h1M4 18h3M11 18h9"/><circle cx="11" cy="6" r="2"/><circle cx="17" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg><span>Rules</span><span class="cnt">9</span></div><div class="sitem"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span>General</span></div><div style="flex:1"></div><div class="sitem"><svg viewBox="0 0 24 24"><path d="M5 3h9l5 5v13H5z"/><path d="M14 3v5h5M8 13h8M8 17h5"/></svg><span>Logs</span></div></div>
+    <div class="main" style="gap:8px">
+      <div class="phd"><div class="ph1">Rules</div><div class="tf ph round" style="width:170px"><svg class="icn sm" viewBox="0 0 24 24" style="color:var(--fg3)"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>Search sites and apps</div></div>
+      <div class="tester"><span>Where does</span><div class="tf focus">video.example.com</div><span>go?</span><div class="btn">Test</div><div class="btn"><svg class="icn sm" viewBox="0 0 24 24"><path d="M4 12h4l3-7 4 14 3-7h2"/></svg>Probe</div></div>
+      <div class="res"><span class="arrow">→</span><b>Streaming</b><span class="sec">(using Home right now)</span><span class="sec">·</span><span>rule <a href="#" class="link mono">video.example.com</a> and subdomains</span><span class="sec">·</span><a href="#" class="link">1 note ▾</a></div>
+      <div class="disc"><div class="ln"><span>–</span><span>A browser with its own secure DNS never asks Wayfork — it sees this site by address only.</span></div></div>
+      <div class="res" style="margin-top:2px"><span class="chip ok">Reachable · 212 ms via Home</span><span class="sec" style="font-size:11px">one request through the tunnel, just now</span></div>
+      <div class="strip" style="margin-top:2px"><div class="h"><svg class="icn sm" viewBox="0 0 24 24" style="color:var(--fg2)"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Recent</span><span class="hint">nothing new in the last 5 min</span></div></div>
+      <div class="group rg"><div class="h"><span class="d off"></span><span>Not via any tunnel</span><span class="hint">stay on your normal connection, whatever other rules say</span><span style="flex:1"></span><div class="btn"><svg class="icn sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add site</div></div>
+        <div class="r"><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg></div><span class="p">bank.example</span><span class="m">and subdomains</span><span class="w"></span><span class="grip">⠿</span></div>
+      </div>
+      <div class="group rg"><div class="h"><span class="d grp"></span><span>Streaming</span><span class="badge">Group</span><span class="hint">fastest of Home, Lab · using Home right now</span><span style="flex:1"></span><div class="btn"><svg class="icn sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add site</div></div>
+        <div class="r" style="background:rgba(10,96,255,0.1)"><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg></div><span class="p">video.example.com</span><span class="m">and subdomains</span><span class="w"></span><span class="grip">⠿</span></div>
+        <div class="r"><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg></div><span class="p">*.cdn.example.net</span><span class="m">pattern</span><span class="w"></span><span class="grip">⠿</span></div>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<div class="t"><div class="states">
+  <div class="st"><div class="cap">Probing</div><div class="res"><span class="spin"></span><span>Probing video.example.com via Home…</span><span class="sec" style="font-size:11px">up to 10 s</span></div></div>
+  <div class="st"><div class="cap">OK</div><div class="res"><span class="chip ok">Reachable · 212 ms via Home</span><span class="sec" style="font-size:11px">one request through the tunnel, just now</span></div></div>
+  <div class="st"><div class="cap">Blocked</div><div class="res"><span class="chip bad">Blocked</span><span>on your ads &amp; trackers list</span><span class="sec">·</span><a href="#" class="link">Never block this site</a></div></div>
+  <div class="st"><div class="cap">Failed — tunnel</div><div class="res"><span class="chip bad">Failed</span><span>Lab is not reachable right now</span><span class="sec">·</span><a href="#" class="link">Retry Lab</a></div></div>
+  <div class="st"><div class="cap">Failed — site</div><div class="res"><span class="chip bad">Failed</span><span>no answer from the site in 10 s — the tunnel itself is fine (62 ms)</span></div></div>
+  <div class="st"><div class="cap">Test result, other exits</div>
+    <div class="res"><span class="arrow">→</span><b>Work</b><span class="sec">·</span><span>no rule matches — everything else goes via Work</span></div>
+    <div class="res"><span class="arrow">→</span><b>Not via any tunnel</b><span class="sec">·</span><span>rule <span class="mono link">bank.example</span> and subdomains</span></div>
+    <div class="res"><span class="arrow">→</span><b>Stays local</b><span class="sec">·</span><span>private address — Wayfork never sees it</span></div>
+  </div>
+</div></div>
+</div>
+<div class="note">The tester line from 07-rule-testing.md with the F14 <b>Probe</b> next to <b>Test</b>. Test answers from the rules alone (instant); Probe sends one request to the entered host through the exit Test found and shows the result once, in a chip on the same line: reachable + ms + which tunnel actually carried it (the group's member), blocked (F18) with a way out, failed with the reason split into "the tunnel is down" and "the site did not answer" so the user knows what to fix. The winning rule's row is highlighted below. The right column lists every state the line can show, including the caveat wording in the user's words.</div>
+</div></section>
+<section id="W14" class="board"><h2>14 · Main window › General — Block ads and trackers</h2>
+<div class="bd" style="width:920px">
+<div class="t"><div class="win">
+  <div class="titlebar"><svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;opacity:0.8"><path d="M9 16V9.5M9 9.5L4 3.5M9 9.5L14 3.5"/><circle cx="4" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="14" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="9" cy="16" r="1.9" fill="currentColor" stroke="none"/></svg><span class="nm">Wayfork</span><div class="wcap"><span><svg viewBox="0 0 10 10"><path d="M0 5h10"/></svg></span><span><svg viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9"/></svg></span><span><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10"/></svg></span></div></div>
+  <div class="content">
+    <div class="side"><div class="sitem"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/></svg><span>Dashboard</span></div><div class="sitem"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18" cy="17" r="2.5" fill="var(--acc)" stroke="none"/></svg><span>Tunnels</span><span class="cnt">4</span></div><div class="sitem"><svg viewBox="0 0 24 24"><path d="M4 6h5M13 6h7M4 12h11M19 12h1M4 18h3M11 18h9"/><circle cx="11" cy="6" r="2"/><circle cx="17" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg><span>Rules</span><span class="cnt">9</span></div><div class="sitem on"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span>General</span></div><div style="flex:1"></div><div class="sitem"><svg viewBox="0 0 24 24"><path d="M5 3h9l5 5v13H5z"/><path d="M14 3v5h5M8 13h8M8 17h5"/></svg><span>Logs</span></div></div>
+    <div class="main" style="gap:10px">
+      <div class="ph1">General</div>
+      <div><div class="gh">Blocking</div><div class="group">
+        <div class="row"><div class="lbl"><div>Block ads and trackers</div><div class="hint">Blocked <b style="font-weight:500;color:var(--fg)">1 284</b> today · list of 41 000 sites, updated 3 h ago · <a href="#" class="link">Update now</a></div></div><div class="sw on"><i></i></div></div>
+        <div class="row"><div class="lbl"><div>Never block</div><div class="hint">Sites the list gets wrong — they load as usual</div></div><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:300px"><span class="chip">analytics.example.com <span class="ter">×</span></span><span class="chip">cdn.ads.example.net <span class="ter">×</span></span><div class="tf ph" style="width:120px;height:20px">Add a site…</div></div></div>
+      </div></div>
+      <div><div class="gh">Startup</div><div class="group"><div class="row"><div class="lbl"><div>Open Wayfork at sign-in</div></div><div class="sw"><i></i></div></div><div class="row"><div class="lbl"><div>Turn on when it opens</div></div><div class="sw"><i></i></div></div></div></div>
+      <div><div class="gh">Reliability</div><div class="group"><div class="row"><div class="lbl"><div>Reconnect tunnels on their own</div></div><div class="sw on"><i></i></div></div><div class="row"><div class="lbl"><div>Notify me when a tunnel stops working</div></div><div class="sw on"><i></i></div></div></div></div>
+      <div><div class="gh">DNS</div><div class="group"><div class="row"><div class="lbl"><div>DNS for sites outside tunnels</div><div class="hint">Sites that go through a tunnel always use that tunnel's DNS</div></div><div style="display:flex;gap:14px;align-items:center"><div style="display:flex;align-items:center;gap:6px"><div class="rd on"><i></i></div><span>Same as Windows</span></div><div style="display:flex;gap:8px;align-items:center"><div style="display:flex;align-items:center;gap:6px"><div class="rd"></div><span>Custom</span></div><div class="tf ph" style="width:130px">1.1.1.1, 9.9.9.9</div></div></div></div></div></div>
+      <div><div class="gh">Logs</div><div class="group"><div class="row"><div class="lbl"><div>Detail</div></div><div class="pop" style="width:110px"><span style="flex:1">Normal</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10l5-5 5 5"/><path d="M7 14l5 5 5-5"/></svg></span></div></div><div class="row"><div class="lbl"><div>Keep logs for</div></div><div style="display:flex;align-items:center;gap:6px"><div class="tf" style="width:44px">7</div><span>days</span>&nbsp;&nbsp;<div class="btn">Open Logs Folder</div></div></div></div></div>
+      <div><div class="gh">Service &amp; About</div><div class="group"><div class="row"><div class="lbl"><div style="display:flex;align-items:center;gap:6px"><span class="d ok"></span><span>Service installed</span><span class="sec">· up to date</span></div></div><div class="btn">Reinstall</div></div><div class="row"><div class="lbl"><div><span>Wayfork 0.7.0</span><div class="hint">sing-box 1.x.y · OpenVPN 2.6.z</div></div></div><div style="display:flex;gap:8px"><div class="btn">Export Diagnostics…</div><div class="btn">Backup…</div></div></div></div></div>
+    </div>
+  </div>
+</div></div>
+<div class="note"><b>Blocking</b> is the first section: one switch, a live count with a unit ("today"), the list's size and age with <i>Update now</i>, and <b>Never block</b> as chips plus an <i>Add a site…</i> field — the same entry the rule editor uses, no separate sheet. Existing rows reworded: "Open Wayfork at sign-in / Turn on when it opens", "Reconnect tunnels on their own", "DNS for sites outside tunnels — Same as Windows", log <i>Detail: Normal</i> instead of <i>Level: Info</i>, helper "up to date" instead of a version. Backup (Export/Import) folds into one button next to Diagnostics. The real page scrolls.</div>
+</div></section>
+<section id="W15" class="board"><h2>15 · New group dialog</h2>
+<div class="bd" style="width:920px">
+<div class="t"><div class="win">
+  <div class="titlebar"><svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;opacity:0.8"><path d="M9 16V9.5M9 9.5L4 3.5M9 9.5L14 3.5"/><circle cx="4" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="14" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="9" cy="16" r="1.9" fill="currentColor" stroke="none"/></svg><span class="nm">Wayfork</span><div class="wcap"><span><svg viewBox="0 0 10 10"><path d="M0 5h10"/></svg></span><span><svg viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9"/></svg></span><span><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10"/></svg></span></div></div>
+  <div class="content">
+    <div class="side"><div class="sitem"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/></svg><span>Dashboard</span></div><div class="sitem on"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18" cy="17" r="2.5" fill="var(--acc)" stroke="none"/></svg><span>Tunnels</span><span class="cnt">4</span></div><div class="sitem"><svg viewBox="0 0 24 24"><path d="M4 6h5M13 6h7M4 12h11M19 12h1M4 18h3M11 18h9"/><circle cx="11" cy="6" r="2"/><circle cx="17" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg><span>Rules</span><span class="cnt">9</span></div><div class="sitem"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span>General</span></div><div style="flex:1"></div><div class="sitem"><svg viewBox="0 0 24 24"><path d="M5 3h9l5 5v13H5z"/><path d="M14 3v5h5M8 13h8M8 17h5"/></svg><span>Logs</span></div></div>
+    <div class="main">
+      <div class="phd"><div class="ph1">Tunnels</div><div class="pop"><span>+ Add</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></div></div>
+      <div class="group list">
+        <div class="trow"><span class="d ok"></span><span class="n">Work</span><span class="s"><b>Connected</b> · OpenVPN · routes everything else and 3 sites</span><span class="lat ok">62<small>ms</small></span><div class="sw on"><i></i></div></div>
+        <div class="trow"><span class="d ok"></span><span class="n">Home</span><span class="s"><b>Connected</b> · idle · VLESS · 2 sites</span><span class="lat warn">180<small>ms</small></span><div class="sw on"><i></i></div></div>
+        <div class="trow"><span class="d bad"></span><span class="n">Lab</span><span class="s"><span class="badt">Not reachable</span> · OpenVPN · 1 site</span><span class="lat none">—</span><div class="sw on"><i></i></div></div>
+        <div class="trow"><span class="d ok"></span><span class="n">Backup</span><span class="s"><b>Connected</b> · idle · WireGuard</span><span class="lat bad">340<small>ms</small></span><div class="sw on"><i></i></div></div>
+        <div class="trow newg"><svg class="icn sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>New group…</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="scrim"></div>
+  <div class="sheet">
+    <div class="h">New group</div>
+    <div class="frm">
+      <div class="k">Name</div><div><div class="tf focus" style="width:220px">Streaming</div></div>
+      <div class="k">Members</div><div>
+        <div class="group" style="padding:2px 0">
+          <div class="mem"><span class="grip">⠿</span><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg></div><span class="d ok"></span><span class="n">Home</span><span class="lat warn">180<small>ms</small></span></div>
+          <div class="mem drag"><span class="grip">⠿</span><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg></div><span class="d ok"></span><span class="n">Backup</span><span class="lat bad">340<small>ms</small></span></div>
+          <div class="mem"><span class="grip">⠿</span><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg></div><span class="d bad"></span><span class="n">Lab</span><span class="lat none">—</span></div>
+          <div class="mem"><span class="grip" style="visibility:hidden">⠿</span><div class="cb"></div><span class="d ok"></span><span class="n">Work</span><span class="lat ok">62<small>ms</small></span></div>
+        </div>
+        <div class="hint sec" style="font-size:11px;margin-top:4px">Tick the tunnels to include; drag to set the order. A tunnel that is down is skipped.</div>
+      </div>
+      <div class="k">Pick by</div><div style="display:flex;flex-direction:column;gap:8px">
+        <div class="pol"><div class="rd on"><i></i></div><div class="x"><b>Fastest</b>Whichever member answers quickest right now — switches when another one gets faster.</div></div>
+        <div class="pol"><div class="rd"></div><div class="x"><b>First live</b>Always the top member that works; the ones below are backups, in order.</div></div>
+      </div>
+    </div>
+    <div class="ft"><div class="btn">Cancel</div><div class="btn pri">Create</div></div>
+  </div>
+</div></div>
+<div class="note">A ContentDialog over the Tunnels page, centred in the window (Windows has no sheets). Members are the existing tunnels with a tick and a grip — the tick includes, the order matters for <i>First live</i> and is shown while dragging (Backup is mid-drag). Every member shows its current latency so the choice is informed. The two policies are one sentence each, in the same words the expanded group card uses. <i>Create</i> is enabled from two ticked members on. No policy-specific settings (probe URL, interval) here — those are F14's and live in General later if ever.</div>
+</div></section>
+</div>
 </body>
 </html>

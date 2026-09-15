@@ -9,7 +9,7 @@ The Windows client has its own track: [ROADMAP-windows.md](ROADMAP-windows.md).
 |---|---|---|
 | 1. Features | Feature list below, split into MVP / Later | approved 2026-08-25 |
 | 2. Design | `docs/design/*.md` — UX + technical design per feature | approved 2026-08-25 |
-| 2b. UI prototype | `docs/design/prototype/index.html` — static HTML mockups of every MVP screen, approved before implementation | variant B approved 2026-08-25 |
+| 2b. UI prototype | `docs/design/prototype/index.html` — static HTML mockups of every MVP screen, approved before implementation | variant B approved 2026-08-25; variant C (F14–F18 redraw) approved 2026-09-15 |
 | 3. Implementation | Task checklist in this file, ordered by dependencies | in progress |
 
 ## Phase 1 — Features
@@ -192,11 +192,64 @@ Written as user scenarios. Technical details belong to Phase 2.
   matches, result shown once, nothing in the background.
 - Windows client gets the same measurement and the same card.
 
+**F15. Recent domains → rule** *(added 2026-09-15; approved 2026-09-15)*
+- While the global state is on, the app shows the domains seen in the last few minutes
+  that went to the *default* route (direct or the default tunnel), newest first, with the
+  app that opened them where known. Each row has one action: *Route via ‹tunnel›*, which
+  creates a suffix rule for the registrable domain and moves on.
+- Domains already covered by a rule are not listed (they are routed as intended); a row can
+  be hidden, and a hidden domain stays hidden for the session.
+- Data comes from the F9 sampler: the daemon already reads `/connections`; it forwards a
+  bounded list of `(host, process, tunnel, lastSeen)` in the traffic snapshot instead of
+  aggregates only. The list lives in memory, is capped (200 rows), and is cleared when the
+  state leaves *on*.
+- Not a live connection view (L2 keeps that): no bytes, no per-connection rows, no
+  history — a to-do list of "this went where you may not want it".
+
+**F16. Tunnel groups** *(added 2026-09-15; approved 2026-09-15)*
+- A group is a named, ordered list of tunnels with a policy: *fastest* (lowest F14 latency,
+  re-evaluated on every probe) or *first live* (the first member whose probe passes).
+  A rule, an exception or the default tunnel can point at a group wherever it can point at
+  a tunnel.
+- Rendered as a card among the tunnels with its members inside; the active member is
+  marked. Rates and latency on the group card are the active member's.
+- Maps to a sing-box `urltest` outbound (`fastest`) or `selector` driven by the daemon
+  (`first live`); the probe URL and interval are F14's. This is L4 "failover" delivered
+  without a fallback field on every rule.
+- Groups cannot contain groups; a member that is disabled or missing is skipped, and a
+  group with no live member behaves like a down tunnel (rules fall to the default route,
+  the card says so).
+
+**F17. Local proxy port per tunnel** *(added 2026-09-15; approved 2026-09-15)*
+- A tunnel (or group) can expose a local SOCKS5/HTTP port on `127.0.0.1`, shown on its card
+  with a copy button: `curl --proxy socks5h://127.0.0.1:<port>`, a browser profile, a
+  Telegram proxy — an explicit way to pick a tunnel without writing a rule.
+- Off by default; the port is chosen by the app (stable per tunnel, stored in the model) and
+  can be edited. Traffic entering the port bypasses the rules and goes to that tunnel; its
+  DNS goes through the tunnel's resolver like a routed flow.
+- One `mixed` inbound per enabled port and one route rule `inbound → outbound`; the
+  generator emits them, the goldens cover them.
+- *LAN sharing* (bind to `0.0.0.0` so a phone or a TV uses the Mac's tunnels) is a separate
+  toggle behind a plain warning: the port has no password. Off by default, not in the first
+  cut unless approved separately.
+
+**F18. Block lists** *(added 2026-09-15; approved 2026-09-15)*
+- Settings › General gains a *Block ads and trackers* switch backed by a bundled or
+  fetched domain list (the same rule-set mechanism L1 needs for GeoSite lists). Blocked
+  domains get `block` in sing-box and NXDOMAIN from the fake-ip resolver, so the browser
+  fails fast instead of spinning.
+- Counts blocked flows in the F9 snapshot so the switch can show "blocked N today".
+- An exception field ("never block") reuses the domain-rule editor.
+- Deliberately a switch, not a rule group: the audience for this feature does not want to
+  see 40 000 rows.
+
+Feature text, stages and working order for F15–F18 and the friendlier UI pass:
+[roadmap/next-features.md](roadmap/next-features.md).
+
 ### Later
 
-The next wave — F15–F18 (recent domains → rule, tunnel groups, local proxy ports, block
-lists) and the friendlier UI pass — is proposed in
-[roadmap/next-features.md](roadmap/next-features.md) and moves here on approval.
+The F15–F18 wave (recent domains → rule, tunnel groups, local proxy ports, block lists) was
+approved 2026-09-15 and sits above; the lines it replaced are marked below.
 
 **L1. Rule sources beyond a single domain**
 - Domain lists from a URL or file (e.g. GeoSite-style lists), auto-refreshed.
@@ -211,9 +264,8 @@ lists) and the friendlier UI pass — is proposed in
 **L3. More tunnel types** — promoted to **F13** (2026-09-07). WireGuard, Shadowsocks,
 Trojan, VMess, subscription URLs and XHTTP-via-Xray are all tracked there.
 
-**L4. Tunnel health** — periodic latency checks promoted to **F14** (2026-09-15).
-- Failover: a rule can list a fallback tunnel used when the primary is down (builds on the
-  F14 *unreachable* state).
+**L4. Tunnel health** — periodic latency checks promoted to **F14**, failover delivered by
+**F16** tunnel groups (2026-09-15).
 - Traffic history per tunnel (sparkline, totals per day) on top of the F9 rates.
 - Refresh a subscription's server list (F13 stage 7 imports once).
 
@@ -297,6 +349,14 @@ is stated next to each one.
 **Approved: [design/prototype/variant-b.html](design/prototype/variant-b.html)** — popover
 dashboard (`MenuBarExtra(.window)`), sidebar Settings with inline tunnel expansion, rules
 grouped by tunnel. The SwiftUI views follow it screen by screen.
+
+**Approved 2026-09-15: [design/prototype/variant-c.html](design/prototype/variant-c.html)**
+— the friendlier redraw for the F14–F18 wave, same architecture as variant B: seven boards
+(popover on, popover states, Tunnels, Rules with the Recent strip, rule test with Probe,
+General with block lists, New group sheet), light and dark. Its friction audit (the comment
+at the top of the file) lists the wording, empty-state and one-click fixes that M10 applies
+to the existing screens before the features land. Windows twin: boards W9–W15 of
+[design/prototype/windows.html](design/prototype/windows.html).
 
 [design/prototype/index.html](design/prototype/index.html) — rejected v1 (native NSMenu,
 toolbar tabs, flat rules table); still the reference for the Logs window, helper alert and
@@ -624,8 +684,104 @@ approved before any of the boxes below.
 - [ ] Design notes as listed above.
 - [ ] Daemon: periodic probe per connected tunnel, latency and probe failures in the
       traffic snapshot.
-- [ ] App: current latency next to the rates, sparkline on the card, *unreachable* state.
+- [ ] App: current latency next to the rates, sparkline on the card, *unreachable* state —
+      the card of variant C board C1 (number + unit, band colour, 2-minute sparkline at
+      24 pt); the Probe line of board C5 in rule testing.
 - [ ] Windows: the same in the Go service and the Flutter card
       ([ROADMAP-windows.md](ROADMAP-windows.md)).
 - [ ] Manual check: the number tracks a known-slow tunnel; pulling the server's plug turns
       the card *unreachable* within the designed window and back on reconnect.
+
+### M10 — Friendlier screens (variant C, existing features only)
+
+The variant C redraw applied to what already ships, before any F15–F18 code: the fixes in
+the friction audit at the top of
+[design/prototype/variant-c.html](design/prototype/variant-c.html). Design notes first
+([design/02-ux.md](design/02-ux.md): strings, states, empty states), then the views.
+Boards C1, C2, C3 (light), C4 (without the Recent strip and the group section), C6
+(without the Blocking section).
+
+- [ ] 02-ux.md: wording table (old → new), status words per tunnel state, empty states
+      (no tunnels yet, tunnel with no rules), the popover summary lines, the General rows.
+- [ ] Popover: 360 pt wide, section headers, card line 2 = status word + at most two facts,
+      *Idle* instead of zero rates, Retry only on a card with something to retry, *Fix…* on
+      a failed tunnel, "Not via any tunnel" row, off / can't-connect / first-run states.
+- [ ] Settings › Tunnels: row = status in words + protocol demoted to the subtitle, expanded
+      form per C3 (Login + password on one line, "From the tunnel", "Everything else",
+      "Imported ‹date›").
+- [ ] Settings › Rules: group headers say what they mean, "Not via any tunnel" for the
+      Direct group, match kinds "and subdomains / exactly this / pattern / the app",
+      "+ Add site", shadowed chip as a sentence, empty state per group.
+- [ ] Settings › General: rows reworded per C6, "Service/Helper up to date".
+- [ ] README screenshots re-rendered from variant C.
+- [ ] Manual check: the maintainer walks the popover and the three Settings pages against
+      the boards; strings match the 02-ux.md table.
+
+### M11 — Recent domains → rule (F15)
+
+Phase 1 above, § F15; stage 3 of [roadmap/next-features.md](roadmap/next-features.md)
+writes the design (05-daemon.md: the recent-hosts list in the snapshot;
+00-architecture.md § 7 amended for per-connection hosts crossing to the app; 02-ux.md:
+the Recent section and strip, boards C1 and C4).
+
+- [ ] Design notes as listed above.
+- [ ] `WayforkCore`: snapshot field `recentHosts` (host, process, tunnel, lastSeen),
+      capped at 200, cleared when the state leaves *on*; never written to disk or logged
+      at `info`.
+- [ ] Daemon: fill it from the F9 `/connections` poll — default-route flows only, domains
+      covered by a rule excluded.
+- [ ] App: the Recent section in the popover (five rows, *Route via ▾*, hide for the
+      session, empty state) and the strip on the Rules page (three rows, *Show all*).
+- [ ] *Route via* creates a suffix rule for the registrable domain and removes the row.
+- [ ] Manual check: open a site in Safari, it appears within one poll; route it, it leaves
+      the list and the next request goes through the chosen tunnel.
+
+### M12 — Tunnel groups (F16)
+
+Phase 1 above, § F16. The only feature of the wave that changes the model: rule targets
+become tunnel-or-group. Design in 01-data-model.md (`TunnelGroup`), 03-routing.md
+(`urltest` / `selector`, new goldens), 05-daemon.md (*first live* switching, or the
+decision that `urltest` with `tolerance` covers it), 02-ux.md (boards C1, C3, C7).
+
+- [ ] Design notes as listed above; the *first live* vs `urltest` question decided there.
+- [ ] `WayforkCore`: `TunnelGroup` (name, ordered members, policy) in `store.json`, rule
+      and default-tunnel targets widened, validation (no nested groups, ≥ 2 members).
+- [ ] Generator: `urltest` (fastest) / `selector` (first live) outbounds, goldens.
+- [ ] Daemon: active member in the snapshot; the *first live* switch if the design keeps it.
+- [ ] App: group card (popover and Settings) with members and the member in use, *New
+      group…* sheet (C7), group in every tunnel picker, group section on the Rules page.
+- [ ] Manual check: a two-member group with one member unplugged serves its rules through
+      the other; both up, *fastest* follows the lower F14 number.
+
+### M13 — Local proxy port per tunnel (F17)
+
+Phase 1 above, § F17. Design in 01-data-model.md (port fields), 03-routing.md (`mixed`
+inbounds, `inbound → outbound` rules, DNS through the tunnel's resolver — verified with the
+generator before the design is final), 02-ux.md (board C3). LAN sharing is out unless
+approved separately.
+
+- [ ] Design notes as listed above.
+- [ ] `WayforkCore`: `localProxy` (enabled, port) per tunnel and group; port chosen by the
+      app (stable, starting at 1081), editable, unique.
+- [ ] Generator: one `mixed` inbound per enabled port, one route rule, DNS detour; goldens.
+- [ ] App: the *Local proxy* row in the expanded card — switch, `127.0.0.1:‹port›`, Copy,
+      one-line hint.
+- [ ] Manual check: `curl --proxy socks5h://127.0.0.1:‹port› https://ifconfig.me` shows the
+      tunnel's exit address with no rule for that host; the DNS query does not go direct.
+
+### M14 — Block lists (F18)
+
+Phase 1 above, § F18. Design in 03-routing.md (`block` outbound + rule-set), 05-daemon.md
+(list source and refresh job — lean: bundled list + optional refresh from a pinned URL,
+decided in the design note), 01-data-model.md (switch and exceptions in `store.json`),
+02-ux.md (boards C5 "Blocked" result and C6).
+
+- [ ] Design notes as listed above; list source decided.
+- [ ] List: bundled with the app, refresh job in the daemon if the design keeps it.
+- [ ] Generator: `block` rule-set, exceptions as a rule ahead of it, NXDOMAIN from the
+      fake-ip resolver; goldens.
+- [ ] Daemon: blocked-flow counter in the F9 snapshot.
+- [ ] App: the *Blocking* section in General (switch, "Blocked N today", list age,
+      *Update now*, *Never block* chips), the *Blocked* result in the Probe line.
+- [ ] Manual check: a known ad host fails fast in the browser with the switch on and loads
+      with it in *Never block*; the counter moves.

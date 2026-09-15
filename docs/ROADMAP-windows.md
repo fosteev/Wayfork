@@ -13,8 +13,8 @@ maintainer approval.
 | W1. Features | Per-feature Windows deltas against F1–F12 | approved 2026-08-27 |
 | W2a. Feasibility spike | Manual run of the routing scheme on a Windows machine, go/no-go | **done 2026-08-27 — GO** (results in [design/08-windows.md](design/08-windows.md) § Spike); `bind_interface` + a metric-9999 scoped default on the dco/TAP adapter routes per tunnel without touching the system default, NRPT `.` is the airtight resolver override, job objects kill children with the parent |
 | W2b. Design | `docs/design/08-windows.md` — every platform delta, written after the spike | approved 2026-08-27 (all 10 sections from the W2a results) |
-| W2c. UI prototype | `docs/design/prototype/windows.html` — tray flyout + context menu, main window (Dashboard/Tunnels/Rules/General/Logs), first-run, service-missing | approved 2026-08-27 (8 boards, ported from variant-b.html) |
-| W3. Implementation | Milestones WM0–WM5 below | WM0/WM1/WM2 done and pushed, WM2 verified in the VM 2026-08-28; WM3 (Flutter app) in progress — WM3a-WM3f done (WM3a-WM3c VM-verified), full VM run of the UI left |
+| W2c. UI prototype | `docs/design/prototype/windows.html` — tray flyout + context menu, main window (Dashboard/Tunnels/Rules/General/Logs), first-run, service-missing | approved 2026-08-27 (8 boards, ported from variant-b.html); boards W9–W15 for the F14–F18 wave approved 2026-09-15 (ported from variant-c.html) |
+| W3. Implementation | Milestones WM0–WM15 below | WM0/WM1/WM2 done and pushed, WM2 verified in the VM 2026-08-28; WM3 (Flutter app) in progress — WM3a-WM3f done (WM3a-WM3c VM-verified), full VM run of the UI left |
 
 ## Phase W0 — Decisions
 
@@ -574,3 +574,57 @@ deltas go to [design/08-windows.md](design/08-windows.md).
 - [ ] App (Flutter): current latency next to the rates, sparkline on the card,
       *unreachable* state.
 - [ ] PC run (`ssh wf-pc`): same check as M9.
+
+### WM11 — Friendlier screens (variant C)
+
+[ROADMAP.md](ROADMAP.md) § M10, on the Flutter pages, from boards W9–W14 of
+[design/prototype/windows.html](design/prototype/windows.html) (the variant C port: same
+strings and states, Windows chrome). Deltas, if any, go to
+[design/08-windows.md](design/08-windows.md).
+
+- [ ] Tray flyout per W9/W10: section headers, status words, *Idle*, Retry only when
+      useful, *Fix…*, "Not via any tunnel", off / can't-connect / first-run states.
+- [ ] Tunnels, Rules, General pages per W11, W12, W14 (existing rows and forms only).
+- [ ] README Windows screenshots re-rendered from W9, W11, W12.
+- [ ] PC run (`ssh wf-pc`): walk the flyout and the three pages against the boards.
+
+### WM12 — Recent domains → rule (F15)
+
+[ROADMAP.md](ROADMAP.md) § M11, on the fixtures M11 produces.
+
+- [ ] Service (Go): `recentHosts` in the snapshot from the `/connections` poll, capped and
+      cleared like the daemon's; process name from the connection's owner where the Clash
+      API gives it.
+- [ ] App (Flutter): the Recent section in the flyout and the strip on the Rules page,
+      *Route via ▾* creating the rule.
+- [ ] PC run: same check as M11.
+
+### WM13 — Tunnel groups (F16)
+
+[ROADMAP.md](ROADMAP.md) § M12, on the fixtures M12 produces; `core/validate.go` passes
+`urltest` / `selector` outbounds through.
+
+- [ ] Core (Dart): `TunnelGroup`, widened targets, validation; goldens shared with Swift.
+- [ ] Service (Go): active member in the snapshot; *first live* switch if the design keeps it.
+- [ ] App (Flutter): group card, New group dialog (W15), group in the pickers and on the
+      Rules page.
+- [ ] PC run: same check as M12.
+
+### WM14 — Local proxy port per tunnel (F17)
+
+[ROADMAP.md](ROADMAP.md) § M13, on the fixtures M13 produces.
+
+- [ ] Core (Dart): `localProxy` per tunnel and group; generator emits the `mixed` inbounds
+      and rules; goldens shared.
+- [ ] App (Flutter): the *Local proxy* row per W11 (switch, address, Copy, hint).
+- [ ] PC run: `curl.exe --proxy socks5h://127.0.0.1:‹port›` as in M13.
+
+### WM15 — Block lists (F18)
+
+[ROADMAP.md](ROADMAP.md) § M14, on the fixtures M14 produces.
+
+- [ ] List bundled by the MSI; refresh job in the service if the design keeps it.
+- [ ] Core (Dart): switch and exceptions in the store, generator, goldens shared.
+- [ ] Service (Go): blocked-flow counter in the snapshot.
+- [ ] App (Flutter): the *Blocking* section per W14, the *Blocked* Probe result per W13.
+- [ ] PC run: same check as M14.

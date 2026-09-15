@@ -1,7 +1,8 @@
 # Next features — F14–F18
 
-> Status: proposed · created 2026-09-15 · F14 approved 2026-09-15 (ROADMAP § F14);
-> F15–F18 await approval · nothing designed or built yet
+> Status: approved · created 2026-09-15 · F14–F18 approved 2026-09-15 (ROADMAP § F14–F18);
+> prototype variant C approved 2026-09-15 (stage 2 done) · stage 3 (design notes) next;
+> milestones M10–M14 / WM11–WM15 in the roadmaps · nothing built yet
 
 ## Goal
 
@@ -39,7 +40,10 @@ before any design text is written.
 **F14. Tunnel latency** — approved, text in [ROADMAP.md](../ROADMAP.md) § F14. Listed
 here because F16 builds on its measurement and the prototype draws its sparkline.
 
-**F15. Recent domains → rule** *(proposed 2026-09-15)*
+F15–F18 below were approved 2026-09-15 and copied to [ROADMAP.md](../ROADMAP.md) § F15–F18;
+this file keeps the original text, the stages and the working order.
+
+**F15. Recent domains → rule** *(proposed 2026-09-15; approved 2026-09-15)*
 - While the global state is on, the app shows the domains seen in the last few minutes
   that went to the *default* route (direct or the default tunnel), newest first, with the
   app that opened them where known. Each row has one action: *Route via ‹tunnel›*, which
@@ -53,7 +57,7 @@ here because F16 builds on its measurement and the prototype draws its sparkline
 - Not a live connection view (L2 keeps that): no bytes, no per-connection rows, no
   history — a to-do list of "this went where you may not want it".
 
-**F16. Tunnel groups** *(proposed 2026-09-15)*
+**F16. Tunnel groups** *(proposed 2026-09-15; approved 2026-09-15)*
 - A group is a named, ordered list of tunnels with a policy: *fastest* (lowest F14 latency,
   re-evaluated on every probe) or *first live* (the first member whose probe passes).
   A rule, an exception or the default tunnel can point at a group wherever it can point at
@@ -67,7 +71,7 @@ here because F16 builds on its measurement and the prototype draws its sparkline
   group with no live member behaves like a down tunnel (rules fall to the default route,
   the card says so).
 
-**F17. Local proxy port per tunnel** *(proposed 2026-09-15)*
+**F17. Local proxy port per tunnel** *(proposed 2026-09-15; approved 2026-09-15)*
 - A tunnel (or group) can expose a local SOCKS5/HTTP port on `127.0.0.1`, shown on its card
   with a copy button: `curl --proxy socks5h://127.0.0.1:<port>`, a browser profile, a
   Telegram proxy — an explicit way to pick a tunnel without writing a rule.
@@ -80,7 +84,7 @@ here because F16 builds on its measurement and the prototype draws its sparkline
   toggle behind a plain warning: the port has no password. Off by default, not in the first
   cut unless approved with the rest.
 
-**F18. Block lists** *(proposed 2026-09-15)*
+**F18. Block lists** *(proposed 2026-09-15; approved 2026-09-15)*
 - Settings › General gains a *Block ads and trackers* switch backed by a bundled or
   fetched domain list (the same rule-set mechanism L1 needs for GeoSite lists). Blocked
   domains get `block` in sing-box and NXDOMAIN from the fake-ip resolver, so the browser
@@ -102,25 +106,30 @@ here because F16 builds on its measurement and the prototype draws its sparkline
 ### 1. Feature entry and approval
 
 - [x] F14 written into ROADMAP.md, L4 narrowed, M9 / WM10 skeletons (2026-09-15).
-- [ ] Maintainer approves F15–F18 (each, in as many words) or strikes some. On approval
+- [x] Maintainer approves F15–F18 (each, in as many words) or strikes some. On approval
       the texts above are copied into ROADMAP.md after F14, with M10+ / WM11+ skeletons
       pointing here, and *Later* loses the lines they replace (L2 live view stays, L4 loses
-      failover).
-- [ ] Maintainer confirms the UI pass scope: which screens the friendlier redraw may touch
+      failover). — 2026-09-15: all four approved with the prototype; ROADMAP.md § F15–F18,
+      M10–M14, ROADMAP-windows.md WM11–WM15; L4 failover struck.
+- [x] Maintainer confirms the UI pass scope: which screens the friendlier redraw may touch
       beyond the ones the new features need (the brief below assumes: popover, Tunnels,
-      Rules, General, Add sheets; Logs untouched).
+      Rules, General, Add sheets; Logs untouched). — 2026-09-15: as drawn — popover,
+      Tunnels, Rules, General, New group sheet; Add sheets and Logs untouched.
 
 **Done when:** the approvals are in this file.
 
 ### 2. Prototype — friendlier screens *(brief below)*
 
-- [ ] Friction audit of variant B written as a list (what a first-time user does not
-      understand, what needs two clicks that should need one).
-- [ ] `docs/design/prototype/variant-c.html`: the boards listed in the brief, light and
-      dark, macOS 14 look, static HTML/CSS only like variant B.
-- [ ] Review pass with the maintainer on rendered boards; iterate in the same file.
-- [ ] `docs/design/prototype/windows.html` gains the Windows boards for the approved
-      macOS ones (after the macOS boards are approved, not in parallel).
+- [x] Friction audit of variant B written as a list (what a first-time user does not
+      understand, what needs two clicks that should need one). — 25 items, the comment at
+      the top of variant-c.html.
+- [x] `docs/design/prototype/variant-c.html`: the boards listed in the brief, light and
+      dark, macOS 14 look, static HTML/CSS only like variant B. — C1–C7, 2026-09-15.
+- [x] Review pass with the maintainer on rendered boards; iterate in the same file. —
+      C1/C4 and W9/W12 reviewed 2026-09-15, approved as drawn.
+- [x] `docs/design/prototype/windows.html` gains the Windows boards for the approved
+      macOS ones (after the macOS boards are approved, not in parallel). — W9–W15,
+      2026-09-15 (drawn alongside the macOS boards at the maintainer's request).
 
 **Done when:** the maintainer approves variant C the way variant B was approved; the
 approval line goes into ROADMAP.md § UI prototype.
@@ -139,8 +148,10 @@ approval line goes into ROADMAP.md § UI prototype.
 
 ### 4. Implementation, macOS (one feature per commit series)
 
-Order: **F14 → F15 → F16 → F17 → F18**, see *Working order*.
+Order: **M10 → F14 → F15 → F16 → F17 → F18**, see *Working order*. Milestones in
+ROADMAP.md: M10 (friendlier screens, existing features only), M9 (F14), M11–M14 (F15–F18).
 
+- [ ] M10: the friction-audit fixes on the existing screens, before any new feature.
 - [ ] F14 (M9 in ROADMAP.md).
 - [ ] F15: snapshot field + cap in `WayforkCore`, the panel, *Route via* creating the rule.
 - [ ] F16: model + generator + goldens, the group card, group in every tunnel picker,
@@ -153,7 +164,7 @@ Order: **F14 → F15 → F16 → F17 → F18**, see *Working order*.
 ### 5. Windows mirror
 
 - [ ] Same order, feature by feature, on the fixtures stage 4 produces; PC run per feature
-      (`ssh wf-pc`).
+      (`ssh wf-pc`). Milestones WM11–WM15 in ROADMAP-windows.md.
 
 ### 6. Ship
 
@@ -243,7 +254,11 @@ Order: **F14 → F15 → F16 → F17 → F18**, see *Working order*.
 
 ## Working order
 
-Strictly 1 → 2 → 3 → 4 → 5 → 6. Inside 4: **F14 → F15 → F16 → F17 → F18**.
+Strictly 1 → 2 → 3 → 4 → 5 → 6. Inside 4: **M10 → F14 → F15 → F16 → F17 → F18**.
+
+- M10 first — the redraw of the existing screens (strings, states, empty states) lands
+  without new code paths, so every later feature is drawn onto screens that already match
+  variant C, and the first user-facing change of the wave is the cheapest to verify.
 
 - F14 first — the group card (F16) shows its number, and the probe machinery is the
   liveness signal groups switch on.
