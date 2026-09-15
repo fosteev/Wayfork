@@ -1180,6 +1180,35 @@ Design in [02-ux.md](02-ux.md) § Variant C, [01-data-model.md](01-data-model.md
   tester line is the Windows twin of 07-rule-testing.md once L2 lands there (the tester
   itself is not on the Windows pages yet — WM10 adds the Probe button only if the tester
   exists by then, otherwise the Probe waits for the tester).
+- **Can't reach (WM16)**: the pane sits on the Logs page above the lines
+  (`FailedPane`), the red line on the Dashboard header; the join is the same
+  `FailedConnections` logic in `internal/core`, fed by the engine's log relay.
+
+### As built (2026-09-16)
+
+The port landed in three commits (Dart core d4ac090, Go service 9400543, Flutter app
+62810cc) with these deltas from the notes above:
+
+- The shared goldens `group-*`, `proxy-*` and `block-*` replay byte for byte from the
+  Dart generator; the Dart skip list is gone.
+- **No tray flyout window**: the Windows app has a native tray menu and the main
+  window's Dashboard page is the popover's twin, so boards W9/W10 map to the Dashboard
+  (cards with latency + sparkline, group cards with members, Recent, the F19 line) and
+  the stat tiles stay.
+- **Block list**: fetched and compiled by `scripts/fetch-win-blocklist.ps1` (the twin of
+  `fetch-blocklist.sh`, same pins in `versions.env`) into `WayforkWindows\rulesets\`, staged
+  into the MSI payload as `rulesets\block-ads.srs` by `release-windows.ps1`; the service
+  accepts only `<install>\rulesets\block-ads.srs` (`core.ValidateOptions`).
+- **Process names** in Recent and Can't reach are the executable's file name (no
+  `SHGetFileInfo` icon and no version resource yet — a generic icon); the app column is
+  empty at log detail *Problems*, as on macOS.
+- **Pick by** is a pair of radio buttons (fluent_ui has no segmented control); member
+  order in the expanded group and the New group dialog changes by dragging a row onto
+  another (`Draggable` / `DragTarget`, like the rules).
+- The taken-port retry logs the Windows bind text (`Only one usage of each socket
+  address …`) as well as the POSIX one.
+- Widget tests scroll with `ensureVisible` where the Blocking section and the group
+  rows pushed controls below the 600 px test window.
 
 ## Open items
 

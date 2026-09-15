@@ -569,10 +569,12 @@ step, so it can follow kind by kind rather than wait for all of macOS.
 [ROADMAP.md](ROADMAP.md) § F14 / § M9. Follows the macOS design once it is approved; the
 deltas go to [design/08-windows.md](design/08-windows.md).
 
-- [ ] Service (Go): the same probe and snapshot field as the macOS daemon, in
-      `internal/core` where it does not touch Win32.
-- [ ] App (Flutter): current latency next to the rates, sparkline on the card,
-      *unreachable* state.
+- [x] Service (Go): the same probe and snapshot field as the macOS daemon, in
+      `internal/core` where it does not touch Win32 (2026-09-16: `LatencyTracker` +
+      `LatencyProber`, `latency` in the snapshot; 9400543).
+- [x] App (Flutter): current latency next to the rates, sparkline on the card,
+      *unreachable* state (2026-09-16: `LatencyLabel`, `SparklineView`, cards and rows;
+      62810cc).
 - [ ] PC run (`ssh wf-pc`): same check as M9.
 
 ### WM11 — Friendlier screens (variant C)
@@ -582,9 +584,11 @@ deltas go to [design/08-windows.md](design/08-windows.md).
 strings and states, Windows chrome). Deltas, if any, go to
 [design/08-windows.md](design/08-windows.md).
 
-- [ ] Tray flyout per W9/W10: section headers, status words, *Idle*, Retry only when
-      useful, *Fix…*, "Not via any tunnel", off / can't-connect / first-run states.
-- [ ] Tunnels, Rules, General pages per W11, W12, W14 (existing rows and forms only).
+- [x] Tray flyout per W9/W10: section headers, status words, *Idle*, Retry only when
+      useful, *Fix…*, "Not via any tunnel", off / can't-connect / first-run states
+      (2026-09-16: on the Dashboard page — there is no flyout window; 62810cc).
+- [x] Tunnels, Rules, General pages per W11, W12, W14 (existing rows and forms only)
+      (2026-09-16: `StatusText` ported to the variant C wording, the pages reworded).
 - [ ] README Windows screenshots re-rendered from W9, W11, W12.
 - [ ] PC run (`ssh wf-pc`): walk the flyout and the three pages against the boards.
 
@@ -592,11 +596,12 @@ strings and states, Windows chrome). Deltas, if any, go to
 
 [ROADMAP.md](ROADMAP.md) § M11, on the fixtures M11 produces.
 
-- [ ] Service (Go): `recentHosts` in the snapshot from the `/connections` poll, capped and
+- [x] Service (Go): `recentHosts` in the snapshot from the `/connections` poll, capped and
       cleared like the daemon's; process name from the connection's owner where the Clash
-      API gives it.
-- [ ] App (Flutter): the Recent section in the flyout and the strip on the Rules page,
-      *Route via ▾* creating the rule.
+      API gives it (2026-09-16: `RecentHosts`; 9400543).
+- [x] App (Flutter): the Recent section in the flyout and the strip on the Rules page,
+      *Route via ▾* creating the rule (2026-09-16: `RecentSection` on the Dashboard,
+      `RecentStrip` on Rules; 62810cc).
 - [ ] PC run: same check as M11.
 
 ### WM13 — Tunnel groups (F16)
@@ -604,29 +609,38 @@ strings and states, Windows chrome). Deltas, if any, go to
 [ROADMAP.md](ROADMAP.md) § M12, on the fixtures M12 produces; `core/validate.go` passes
 `urltest` / `selector` outbounds through.
 
-- [ ] Core (Dart): `TunnelGroup`, widened targets, validation; goldens shared with Swift.
-- [ ] Service (Go): active member in the snapshot; *first live* switch if the design keeps it.
-- [ ] App (Flutter): group card, New group dialog (W15), group in the pickers and on the
-      Rules page.
+- [x] Core (Dart): `TunnelGroup`, widened targets, validation; goldens shared with Swift
+      (2026-09-16: d4ac090, the `group-*` goldens replay byte for byte).
+- [x] Service (Go): active member in the snapshot; *first live* switch if the design keeps it
+      (2026-09-16: `groups` once a second, the selector switch after each probe round).
+- [x] App (Flutter): group card, New group dialog (W15), group in the pickers and on the
+      Rules page (2026-09-16: `group_details.dart`, `AppModelGroups`).
 - [ ] PC run: same check as M12.
 
 ### WM14 — Local proxy port per tunnel (F17)
 
 [ROADMAP.md](ROADMAP.md) § M13, on the fixtures M13 produces.
 
-- [ ] Core (Dart): `localProxy` per tunnel and group; generator emits the `mixed` inbounds
-      and rules; goldens shared.
-- [ ] App (Flutter): the *Local proxy* row per W11 (switch, address, Copy, hint).
+- [x] Core (Dart): `localProxy` per tunnel and group; generator emits the `mixed` inbounds
+      and rules; goldens shared (2026-09-16: d4ac090).
+- [x] Service (Go): inbound checks in `ValidatePlan`, the taken-port strip and retry,
+      `proxyPortInUse` in the status (2026-09-16: 9400543).
+- [x] App (Flutter): the *Local proxy* row per W11 (switch, address, Copy, hint)
+      (2026-09-16: `LocalProxyRow` on every kind and on groups).
 - [ ] PC run: `curl.exe --proxy socks5h://127.0.0.1:‹port›` as in M13.
 
 ### WM15 — Block lists (F18)
 
 [ROADMAP.md](ROADMAP.md) § M14, on the fixtures M14 produces.
 
-- [ ] List bundled by the MSI; refresh job in the service if the design keeps it.
-- [ ] Core (Dart): switch and exceptions in the store, generator, goldens shared.
-- [ ] Service (Go): blocked-flow counter in the snapshot.
-- [ ] App (Flutter): the *Blocking* section per W14, the *Blocked* Probe result per W13.
+- [x] List bundled by the MSI; refresh job in the service if the design keeps it
+      (2026-09-16: `scripts/fetch-win-blocklist.ps1` → `rulesets\block-ads.srs` in the
+      payload; no refresh job, as on macOS).
+- [x] Core (Dart): switch and exceptions in the store, generator, goldens shared
+      (2026-09-16: d4ac090).
+- [x] Service (Go): blocked-flow counter in the snapshot (2026-09-16: `BlockCounter`).
+- [x] App (Flutter): the *Blocking* section per W14, the *Blocked* Probe result per W13
+      (2026-09-16: the section; the Probe result waits for the tester, as on macOS).
 - [ ] PC run: same check as M14.
 
 ### WM16 — Can't reach (F19)
@@ -634,7 +648,8 @@ strings and states, Windows chrome). Deltas, if any, go to
 [ROADMAP.md](ROADMAP.md) § M15; the line shapes and reason classes in 05-daemon.md
 § Failed connections are sing-box's, so they carry over unchanged.
 
-- [ ] Service (Go): the `FailedConnections` join in `internal/core`, fed by the service's
-      sing-box log relay; `failedHosts` in the snapshot.
-- [ ] App (Flutter): the pane on the Logs page per W16, click → filter, the flyout line.
+- [x] Service (Go): the `FailedConnections` join in `internal/core`, fed by the service's
+      sing-box log relay; `failedHosts` in the snapshot (2026-09-16: 9400543).
+- [x] App (Flutter): the pane on the Logs page per W16, click → filter, the flyout line
+      (2026-09-16: `FailedPane` on Logs, the line on the Dashboard header).
 - [ ] PC run: same check as M15.

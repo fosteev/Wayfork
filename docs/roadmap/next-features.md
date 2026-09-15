@@ -219,7 +219,9 @@ ROADMAP.md: M10 (friendlier screens, existing features only), M9 (F14), M11–M1
 ### 5. Windows mirror
 
 - [ ] Same order, feature by feature, on the fixtures stage 4 produces; PC run per feature
-      (`ssh wf-pc`). Milestones WM11–WM15 in ROADMAP-windows.md.
+      (`ssh wf-pc`). Milestones WM11–WM15 in ROADMAP-windows.md. — code done 2026-09-16
+      for WM10–WM16 (Dart core d4ac090, Go service 9400543, Flutter app 62810cc); the PC
+      runs and the README screenshots are owed.
 
 ### 6. Ship
 
