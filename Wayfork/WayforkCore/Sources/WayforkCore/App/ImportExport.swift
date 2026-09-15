@@ -61,6 +61,9 @@ public enum StoreImporter {
                 result.tunnels[index].isEnabled = exported.isEnabled
                 result.tunnels[index].kind = exported.kind
                 result.tunnels[index].createdAt = exported.createdAt
+                result.tunnels[index].localProxy = importedProxy(
+                    exported.localProxy, name: exported.name, id: exported.id, in: result,
+                    warnings: &warnings)
                 tunnelsUpdated += 1
                 collect(exported.secrets, for: exported.id, into: &secrets)
                 continue
@@ -79,7 +82,10 @@ public enum StoreImporter {
                     isEnabled: exported.isEnabled,
                     slot: slot,
                     kind: exported.kind,
-                    createdAt: exported.createdAt))
+                    createdAt: exported.createdAt,
+                    localProxy: importedProxy(
+                        exported.localProxy, name: exported.name, id: exported.id, in: result,
+                        warnings: &warnings)))
             tunnelsAdded += 1
             collect(exported.secrets, for: exported.id, into: &secrets)
         }
@@ -98,6 +104,8 @@ public enum StoreImporter {
                 continue
             }
             var imported = group
+            imported.localProxy = importedProxy(
+                group.localProxy, name: group.name, id: group.id, in: result, warnings: &warnings)
             imported.members = members
             if let index = result.groups.firstIndex(where: { $0.id == group.id }) {
                 result.groups[index] = imported
@@ -155,6 +163,24 @@ public enum StoreImporter {
             rulesAdded: rulesAdded,
             rulesUpdated: rulesUpdated,
             rulesSkipped: rulesSkipped)
+    }
+
+    /// F17: a port that another tunnel or group already holds is dropped with a warning
+    /// (the address is machine-local anyway); an invalid one too.
+    private static func importedProxy(
+        _ proxy: LocalProxy?, name: String, id: UUID, in store: Store, warnings: inout [String]
+    ) -> LocalProxy? {
+        guard let proxy else { return nil }
+        guard LocalProxy.portRange.contains(proxy.port) else {
+            warnings.append("Local proxy port \(proxy.port) of \(name) dropped: outside 1024–65535")
+            return nil
+        }
+        if let owner = store.localProxyPortOwner(proxy.port, excluding: id) {
+            warnings.append(
+                "Local proxy port \(proxy.port) of \(name) dropped: already used by \(owner)")
+            return nil
+        }
+        return proxy
     }
 
     private static func availableName(

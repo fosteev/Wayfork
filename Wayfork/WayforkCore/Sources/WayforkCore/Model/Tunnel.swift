@@ -367,6 +367,8 @@ public struct Tunnel: Codable, Sendable, Hashable, Identifiable {
     public var slot: Int
     public var kind: TunnelKind
     public var createdAt: Date
+    /// F17: a loopback port that sends an app through this tunnel; nil = never turned on.
+    public var localProxy: LocalProxy?
 
     public init(
         id: UUID = UUID(),
@@ -374,7 +376,8 @@ public struct Tunnel: Codable, Sendable, Hashable, Identifiable {
         isEnabled: Bool = true,
         slot: Int,
         kind: TunnelKind,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        localProxy: LocalProxy? = nil
     ) {
         self.id = id
         self.name = name
@@ -382,6 +385,7 @@ public struct Tunnel: Codable, Sendable, Hashable, Identifiable {
         self.slot = slot
         self.kind = kind
         self.createdAt = createdAt
+        self.localProxy = localProxy
     }
 
     /// sing-box outbound tag: `t-<id>`.

@@ -56,6 +56,8 @@ public struct ExportedTunnel: Codable, Sendable, Hashable, Identifiable {
     public var createdAt: Date
     public var kind: TunnelKind
     public var secrets: TunnelSecrets
+    /// F17; absent in files written before it.
+    public var localProxy: LocalProxy?
 
     public init(tunnel: Tunnel, secrets: TunnelSecrets = .none) {
         id = tunnel.id
@@ -64,6 +66,7 @@ public struct ExportedTunnel: Codable, Sendable, Hashable, Identifiable {
         createdAt = tunnel.createdAt
         kind = tunnel.kind
         self.secrets = secrets
+        localProxy = tunnel.localProxy
     }
 }
 

@@ -320,3 +320,29 @@ private func document(
     #expect(exported.defaultTunnelID == importedOpenVPNID)
     #expect(exported.rules.contains { $0.isException })
 }
+
+// MARK: - F17
+
+@Test func importCarriesLocalProxyPortsAndDropsCollisions() {
+    var work = openVPNTunnel()
+    work.localProxy = LocalProxy(isEnabled: true, port: 1081)
+    var home = vlessTunnel()
+    home.localProxy = LocalProxy(isEnabled: false, port: 1081)  // collides with Work
+    var wireGuard = wireGuardTunnel()
+    wireGuard.localProxy = LocalProxy(isEnabled: true, port: 80)  // out of range
+    let outcome = StoreImporter.apply(
+        document(tunnels: [work, home, wireGuard].map { ExportedTunnel(tunnel: $0) }),
+        to: .empty, mode: .replace)
+    #expect(
+        outcome.store.tunnel(id: work.id)?.localProxy == LocalProxy(isEnabled: true, port: 1081))
+    #expect(outcome.store.tunnel(id: home.id)?.localProxy == nil)
+    #expect(outcome.store.tunnel(id: wireGuard.id)?.localProxy == nil)
+    #expect(outcome.warnings.contains { $0.contains("1081 of Home dropped: already used by Work") })
+    #expect(outcome.warnings.contains { $0.contains("80 of WireGuard dropped: outside") })
+
+    // Merge: the same tunnel keeps its own port (no self-collision).
+    let merged = StoreImporter.apply(
+        document(tunnels: [ExportedTunnel(tunnel: work)]), to: outcome.store, mode: .merge)
+    #expect(merged.store.tunnel(id: work.id)?.localProxy?.port == 1081)
+    #expect(merged.warnings.isEmpty)
+}

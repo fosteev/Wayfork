@@ -264,7 +264,7 @@ actor Supervisor {
         await engine.deleteRuleSets(actions.staleRuleSets)
 
         var failure: DaemonError?
-        do {
+        do throws(DaemonError) {
             switch actions.singBox {
             case .none:
                 break
@@ -281,7 +281,17 @@ actor Supervisor {
                 if actions.singBox == .restart {
                     await engine.stop()
                 }
-                try await engine.start()
+                status.proxyPortInUse = []
+                do throws(DaemonError) {
+                    try await engine.start()
+                } catch {
+                    // F17: a local proxy port another program holds — start once more
+                    // without that inbound; the tunnel still routes its sites.
+                    guard let stripped = await startWithoutTakenPort(plan, error: error) else {
+                        throw error
+                    }
+                    status.proxyPortInUse = [stripped]
+                }
             }
         } catch {
             failure = error
@@ -313,6 +323,32 @@ actor Supervisor {
             return .failure(failure)
         }
         return .success
+    }
+
+    /// When `error` is a start failure caused by a `proxy-*` inbound whose port is taken,
+    /// installs the config without it and starts again (once). Returns the tunnel or group
+    /// id that lost its port, nil when the failure was something else or the retry failed.
+    private func startWithoutTakenPort(_ plan: RuntimePlan, error: DaemonError) async -> String? {
+        guard case .startFailed(let tail) = error,
+            let tag = tail.lazy.compactMap(SingBoxLog.inboundBindFailure).first,
+            let inbound = plan.singBox.localProxyInbounds.first(where: { $0.tag == tag }),
+            let exitID = inbound.exitID,
+            let config = LocalProxyStripper.strip(inboundTag: tag, from: plan.singBox.config)
+        else { return nil }
+        hub.post(
+            .warning,
+            "local proxy port \(inbound.port) of \(inbound.outboundTag ?? tag) is taken by another program; starting without it"
+        )
+        do {
+            // Installed under the plan's own hash: the next apply of the same plan must not
+            // restart the engine only to hit the same port again.
+            try await engine.check(config: config, hash: plan.singBox.configHash)
+            try await engine.start()
+            return exitID
+        } catch {
+            hub.post(.error, "sing-box: \(error)")
+            return nil
+        }
     }
 
     private func performStop() async {

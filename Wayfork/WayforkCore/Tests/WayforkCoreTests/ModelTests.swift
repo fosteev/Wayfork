@@ -289,3 +289,38 @@ enum Fixtures {
     #expect(store.effectiveRules.map(\.pattern) == ["x.com", "b.com", "a.com", "c.com"])
     #expect(store.rules(for: .direct).map(\.id) == [exception.id])
 }
+
+// MARK: - F17
+
+@Test func localProxyPortsAreHandedOutAndChecked() throws {
+    var store = Store(tunnels: [
+        Tunnel(
+            name: "Work", slot: 0, kind: .vless(VLESSMeta(server: "s", port: 443, security: .tls))),
+        Tunnel(
+            name: "Home", slot: 1, kind: .vless(VLESSMeta(server: "s", port: 443, security: .tls))),
+    ])
+    #expect(store.nextFreeLocalProxyPort() == LocalProxy.firstPort)
+    store.tunnels[0].localProxy = LocalProxy(isEnabled: true, port: 1081)
+    #expect(store.nextFreeLocalProxyPort() == 1082)
+    // A port kept by a switched-off proxy still counts as taken.
+    store.tunnels[1].localProxy = LocalProxy(isEnabled: false, port: 1082)
+    #expect(store.nextFreeLocalProxyPort() == 1083)
+    #expect(store.localProxyPortOwner(1082, excluding: store.tunnels[0].id) == "Home")
+    #expect(store.localProxyPortOwner(1082, excluding: store.tunnels[1].id) == nil)
+    #expect(store.localProxy(ofExit: store.tunnels[1].id)?.port == 1082)
+    let proxy = LocalProxy(isEnabled: true, port: 1081)
+    #expect(proxy.address == "127.0.0.1:1081" && proxy.copyText == "socks5h://127.0.0.1:1081")
+    #expect(LocalProxy.inboundTag(forOutboundTag: "t-abc") == "proxy-t-abc")
+    #expect(LocalProxy.outboundTag(fromInboundTag: "proxy-g-abc") == "g-abc")
+    #expect(LocalProxy.outboundTag(fromInboundTag: "tun-in") == nil)
+
+    // Round trip, and a tunnel without the field encodes as before.
+    let data = try JSONEncoder().encode(store)
+    let decoded = try JSONDecoder().decode(Store.self, from: data)
+    #expect(decoded.tunnels[0].localProxy == LocalProxy(isEnabled: true, port: 1081))
+    var bare = store
+    bare.tunnels[0].localProxy = nil
+    #expect(
+        !String(decoding: try JSONEncoder().encode(bare.tunnels[0]), as: UTF8.self).contains(
+            "localProxy"))
+}

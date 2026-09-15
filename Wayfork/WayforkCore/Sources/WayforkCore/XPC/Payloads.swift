@@ -70,23 +70,28 @@ public struct RuntimeStatus: Codable, Sendable, Hashable {
     public var discoveredDNS: [String: [String]]
     /// F12: whether the system resolver currently points at the TUN.
     public var resolverOverride: ResolverOverrideState
+    /// F17: tunnel / group ids whose local proxy port another program holds; the engine
+    /// runs without those inbounds (docs/design/05-daemon.md, "Local proxy ports").
+    public var proxyPortInUse: [String]
 
     public init(
         engine: EngineState = .stopped,
         tunnels: [String: TunnelState] = [:],
         planHash: String? = nil,
         discoveredDNS: [String: [String]] = [:],
-        resolverOverride: ResolverOverrideState = .off
+        resolverOverride: ResolverOverrideState = .off,
+        proxyPortInUse: [String] = []
     ) {
         self.engine = engine
         self.tunnels = tunnels
         self.planHash = planHash
         self.discoveredDNS = discoveredDNS
         self.resolverOverride = resolverOverride
+        self.proxyPortInUse = proxyPortInUse
     }
 
     private enum CodingKeys: String, CodingKey {
-        case engine, tunnels, planHash, discoveredDNS, resolverOverride
+        case engine, tunnels, planHash, discoveredDNS, resolverOverride, proxyPortInUse
     }
 
     public init(from decoder: Decoder) throws {
@@ -98,6 +103,7 @@ public struct RuntimeStatus: Codable, Sendable, Hashable {
             try c.decodeIfPresent([String: [String]].self, forKey: .discoveredDNS) ?? [:]
         resolverOverride =
             try c.decodeIfPresent(ResolverOverrideState.self, forKey: .resolverOverride) ?? .off
+        proxyPortInUse = try c.decodeIfPresent([String].self, forKey: .proxyPortInUse) ?? []
     }
 
     public static let stopped = RuntimeStatus()

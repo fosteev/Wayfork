@@ -105,6 +105,22 @@ public struct SingBoxPlan: Codable, Sendable, Hashable {
         return route["final"] as? String
     }
 
+    /// The local proxy inbounds of the config (F17): tag, listen address and port of every
+    /// `mixed` inbound, in config order. Empty when the config is not the generator's shape.
+    public var localProxyInbounds: [LocalProxyInbound] {
+        guard
+            let root = try? JSONSerialization.jsonObject(with: Data(config.utf8)) as? [String: Any],
+            let inbounds = root["inbounds"] as? [[String: Any]]
+        else { return [] }
+        return inbounds.compactMap { inbound in
+            guard inbound["type"] as? String == "mixed", let tag = inbound["tag"] as? String
+            else { return nil }
+            return LocalProxyInbound(
+                tag: tag, listen: inbound["listen"] as? String ?? "",
+                port: inbound["listen_port"] as? Int ?? 0)
+        }
+    }
+
     /// The group outbounds of the config by group id (F16): the policy behind each
     /// (`selector` = *first live*, `urltest` = *fastest*) and the member tunnel ids in the
     /// group's order. Empty when the config is not the generator's shape.
@@ -131,6 +147,29 @@ public struct SingBoxPlan: Codable, Sendable, Hashable {
         self.config = config
         self.ruleSets = ruleSets
         configHash = Hashing.sha256Hex(config)
+    }
+}
+
+/// One `mixed` inbound as the daemon sees it in the config (F17).
+public struct LocalProxyInbound: Sendable, Hashable {
+    public var tag: String
+    public var listen: String
+    public var port: Int
+
+    public init(tag: String, listen: String, port: Int) {
+        self.tag = tag
+        self.listen = listen
+        self.port = port
+    }
+
+    /// `t-<id>` / `g-<id>` the inbound feeds, per its tag; nil for a foreign tag.
+    public var outboundTag: String? { LocalProxy.outboundTag(fromInboundTag: tag) }
+
+    /// The tunnel or group id behind the tag; nil for a foreign tag.
+    public var exitID: String? {
+        guard let outboundTag else { return nil }
+        return Tunnel.tunnelID(fromOutboundTag: outboundTag)
+            ?? TunnelGroup.groupID(fromOutboundTag: outboundTag)
     }
 }
 

@@ -293,3 +293,67 @@ extension Array where Element == String {
         }
     }
 }
+
+// MARK: - F17
+
+private func proxyConfig(_ inbounds: [(tag: String, listen: String, port: Int)]) -> String {
+    let list = inbounds.map {
+        #"{"type":"mixed","tag":"\#($0.tag)","listen":"\#($0.listen)","listen_port":\#($0.port)}"#
+    }
+    return
+        #"{"inbounds":[{"type":"tun","tag":"tun-in"},\#(list.joined(separator: ","))],"route":{"rules":[{"action":"sniff"},{"inbound":["proxy-t-\#(idA)"],"outbound":"t-\#(idA)"},{"inbound":["proxy-g-\#(idB)"],"outbound":"g-\#(idB)"}]}}"#
+}
+
+@Test func localProxyInboundsAreValidated() {
+    let good = proxyConfig([
+        ("proxy-t-\(idA)", "127.0.0.1", 1081), ("proxy-g-\(idB)", "127.0.0.1", 1082),
+    ])
+    #expect(validationError(plan([], config: good)) == nil)
+    let inbounds = SingBoxPlan(config: good, ruleSets: [:]).localProxyInbounds
+    #expect(inbounds.map(\.port) == [1081, 1082])
+    #expect(inbounds.map(\.exitID) == [idA, idB])
+    #expect(inbounds[1].outboundTag == "g-\(idB)")
+    #expect(
+        reason(
+            validationError(plan([], config: proxyConfig([("proxy-t-\(idA)", "0.0.0.0", 1081)])))
+        )
+        .contains("loopback"))
+    #expect(
+        reason(
+            validationError(plan([], config: proxyConfig([("proxy-t-\(idA)", "127.0.0.1", 80)])))
+        )
+        .contains("range"))
+    let samePort = proxyConfig([
+        ("proxy-t-\(idA)", "127.0.0.1", 1081), ("proxy-g-\(idB)", "127.0.0.1", 1081),
+    ])
+    #expect(reason(validationError(plan([], config: samePort))).contains("two inbounds"))
+    let sameExit = proxyConfig([
+        ("proxy-t-\(idA)", "127.0.0.1", 1081), ("proxy-t-\(idA)", "127.0.0.1", 1082),
+    ])
+    #expect(reason(validationError(plan([], config: sameExit))).contains("two local proxy ports"))
+    #expect(
+        reason(validationError(plan([], config: proxyConfig([("socks-in", "127.0.0.1", 1081)]))))
+            .contains("proxy-t-<id>"))
+}
+
+@Test func takenPortIsParsedAndStrippedFromTheConfig() throws {
+    let line =
+        "FATAL[0000] start service: initialize inbound/mixed[proxy-t-\(idA)]: listen tcp 127.0.0.1:1081: bind: address already in use"
+    #expect(SingBoxLog.inboundBindFailure(line) == "proxy-t-\(idA)")
+    #expect(SingBoxLog.inboundBindFailure("INFO[0000] sing-box started (0.02s)") == nil)
+    #expect(SingBoxLog.inboundBindFailure("bind: address already in use") == nil)
+
+    let config = proxyConfig([
+        ("proxy-t-\(idA)", "127.0.0.1", 1081), ("proxy-g-\(idB)", "127.0.0.1", 1082),
+    ])
+    let stripped = try #require(
+        LocalProxyStripper.strip(inboundTag: "proxy-t-\(idA)", from: config))
+    let root = try #require(
+        try JSONSerialization.jsonObject(with: Data(stripped.utf8)) as? [String: Any])
+    let inbounds = try #require(root["inbounds"] as? [[String: Any]])
+    #expect(inbounds.map { $0["tag"] as? String } == ["tun-in", "proxy-g-\(idB)"])
+    let rules = try #require((root["route"] as? [String: Any])?["rules"] as? [[String: Any]])
+    #expect(rules.count == 2)
+    #expect(rules[1]["outbound"] as? String == "g-\(idB)")
+    #expect(LocalProxyStripper.strip(inboundTag: "proxy-t-missing", from: config) == nil)
+}

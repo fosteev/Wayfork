@@ -24,6 +24,29 @@ public enum PlanValidator {
             }
             try checkSize(contents, name: name, allowEmpty: false)
         }
+        // F17: loopback only, sane ports, one per tunnel or group, tags of our shape.
+        var proxyPorts = Set<Int>()
+        var proxyExits = Set<String>()
+        for inbound in plan.singBox.localProxyInbounds {
+            guard inbound.listen == LocalProxy.listenAddress else {
+                throw .planInvalid(
+                    reason: "inbound \(inbound.tag) listens on \(inbound.listen), not loopback")
+            }
+            guard LocalProxy.portRange.contains(inbound.port) else {
+                throw .planInvalid(
+                    reason: "inbound \(inbound.tag) port \(inbound.port) is out of range")
+            }
+            guard proxyPorts.insert(inbound.port).inserted else {
+                throw .planInvalid(reason: "port \(inbound.port) is used by two inbounds")
+            }
+            guard let exitID = inbound.exitID, isTunnelID(exitID) else {
+                throw .planInvalid(
+                    reason: "inbound tag \"\(inbound.tag)\" is not proxy-t-<id> or proxy-g-<id>")
+            }
+            guard proxyExits.insert(exitID).inserted else {
+                throw .planInvalid(reason: "tunnel or group \(exitID) has two local proxy ports")
+            }
+        }
         guard plan.openVPN.count <= RuntimePlan.maxTunnels else {
             throw .planInvalid(
                 reason:

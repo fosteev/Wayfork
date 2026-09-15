@@ -30,6 +30,18 @@ public enum SingBoxLog {
         line.contains("sing-box started")
     }
 
+    /// The inbound whose port another program holds, from sing-box's start failure
+    /// (`… initialize inbound/mixed[proxy-t-<id>]: listen tcp 127.0.0.1:1081: bind: address
+    /// already in use`); nil for any other line (F17).
+    public static func inboundBindFailure(_ line: String) -> String? {
+        guard line.contains("address already in use"), let open = line.range(of: "inbound/"),
+            let bracket = line[open.upperBound...].firstIndex(of: "["),
+            let close = line[bracket...].firstIndex(of: "]")
+        else { return nil }
+        let tag = line[line.index(after: bracket)..<close]
+        return tag.isEmpty ? nil : String(tag)
+    }
+
     /// Removes the timestamp prefix that our own `LogLine.ts` already carries.
     public static func message(of line: String) -> String {
         // Format with `timestamp: true`: `<zone> <date> <time> <LEVEL> <message>`.

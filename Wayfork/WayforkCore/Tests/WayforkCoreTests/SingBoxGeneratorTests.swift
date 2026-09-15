@@ -701,6 +701,19 @@ private func configVariants() -> [(String, SingBoxConfigGenerator.Input)] {
     var oneMember = groupStore(policy: .fastest)
     oneMember.tunnels[1].isEnabled = false
     variants.append(("group-one-member", input(oneMember)))
+    // F17: a port on a tunnel, on a group, and on a tunnel that is not the default (rules
+    // present, to pin the inbound rule ahead of every rule-set); a port that is switched
+    // off leaves no trace.
+    var proxyTunnel = twoTunnelStore()
+    proxyTunnel.tunnels[0].localProxy = LocalProxy(isEnabled: true, port: 1081)
+    proxyTunnel.tunnels[1].localProxy = LocalProxy(isEnabled: false, port: 1082)
+    variants.append(("proxy-tunnel", input(proxyTunnel)))
+    var proxyGroup = groupStore(policy: .fastest)
+    proxyGroup.groups[0].localProxy = LocalProxy(isEnabled: true, port: 1082)
+    variants.append(("proxy-group", input(proxyGroup)))
+    var proxyWithDefault = defaultTunnelStore(defaultID: Fixtures.homeID)
+    proxyWithDefault.tunnels[0].localProxy = LocalProxy(isEnabled: true, port: 1081)
+    variants.append(("proxy-with-default", input(proxyWithDefault)))
     return variants
 }
 

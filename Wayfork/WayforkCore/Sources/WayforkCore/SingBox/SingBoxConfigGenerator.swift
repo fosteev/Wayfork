@@ -156,6 +156,19 @@ public enum SingBoxConfigGenerator {
             ["action": "sniff"],
             ["protocol": "dns", "action": "hijack-dns"],
         ]
+        // F17: one `mixed` inbound per enabled local proxy port, and a rule that sends
+        // whatever came in through it to that exit before any domain rule, exception or
+        // block list can redirect it (docs/design/03-routing.md, "Local proxy ports").
+        var proxyInbounds: [[String: Any]] = []
+        let proxyExits =
+            routed.map { ($0.outboundTag, $0.localProxy) }
+            + routedGroups.map { ($0.outboundTag, $0.localProxy) }
+        for (outboundTag, proxy) in proxyExits {
+            guard let proxy, proxy.isEnabled else { continue }
+            let tag = LocalProxy.inboundTag(forOutboundTag: outboundTag)
+            proxyInbounds.append(mixedInbound(tag: tag, port: proxy.port))
+            routeRules.append(["inbound": [tag], "outbound": outboundTag])
+        }
         if !input.systemDNSServers.isEmpty {
             // DDR (RFC 9462): mDNSResponder asks the system resolver for `_dns.resolver.arpa`
             // and, when the advertised DoH/DoT endpoint's certificate covers the resolver's
@@ -374,7 +387,7 @@ public enum SingBoxConfigGenerator {
         var config: [String: Any] = [
             "log": ["level": store.settings.logLevel.singBoxLevel, "timestamp": true],
             "dns": dns,
-            "inbounds": [tunInbound(carving: carved)],
+            "inbounds": [tunInbound(carving: carved)] + proxyInbounds,
             "outbounds": outbounds,
             "route": route,
             "experimental": [
@@ -579,6 +592,17 @@ public enum SingBoxConfigGenerator {
             "strict_route": false,
             "route_exclude_address": routeExcludeAddresses(carving: carved),
             "stack": "system",
+        ]
+    }
+
+    /// SOCKS5 + HTTP CONNECT on one loopback port, no authentication (F17). No
+    /// `domain_strategy`: the outbound dials by the name the client handed over.
+    static func mixedInbound(tag: String, port: Int) -> [String: Any] {
+        [
+            "type": "mixed",
+            "tag": tag,
+            "listen": LocalProxy.listenAddress,
+            "listen_port": port,
         ]
     }
 

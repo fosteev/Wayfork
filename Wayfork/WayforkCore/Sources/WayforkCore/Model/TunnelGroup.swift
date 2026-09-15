@@ -22,10 +22,12 @@ public struct TunnelGroup: Codable, Sendable, Hashable, Identifiable {
     public var members: [UUID]
     public var policy: GroupPolicy
     public var createdAt: Date
+    /// F17: a loopback port that sends an app through this group; nil = never turned on.
+    public var localProxy: LocalProxy?
 
     public init(
         id: UUID = UUID(), name: String, isEnabled: Bool = true, members: [UUID],
-        policy: GroupPolicy = .fastest, createdAt: Date = Date()
+        policy: GroupPolicy = .fastest, createdAt: Date = Date(), localProxy: LocalProxy? = nil
     ) {
         self.id = id
         self.name = name
@@ -33,6 +35,7 @@ public struct TunnelGroup: Codable, Sendable, Hashable, Identifiable {
         self.members = members
         self.policy = policy
         self.createdAt = createdAt
+        self.localProxy = localProxy
     }
 
     /// sing-box outbound tag: `g-<id>`.

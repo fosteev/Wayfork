@@ -218,6 +218,10 @@ struct OpenVPNDetailView: View {
                 }
             }
             GridRow {
+                label("Local proxy")
+                LocalProxyRow(exitID: tunnel.id, exitName: tunnel.name)
+            }
+            GridRow {
                 label("Everything else")
                 DefaultTunnelToggle(tunnel: tunnel)
             }
@@ -405,6 +409,10 @@ struct WireGuardDetailView: View {
                 Button("Replace…", action: replace).controlSize(.small)
             }
             GridRow {
+                label("Local proxy")
+                LocalProxyRow(exitID: tunnel.id, exitName: tunnel.name)
+            }
+            GridRow {
                 label("Everything else")
                 DefaultTunnelToggle(tunnel: tunnel)
             }
@@ -567,6 +575,10 @@ struct ProxyLinkDetailView: View {
                     .disabled(model.missingSecrets.contains(tunnel.id))
                     Button("Replace Link…", action: replace).controlSize(.small)
                 }
+            }
+            GridRow {
+                label("Local proxy")
+                LocalProxyRow(exitID: tunnel.id, exitName: tunnel.name)
             }
             GridRow {
                 label("Everything else")

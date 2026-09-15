@@ -652,3 +652,25 @@ private func groupedStore() -> (Store, group: TunnelGroup, work: Tunnel, home: T
     #expect(
         StatusText.effectiveDefaultExitName(store, missingSecrets: [store.tunnels[2].id]) == nil)
 }
+
+// MARK: - Local proxy (F17)
+
+@Test func localProxyRowTextAndPortValidation() {
+    var (store, work, home, _) = sampleStore()
+    store.tunnels[0].localProxy = LocalProxy(isEnabled: true, port: 1081)
+    #expect(LocalProxyText.portProblem("1082", store: store, excluding: home.id) == nil)
+    #expect(LocalProxyText.portProblem("1081", store: store, excluding: work.id) == nil)
+    #expect(
+        LocalProxyText.portProblem("1081", store: store, excluding: home.id)
+            == "Port already used by Work")
+    #expect(
+        LocalProxyText.portProblem("80", store: store, excluding: home.id) == "Ports 1024–65535")
+    #expect(
+        LocalProxyText.portProblem("abc", store: store, excluding: home.id) == "Ports 1024–65535")
+    #expect(
+        LocalProxyText.portProblem("70000", store: store, excluding: home.id) == "Ports 1024–65535")
+    #expect(
+        LocalProxyText.portTaken(1081) == "Port 1081 is taken by another program — pick another")
+    #expect(LocalProxyText.onHint(exitName: "Work").hasSuffix("uses Work, no rule needed"))
+    #expect(LocalProxyText.offHint(exitName: "Work").contains("through Work without a rule"))
+}

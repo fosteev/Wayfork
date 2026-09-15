@@ -796,11 +796,20 @@ generator before the design is final), 02-ux.md (board C3). LAN sharing is out u
 approved separately.
 
 - [x] Design notes as listed above (2026-09-15).
-- [ ] `WayforkCore`: `localProxy` (enabled, port) per tunnel and group; port chosen by the
-      app (stable, starting at 1081), editable, unique.
-- [ ] Generator: one `mixed` inbound per enabled port, one route rule, DNS detour; goldens.
-- [ ] App: the *Local proxy* row in the expanded card — switch, `127.0.0.1:‹port›`, Copy,
-      one-line hint.
+- [x] `WayforkCore`: `localProxy` (enabled, port) per tunnel and group; port chosen by the
+      app (stable, starting at 1081), editable, unique (2026-09-15: `LocalProxy`,
+      `Store.nextFreeLocalProxyPort` / `localProxyPortOwner`, export carries the field, a
+      colliding or invalid port is dropped on import with a warning).
+- [x] Generator: one `mixed` inbound per enabled port, one route rule, DNS detour; goldens
+      (2026-09-15: `proxy-tunnel`, `proxy-group`, `proxy-with-default`; the rule sits
+      right after `hijack-dns`; no DNS block is needed — the outbound dials by name;
+      `sing-box check` passes; the Dart replay skips `proxy-*` until WM14).
+- [x] Daemon: `PlanValidator` checks the inbounds (loopback, port range, unique, our
+      tags); a bind failure at start strips that inbound and starts once more,
+      `RuntimeStatus.proxyPortInUse` names the tunnel or group (2026-09-15).
+- [x] App: the *Local proxy* row in the expanded card — switch, `127.0.0.1:‹port›`, Copy,
+      one-line hint (2026-09-15: `LocalProxyRow` on every tunnel kind and on groups, port
+      editable on click with inline validation, `Port … is taken` from the status).
 - [ ] Manual check: `curl --proxy socks5h://127.0.0.1:‹port› https://ifconfig.me` shows the
       tunnel's exit address with no rule for that host; the DNS query does not go direct.
 

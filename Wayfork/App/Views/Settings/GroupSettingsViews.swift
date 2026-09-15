@@ -121,6 +121,10 @@ struct GroupDetailView: View {
                 }
             }
             GridRow {
+                label("Local proxy")
+                LocalProxyRow(exitID: group.id, exitName: group.name)
+            }
+            GridRow {
                 label("Everything else")
                 DefaultExitToggle(id: group.id, name: group.name)
             }

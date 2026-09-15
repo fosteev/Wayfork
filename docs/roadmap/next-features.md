@@ -171,7 +171,7 @@ ROADMAP.md: M10 (friendlier screens, existing features only), M9 (F14), M11–M1
       switch, group cards / rows / sheet / Rules section) code done 2026-09-15; manual
       check and WM13 owed.
 - [ ] F17: model + generator + goldens, port on the card, copy button; LAN toggle only if
-      approved.
+      approved. — code done 2026-09-15 (M13; no LAN toggle); manual check and WM14 owed.
 - [ ] F18: list source and fetch, generator, the switch, counter, exceptions.
 - [ ] Manual check per feature, listed in the design notes.
 

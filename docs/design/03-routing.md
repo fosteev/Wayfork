@@ -528,9 +528,10 @@ rule-sets so no domain rule, exception or the block list can redirect it:
   stdout before the "started" line; the daemon maps it to `proxy.portInUse` for that
   tunnel, removes the inbound and its rule from the config it writes, and starts the rest
   — the tunnel still routes its sites, only the port is missing until the user changes it.
-- Golden variants: `proxy-tunnel` (one OpenVPN tunnel with a port), `proxy-group`,
-  `proxy-with-default` (a port on a tunnel that is not the default, rules present, to pin
-  the rule order).
+- Golden variants: `proxy-tunnel` (one OpenVPN tunnel with a port, the other tunnel's
+  port switched off), `proxy-group`, `proxy-with-default` (a port on a tunnel that is not
+  the default, rules present, to pin the rule order). All three pass `sing-box check` on
+  1.13.19 (2026-09-15).
 
 ## Block list (F18)
 
