@@ -905,10 +905,10 @@ AllowedIPs = 0.0.0.0/0
       await h.model.setDefaultTunnel(id);
       expect(h.model.isDefaultTunnel(id), isTrue);
       expect(h.model.effectiveDefaultTunnel?.id, id);
-      expect(h.model.deleteTunnelMessage(id), contains('and its 3 rules'));
+      expect(h.model.deleteTunnelMessage(id), contains('and its 3 sites'));
       expect(
         h.model.deleteTunnelMessage(h.sample.lab.id),
-        contains('its 1 rule?'),
+        contains('its 1 site?'),
       );
       h.model.expandedTunnelID = id;
       await h.model.deleteTunnel(id);
@@ -949,17 +949,16 @@ AllowedIPs = 0.0.0.0/0
       h = Harness();
       h.service.status = RuntimeStatus.stopped;
       await h.start();
-      expect(h.model.directGroupHint, startsWith('Overrides tunnel rules'));
+      expect(h.model.directGroupHint, startsWith('stay on your normal'));
       await h.model.setDefaultTunnel(h.sample.lab.id);
       expect(h.model.defaultTunnelIssue, DefaultTunnelIssue.missingSecret);
       expect(h.model.defaultTunnelHint(h.sample.lab).isWarning, isTrue);
       expect(h.model.effectiveDefaultTunnel, isNull);
       await h.model.setDefaultTunnel(h.sample.home.id);
-      expect(h.model.directGroupHint, contains('through Home'));
       expect(h.model.defaultTunnelHint(h.sample.home).isWarning, isFalse);
       expect(
         h.model.defaultTunnelHint(h.sample.work).text,
-        startsWith('Domains without a rule'),
+        startsWith('Sites without a rule'),
       );
       await h.model.setEnabled(h.sample.home.id, false);
       expect(h.model.defaultTunnelIssue, DefaultTunnelIssue.disabled);
@@ -1002,7 +1001,10 @@ AllowedIPs = 0.0.0.0/0
         isNotNull,
       );
       expect(h.appLog, contains('rule added: new.example.org → Home'));
-      expect(h.appLog, contains('rule updated: new.example.org → Direct'));
+      expect(
+        h.appLog,
+        contains('rule updated: new.example.org → Not via any tunnel'),
+      );
     });
 
     test('add, update, move and remove within groups', () async {
@@ -1060,7 +1062,10 @@ AllowedIPs = 0.0.0.0/0
       expect(h.model.ruleCountForTunnel(h.sample.home.id), 2);
       await h.model.removeRule(id);
       expect(h.model.store.rules.where((r) => r.id == id), isEmpty);
-      expect(h.model.targetName(const RuleTargetDirect()), 'Direct');
+      expect(
+        h.model.targetName(const RuleTargetDirect()),
+        'Not via any tunnel',
+      );
       expect(h.model.targetName(home), 'Home');
       expect(h.model.tunnelName('00000000-0000-4000-8000-0000000000ff'), '?');
     });

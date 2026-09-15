@@ -98,6 +98,21 @@ abstract final class RulePattern {
   }
 
   /// Domain matching never applies to application or IP rules.
+  /// The registrable domain of a host — the part a suffix rule should cover
+  /// (`news.example.com` → `example.com`, `www.example.co.uk` →
+  /// `example.co.uk`). A heuristic without a public suffix list: two labels,
+  /// three under a two-letter TLD whose second label is a known public one.
+  static String registrableDomain(String host) {
+    final labels = host.toLowerCase().split('.');
+    if (labels.length <= 2) return host.toLowerCase();
+    final tld = labels[labels.length - 1];
+    final second = labels[labels.length - 2];
+    final keep = tld.length == 2 && publicSecondLevelLabels.contains(second)
+        ? 3
+        : 2;
+    return labels.sublist(labels.length - keep).join('.');
+  }
+
   static bool matches({
     required String host,
     required String pattern,

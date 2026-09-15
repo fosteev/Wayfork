@@ -7,8 +7,10 @@ import 'package:wayfork/app/model/app_alert.dart';
 import 'package:wayfork/app/services/launch_at_login.dart';
 import 'package:wayfork/app/services/log_center.dart';
 import 'package:wayfork/app/services/notifier.dart';
+import 'package:wayfork/core/app/feature_text.dart';
 import 'package:wayfork/core/app/global_state.dart';
 import 'package:wayfork/core/app/import_export.dart';
+import 'package:wayfork/core/app/recent_filter.dart';
 import 'package:wayfork/core/app/recovery_backoff.dart';
 import 'package:wayfork/core/app/rule_editing.dart';
 import 'package:wayfork/core/app/status_text.dart';
@@ -17,12 +19,16 @@ import 'package:wayfork/core/ipc/payloads.dart';
 import 'package:wayfork/core/ipc/runtime_plan.dart';
 import 'package:wayfork/core/ipc/service_client.dart';
 import 'package:wayfork/core/ipc/service_connection.dart';
+import 'package:wayfork/core/json_text.dart';
 import 'package:wayfork/core/model/export_document.dart';
+import 'package:wayfork/core/model/local_proxy.dart';
 import 'package:wayfork/core/model/rule.dart';
 import 'package:wayfork/core/model/settings.dart';
 import 'package:wayfork/core/model/store.dart';
 import 'package:wayfork/core/model/tunnel.dart';
+import 'package:wayfork/core/model/tunnel_group.dart';
 import 'package:wayfork/core/openvpn/openvpn_config_parser.dart';
+import 'package:wayfork/core/platform.dart';
 import 'package:wayfork/core/plan/host_resolver.dart';
 import 'package:wayfork/core/plan/runtime_plan_builder.dart';
 import 'package:wayfork/core/plan/system_dns.dart';
@@ -39,6 +45,8 @@ import 'package:wayfork/core/vless/vless_uri_parser.dart';
 import 'package:wayfork/core/wireguard/wireguard_conf_parser.dart';
 
 part 'app_model_diagnostics.dart';
+part 'app_model_features.dart';
+part 'app_model_groups.dart';
 part 'app_model_import_export.dart';
 part 'app_model_rules.dart';
 part 'app_model_tunnels.dart';
@@ -211,6 +219,15 @@ final class AppModel extends ChangeNotifier {
   /// Last tunnel used by quick add.
   RuleTarget? quickAddTarget;
 
+  /// F15: recent rows dismissed for the session (by host).
+  final Set<String> hiddenRecentHosts = {};
+
+  /// F19: rows of the Can't reach pane dismissed for the session (by id).
+  final Set<String> hiddenFailedHosts = {};
+
+  /// F19: a host the Logs page should filter to when opened from the flyout.
+  String? logsPreselectedSearch;
+
   // Derived
 
   GlobalState get globalState => GlobalStateDerivation.derive(
@@ -286,6 +303,7 @@ final class AppModel extends ChangeNotifier {
     ruleCount: ruleCountForTunnel(tunnel.id),
     missingSecret: _missingSecrets.contains(tunnel.id),
     isDefault: effectiveDefaultTunnel?.id == tunnel.id,
+    latency: latency(tunnel),
   );
 
   TunnelRowSummary rowSummary(Tunnel tunnel) => StatusText.rowSummary(
@@ -294,6 +312,8 @@ final class AppModel extends ChangeNotifier {
     global: globalState,
     missingSecret: _missingSecrets.contains(tunnel.id),
     isDefault: effectiveDefaultTunnel?.id == tunnel.id,
+    ruleCount: ruleCountForTunnel(tunnel.id),
+    latency: latency(tunnel),
   );
 
   // Default tunnel (F8)
@@ -328,41 +348,37 @@ final class AppModel extends ChangeNotifier {
   ({String text, bool isWarning}) defaultTunnelHint(Tunnel tunnel) {
     if (!isDefaultTunnel(tunnel.id)) {
       return (
-        text: 'Domains without a rule use this tunnel instead of going direct.',
+        text: 'Sites without a rule use this tunnel instead of going direct.',
         isWarning: false,
       );
     }
     switch (defaultTunnelIssue) {
       case DefaultTunnelIssue.disabled:
         return (
-          text: 'Disabled — everything else goes direct.',
+          text: 'Off — sites without a rule stay outside a tunnel.',
           isWarning: true,
         );
       case DefaultTunnelIssue.missingSecret:
         final what = tunnel.kind.isOpenVPN ? 'Config' : 'UUID';
         return (
-          text: '$what missing — everything else goes direct.',
+          text: '$what missing — sites without a rule stay outside a tunnel.',
           isWarning: true,
         );
       case DefaultTunnelIssue.missing || null:
         return (
           text:
-              'Domains without a rule use this tunnel; add exceptions in '
-              'Rules › Direct. While it is down, unmatched traffic is blocked.',
+              'Sites without a rule use this tunnel; add sites that must stay '
+              'outside under "Not via any tunnel" in Rules. While it can\'t '
+              'connect, those sites are blocked.',
           isWarning: false,
         );
     }
   }
 
-  /// Header hint of the Direct group in Rules.
-  String get directGroupHint {
-    final tunnel = effectiveDefaultTunnel;
-    if (tunnel != null) {
-      return 'Everything else goes through ${tunnel.name}; these domains '
-          'stay direct';
-    }
-    return 'Overrides tunnel rules; everything unmatched already goes direct';
-  }
+  /// Header hint of the Direct group in Rules (docs/design/02-ux.md, "Variant
+  /// C": the same sentence whatever the default is).
+  String get directGroupHint =>
+      'stay on your normal connection, whatever other rules say';
 
   /// Discovered DNS for an OpenVPN tunnel (live status first, then the
   /// stored value).
@@ -513,6 +529,8 @@ final class AppModel extends ChangeNotifier {
     logs.app(LogLevel.info, 'Turn On requested');
     _cancelRecovery();
     _desiredOn = true;
+    hiddenRecentHosts.clear();
+    hiddenFailedHosts.clear();
     _setTransition(AppTransition.starting(since: _now()));
     notifyListeners();
     try {
@@ -1119,6 +1137,7 @@ final class AppModel extends ChangeNotifier {
       resolvedServerAddresses: resolved,
       systemDNSServers: systemDNS.routable(overrideAddress: override),
       networkResolvers: systemDNS.networkServers,
+      blockListAvailable: blockList.isAvailable,
     );
     for (final warning in result.warnings) {
       if (warning case PlanWarningMissingSecret(:final tunnelID)) {

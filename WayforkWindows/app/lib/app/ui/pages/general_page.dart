@@ -11,6 +11,7 @@ import 'package:wayfork/app/ui/app_scope.dart';
 import 'package:wayfork/app/ui/backup_dialogs.dart';
 import 'package:wayfork/app/ui/widgets/components.dart';
 import 'package:wayfork/core/app/import_export.dart';
+import 'package:wayfork/core/app/feature_text.dart';
 import 'package:wayfork/core/app/status_text.dart';
 import 'package:wayfork/core/ipc/payloads.dart';
 import 'package:wayfork/core/model/settings.dart';
@@ -235,11 +236,12 @@ class _GeneralPageState extends State<GeneralPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  _BlockingSection(model: model),
                   _Section(
                     title: 'Startup',
                     children: [
                       _SettingRow(
-                        label: 'Start Wayfork at sign-in',
+                        label: 'Open Wayfork at sign-in',
                         child: ToggleSwitch(
                           checked: settings.launchAtLogin,
                           onChanged: (on) => unawaited(
@@ -251,7 +253,7 @@ class _GeneralPageState extends State<GeneralPage> {
                         ),
                       ),
                       _SettingRow(
-                        label: 'Connect on launch',
+                        label: 'Turn on when it opens',
                         child: ToggleSwitch(
                           checked: settings.connectOnLaunch,
                           onChanged: (on) => unawaited(
@@ -268,7 +270,7 @@ class _GeneralPageState extends State<GeneralPage> {
                     title: 'Reliability',
                     children: [
                       _SettingRow(
-                        label: 'Reconnect tunnels automatically',
+                        label: 'Reconnect tunnels on their own',
                         child: ToggleSwitch(
                           checked: settings.autoReconnect,
                           onChanged: (on) => unawaited(
@@ -280,7 +282,7 @@ class _GeneralPageState extends State<GeneralPage> {
                         ),
                       ),
                       _SettingRow(
-                        label: 'Notify when a tunnel fails',
+                        label: 'Notify me when a tunnel stops working',
                         child: ToggleSwitch(
                           checked: settings.notifyOnTunnelFailure,
                           onChanged: (on) => unawaited(
@@ -312,7 +314,9 @@ class _GeneralPageState extends State<GeneralPage> {
                         ),
                       ),
                       _SettingRow(
-                        label: 'Direct traffic resolver',
+                        label: 'DNS for sites outside tunnels',
+                        hint:
+                            "Sites that go through a tunnel always use that tunnel's DNS",
                         child: Row(
                           children: [
                             RadioGroup<bool>(
@@ -323,7 +327,7 @@ class _GeneralPageState extends State<GeneralPage> {
                                 children: [
                                   RadioButton(
                                     value: false,
-                                    content: Text('System'),
+                                    content: Text('Same as Windows'),
                                   ),
                                   SizedBox(width: 14),
                                   RadioButton(
@@ -356,9 +360,9 @@ class _GeneralPageState extends State<GeneralPage> {
                     title: 'Logs',
                     children: [
                       _SettingRow(
-                        label: 'Level',
+                        label: 'Detail',
                         hint: settings.logLevel == LogLevel.debug
-                            ? 'Debug logs may include hostnames.'
+                            ? '"Everything" may include the names of sites you open.'
                             : null,
                         child: SizedBox(
                           width: 130,
@@ -582,9 +586,159 @@ class _SettingRow extends StatelessWidget {
   );
 }
 
-String _levelTitle(LogLevel level) => switch (level) {
-  LogLevel.error => 'Error',
-  LogLevel.warning => 'Warning',
-  LogLevel.info => 'Info',
-  LogLevel.debug => 'Debug',
-};
+String _levelTitle(LogLevel level) => StatusText.logDetailName(level);
+
+/// General › Blocking (F18): the switch with its one-line hint, and the
+/// *Never block* chips.
+class _BlockingSection extends StatefulWidget {
+  const _BlockingSection({required this.model});
+
+  final AppModel model;
+
+  @override
+  State<_BlockingSection> createState() => _BlockingSectionState();
+}
+
+class _BlockingSectionState extends State<_BlockingSection> {
+  final _exception = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _exception.dispose();
+    super.dispose();
+  }
+
+  Future<void> _add() async {
+    final message = await widget.model.addBlockException(_exception.text);
+    if (!mounted) return;
+    setState(() {
+      _error = message;
+      if (message == null) _exception.clear();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final model = widget.model;
+    final theme = FluentTheme.of(context);
+    final info = model.blockList;
+    final settings = model.settings;
+    return _Section(
+      title: 'Blocking',
+      children: [
+        _SettingRow(
+          label: 'Block ads and trackers',
+          hint: model.blockListHint,
+          child: ToggleSwitch(
+            checked: settings.blockList.isEnabled,
+            onChanged: info.isAvailable
+                ? (on) => unawaited(model.setBlockList(enabled: on))
+                : null,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Never block'),
+                    SizedBox(height: 2),
+                    SecondaryText(BlockListText.exceptionsHint),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 360),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (settings.blockList.exceptions.isNotEmpty)
+                      Wrap(
+                        alignment: WrapAlignment.end,
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final host in settings.blockList.exceptions)
+                            _ExceptionChip(
+                              host: host,
+                              onRemove: () =>
+                                  unawaited(model.removeBlockException(host)),
+                            ),
+                        ],
+                      ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 200,
+                          child: TextBox(
+                            controller: _exception,
+                            placeholder: 'Add a site…',
+                            onSubmitted: (_) => unawaited(_add()),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Button(
+                          onPressed: () => unawaited(_add()),
+                          child: const Text('Add'),
+                        ),
+                      ],
+                    ),
+                    if (_error case final error?)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: SecondaryText(
+                          error,
+                          color: theme.resources.systemFillColorCritical,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ExceptionChip extends StatelessWidget {
+  const _ExceptionChip({required this.host, required this.onRemove});
+
+  final String host;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = FluentTheme.of(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 3, 4, 3),
+      decoration: BoxDecoration(
+        color: theme.resources.controlAltFillColorSecondary,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          MonoText(host),
+          const SizedBox(width: 4),
+          Tooltip(
+            message: 'Remove $host',
+            child: IconButton(
+              icon: const Icon(FluentIcons.chrome_close, size: 8),
+              onPressed: onRemove,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

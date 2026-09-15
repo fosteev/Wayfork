@@ -12,9 +12,11 @@ import 'package:wayfork/app/ui/app_navigation.dart';
 import 'package:wayfork/app/ui/app_scope.dart';
 import 'package:wayfork/app/ui/tunnel_import.dart';
 import 'package:wayfork/app/ui/widgets/components.dart';
+import 'package:wayfork/core/app/feature_text.dart';
 import 'package:wayfork/core/app/status_text.dart';
 import 'package:wayfork/core/ipc/payloads.dart';
 import 'package:wayfork/core/model/export_document.dart';
+import 'package:wayfork/core/model/local_proxy.dart';
 import 'package:wayfork/core/model/tunnel.dart';
 
 /// The expanded OpenVPN row (docs/design/prototype/windows.html, board 4):
@@ -191,7 +193,7 @@ class _OpenVPNDetailState extends State<OpenVPNDetail> {
         ),
         if (meta.needsCredentials)
           DetailRow(
-            label: 'Credentials',
+            label: 'Login',
             child: Row(
               children: [
                 SizedBox(
@@ -244,7 +246,7 @@ class _OpenVPNDetailState extends State<OpenVPNDetail> {
           ),
         ),
         DetailRow(
-          label: 'Config',
+          label: 'File',
           child: Row(
             children: [
               SecondaryText(_configLine(tunnel, meta)),
@@ -258,7 +260,11 @@ class _OpenVPNDetailState extends State<OpenVPNDetail> {
           ),
         ),
         DetailRow(
-          label: '',
+          label: 'Local proxy',
+          child: LocalProxyRow(exitID: tunnel.id, exitName: tunnel.name),
+        ),
+        DetailRow(
+          label: 'Everything else',
           child: DefaultTunnelToggle(tunnel: tunnel),
         ),
         DetailRow(
@@ -285,14 +291,10 @@ class _OpenVPNDetailState extends State<OpenVPNDetail> {
     _ => 'not connected',
   };
 
+  /// `Imported 2026-08-25` (the hash stays in diagnostics).
   static String _configLine(Tunnel tunnel, OpenVPNMeta meta) {
     final date = tunnel.createdAt.toLocal();
-    final day = '${date.year}-${_two(date.month)}-${_two(date.day)}';
-    final hash = meta.configHash;
-    final short = hash.length > 8
-        ? '${hash.substring(0, 4)}…${hash.substring(hash.length - 4)}'
-        : hash;
-    return '$day · $short';
+    return 'Imported ${date.year}-${_two(date.month)}-${_two(date.day)}';
   }
 
   static String _two(int value) => value.toString().padLeft(2, '0');
@@ -396,7 +398,11 @@ class _LinkDetailState extends State<LinkDetail> {
           ),
         ),
         DetailRow(
-          label: '',
+          label: 'Local proxy',
+          child: LocalProxyRow(exitID: tunnel.id, exitName: tunnel.name),
+        ),
+        DetailRow(
+          label: 'Everything else',
           child: DefaultTunnelToggle(tunnel: tunnel),
         ),
         DetailRow(
@@ -534,7 +540,11 @@ class _WireGuardDetailState extends State<WireGuardDetail> {
             ),
           ),
         DetailRow(
-          label: '',
+          label: 'Local proxy',
+          child: LocalProxyRow(exitID: tunnel.id, exitName: tunnel.name),
+        ),
+        DetailRow(
+          label: 'Everything else',
           child: DefaultTunnelToggle(tunnel: tunnel),
         ),
         DetailRow(
@@ -566,7 +576,9 @@ class DefaultTunnelToggle extends StatelessWidget {
           onChanged: (checked) => unawaited(
             model.setDefaultTunnel(checked ?? false ? tunnel.id : null),
           ),
-          content: const Text('Route everything else through this tunnel'),
+          content: const Flexible(
+            child: Text('Sites without a rule go through this tunnel'),
+          ),
         ),
         const SizedBox(height: 2),
         SecondaryText(
@@ -597,11 +609,11 @@ class TunnelFooter extends StatelessWidget {
     return Row(
       children: [
         SecondaryText(
-          StatusText.count(model.ruleCountForTunnel(tunnel.id), 'rule'),
+          StatusText.count(model.ruleCountForTunnel(tunnel.id), 'site'),
         ),
         HyperlinkButton(
           onPressed: () => navigator.go(AppPage.rules),
-          child: const Text('Show'),
+          child: const Text('Show rules'),
         ),
         const Spacer(),
         if (onReconnect case final reconnect?)
@@ -778,8 +790,8 @@ class _TunnelDnsEditorState extends State<TunnelDnsEditor> {
                 value: false,
                 content: Text(
                   widget.discovered.isEmpty
-                      ? 'Automatic'
-                      : 'Automatic (${widget.discovered.join(', ')})',
+                      ? 'From the tunnel'
+                      : 'From the tunnel (${widget.discovered.join(', ')})',
                 ),
               ),
               const SizedBox(width: 14),
@@ -801,4 +813,186 @@ class _TunnelDnsEditorState extends State<TunnelDnsEditor> {
       ],
     ),
   );
+}
+
+/// The same toggle for a group (F16): the default exit shares one UUID space.
+class DefaultExitToggle extends StatelessWidget {
+  const DefaultExitToggle({required this.id, required this.name, super.key});
+
+  final String id;
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    final model = AppScope.of(context);
+    final isDefault = model.isDefaultTunnel(id);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Checkbox(
+          checked: isDefault,
+          onChanged: (checked) =>
+              unawaited(model.setDefaultTunnel(checked ?? false ? id : null)),
+          content: const Flexible(
+            child: Text('Sites without a rule go through this group'),
+          ),
+        ),
+        const SizedBox(height: 2),
+        SecondaryText(
+          isDefault
+              ? 'Sites without a rule use $name; add sites that must stay '
+                    'outside under "Not via any tunnel" in Rules. While no '
+                    'member is reachable, those sites are blocked.'
+              : 'Sites without a rule use this group instead of going direct.',
+          maxLines: 3,
+          overflow: TextOverflow.clip,
+        ),
+      ],
+    );
+  }
+}
+
+/// The *Local proxy* row of an expanded tunnel or group (F17): switch,
+/// `127.0.0.1:‹port›` with the port editable on click, Copy, one-line hint.
+class LocalProxyRow extends StatefulWidget {
+  const LocalProxyRow({
+    required this.exitID,
+    required this.exitName,
+    super.key,
+  });
+
+  final String exitID;
+  final String exitName;
+
+  @override
+  State<LocalProxyRow> createState() => _LocalProxyRowState();
+}
+
+class _LocalProxyRowState extends State<LocalProxyRow> {
+  final _port = TextEditingController();
+  final _portFocus = FocusNode();
+  bool _editing = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _portFocus.addListener(() {
+      if (!_portFocus.hasFocus && _editing) unawaited(_commit());
+    });
+  }
+
+  @override
+  void dispose() {
+    _port.dispose();
+    _portFocus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _commit() async {
+    final model = AppScope.of(context);
+    final current = model.store.localProxyOfExit(widget.exitID)?.port;
+    if (_port.text == '$current') {
+      setState(() {
+        _editing = false;
+        _error = null;
+      });
+      return;
+    }
+    final error = await model.setLocalProxyPort(widget.exitID, _port.text);
+    if (!mounted) return;
+    setState(() {
+      _error = error;
+      if (error == null) _editing = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final model = AppScope.of(context);
+    final theme = FluentTheme.of(context);
+    final proxy = model.store.localProxyOfExit(widget.exitID);
+    final on = proxy?.isEnabled ?? false;
+    final ({String text, bool isError}) hint;
+    if (_error case final error?) {
+      hint = (text: error, isError: true);
+    } else if (!on || proxy == null) {
+      hint = (text: LocalProxyText.offHint(widget.exitName), isError: false);
+    } else if (model.isLocalProxyPortTaken(widget.exitID)) {
+      hint = (text: LocalProxyText.portTaken(proxy.port), isError: true);
+    } else {
+      hint = (text: LocalProxyText.onHint(widget.exitName), isError: false);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            ToggleSwitch(
+              checked: on,
+              onChanged: (enabled) => unawaited(
+                model.setLocalProxy(widget.exitID, enabled: enabled),
+              ),
+            ),
+            const SizedBox(width: 10),
+            if (on && proxy != null) ...[
+              Text(
+                '${LocalProxy.listenAddress}:',
+                style: TextStyle(
+                  fontFamily: 'Consolas',
+                  color: theme.resources.textFillColorSecondary,
+                ),
+              ),
+              if (_editing)
+                SizedBox(
+                  width: 70,
+                  child: TextBox(
+                    controller: _port,
+                    focusNode: _portFocus,
+                    autofocus: true,
+                    onSubmitted: (_) => unawaited(_commit()),
+                  ),
+                )
+              else
+                Tooltip(
+                  message: 'Click to change the port',
+                  child: HyperlinkButton(
+                    onPressed: () => setState(() {
+                      _port.text = '${proxy.port}';
+                      _error = null;
+                      _editing = true;
+                    }),
+                    child: Text(
+                      '${proxy.port}',
+                      style: const TextStyle(
+                        fontFamily: 'Consolas',
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              const SizedBox(width: 8),
+              Tooltip(
+                message: 'Copies ${proxy.copyText}',
+                child: Button(
+                  onPressed: () => unawaited(
+                    Clipboard.setData(ClipboardData(text: proxy.copyText)),
+                  ),
+                  child: const Text('Copy'),
+                ),
+              ),
+            ] else
+              const SecondaryText('Off'),
+          ],
+        ),
+        const SizedBox(height: 2),
+        SecondaryText(
+          hint.text,
+          color: hint.isError ? theme.resources.systemFillColorCritical : null,
+          maxLines: 3,
+          overflow: TextOverflow.clip,
+        ),
+      ],
+    );
+  }
 }

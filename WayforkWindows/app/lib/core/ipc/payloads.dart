@@ -1,5 +1,6 @@
 import 'package:collection/collection.dart';
 import 'package:wayfork/core/json_text.dart';
+import 'package:wayfork/core/singbox/constants.dart';
 import 'package:wayfork/core/model/settings.dart';
 
 final class DaemonInfo {
@@ -523,12 +524,14 @@ final class RuntimeStatus {
     this.planHash,
     Map<String, List<String>> discoveredDNS = const {},
     this.resolverOverride = const ResolverOverrideOff(),
+    List<String> proxyPortInUse = const [],
   }) : tunnels = Map.unmodifiable(tunnels),
        discoveredDNS = Map.unmodifiable(
          discoveredDNS.map(
            (key, value) => MapEntry(key, List<String>.unmodifiable(value)),
          ),
-       );
+       ),
+       proxyPortInUse = List.unmodifiable(proxyPortInUse);
 
   factory RuntimeStatus.fromJson(Map<String, Object?> json) => RuntimeStatus(
     engine: EngineState.fromJson(_map(json['engine'], 'engine')),
@@ -553,6 +556,9 @@ final class RuntimeStatus {
         : ResolverOverrideState.fromJson(
             _map(json['resolverOverride'], 'resolverOverride'),
           ),
+    proxyPortInUse: json['proxyPortInUse'] == null
+        ? const []
+        : _strings(json, 'proxyPortInUse'),
   );
 
   static final stopped = RuntimeStatus();
@@ -563,12 +569,16 @@ final class RuntimeStatus {
   final Map<String, List<String>> discoveredDNS;
   final ResolverOverrideState resolverOverride;
 
+  /// F17: tunnel / group ids whose local proxy port another program holds.
+  final List<String> proxyPortInUse;
+
   Map<String, Object?> toJson() => {
     'engine': engine.toJson(),
     'tunnels': tunnels.map((key, value) => MapEntry(key, value.toJson())),
     if (planHash != null) 'planHash': planHash,
     'discoveredDNS': discoveredDNS,
     'resolverOverride': resolverOverride.toJson(),
+    'proxyPortInUse': proxyPortInUse,
   };
 
   @override
@@ -581,7 +591,8 @@ final class RuntimeStatus {
         discoveredDNS,
         other.discoveredDNS,
       ) &&
-      resolverOverride == other.resolverOverride;
+      resolverOverride == other.resolverOverride &&
+      const ListEquality<String>().equals(proxyPortInUse, other.proxyPortInUse);
 
   @override
   int get hashCode => Object.hash(
@@ -590,6 +601,7 @@ final class RuntimeStatus {
     planHash,
     const DeepCollectionEquality().hash(discoveredDNS),
     resolverOverride,
+    const ListEquality<String>().hash(proxyPortInUse),
   );
 }
 
@@ -796,7 +808,16 @@ final class TrafficSnapshot {
     required this.interval,
     required Map<String, TrafficCounters> tunnels,
     required this.direct,
-  }) : tunnels = Map.unmodifiable(tunnels);
+    Map<String, LatencySample> latency = const {},
+    List<RecentHost> recentHosts = const [],
+    Map<String, GroupState> groups = const {},
+    this.blockedToday,
+    List<FailedHost> failedHosts = const [],
+  }) : tunnels = Map.unmodifiable(tunnels),
+       latency = Map.unmodifiable(latency),
+       recentHosts = List.unmodifiable(recentHosts),
+       groups = Map.unmodifiable(groups),
+       failedHosts = List.unmodifiable(failedHosts);
 
   factory TrafficSnapshot.fromJson(Map<String, Object?> json) =>
       TrafficSnapshot(
@@ -807,12 +828,53 @@ final class TrafficSnapshot {
               MapEntry(key, TrafficCounters.fromJson(_map(value, key))),
         ),
         direct: TrafficCounters.fromJson(_map(json['direct'], 'direct')),
+        latency: json['latency'] == null
+            ? const {}
+            : _objectMap(json['latency'], 'latency').map(
+                (key, value) =>
+                    MapEntry(key, LatencySample.fromJson(_map(value, key))),
+              ),
+        recentHosts: json['recentHosts'] == null
+            ? const []
+            : _list(json, 'recentHosts')
+                  .map((value) => RecentHost.fromJson(_map(value, 'host')))
+                  .toList(),
+        groups: json['groups'] == null
+            ? const {}
+            : _objectMap(json['groups'], 'groups').map(
+                (key, value) =>
+                    MapEntry(key, GroupState.fromJson(_map(value, key))),
+              ),
+        blockedToday: json['blockedToday'] == null
+            ? null
+            : _int(json, 'blockedToday'),
+        failedHosts: json['failedHosts'] == null
+            ? const []
+            : _list(json, 'failedHosts')
+                  .map((value) => FailedHost.fromJson(_map(value, 'failed')))
+                  .toList(),
       );
 
   final DateTime sampledAt;
   final double interval;
   final Map<String, TrafficCounters> tunnels;
   final TrafficCounters direct;
+
+  /// F14: latency probes by tunnel id; only tunnels the prober has looked at.
+  final Map<String, LatencySample> latency;
+
+  /// F15: hosts that took the default route, newest first.
+  final List<RecentHost> recentHosts;
+
+  /// F16: which member each routed group is using, by group id.
+  final Map<String, GroupState> groups;
+
+  /// F18: flows and lookups the block list rejected since local midnight;
+  /// null while the list is off or the log level is above info.
+  final int? blockedToday;
+
+  /// F19: connections that could not be established since Turn On.
+  final List<FailedHost> failedHosts;
 
   TrafficCounters countersForTunnel(String id) =>
       tunnels[id] ?? TrafficCounters.zero;
@@ -822,6 +884,11 @@ final class TrafficSnapshot {
     'interval': interval,
     'tunnels': tunnels.map((key, value) => MapEntry(key, value.toJson())),
     'direct': direct.toJson(),
+    'latency': latency.map((key, value) => MapEntry(key, value.toJson())),
+    'recentHosts': recentHosts.map((host) => host.toJson()).toList(),
+    'groups': groups.map((key, value) => MapEntry(key, value.toJson())),
+    if (blockedToday != null) 'blockedToday': blockedToday,
+    'failedHosts': failedHosts.map((host) => host.toJson()).toList(),
   };
 
   @override
@@ -833,14 +900,268 @@ final class TrafficSnapshot {
         tunnels,
         other.tunnels,
       ) &&
-      direct == other.direct;
+      direct == other.direct &&
+      const MapEquality<String, LatencySample>().equals(
+        latency,
+        other.latency,
+      ) &&
+      const ListEquality<RecentHost>().equals(recentHosts, other.recentHosts) &&
+      const MapEquality<String, GroupState>().equals(groups, other.groups) &&
+      blockedToday == other.blockedToday &&
+      const ListEquality<FailedHost>().equals(failedHosts, other.failedHosts);
   @override
   int get hashCode => Object.hash(
     sampledAt,
     interval,
     const MapEquality<String, TrafficCounters>().hash(tunnels),
     direct,
+    const MapEquality<String, LatencySample>().hash(latency),
+    const ListEquality<RecentHost>().hash(recentHosts),
+    const MapEquality<String, GroupState>().hash(groups),
+    blockedToday,
+    const ListEquality<FailedHost>().hash(failedHosts),
   );
+}
+
+/// Constants shared by the service's prober, the `urltest` groups the
+/// generator emits (F16) and the card (F14).
+abstract final class LatencyProbe {
+  static const url = SingBoxConstants.probeURL;
+  static const interval = Duration(
+    seconds: SingBoxConstants.probeIntervalSeconds,
+  );
+  static const timeout = Duration(
+    seconds: SingBoxConstants.probeTimeoutSeconds,
+  );
+  static const historyLength = SingBoxConstants.probeHistoryLength;
+  static const failureThreshold = SingBoxConstants.probeFailureThreshold;
+}
+
+/// What the service's prober knows about one tunnel (F14).
+final class LatencySample {
+  LatencySample({
+    this.milliseconds,
+    List<int?> history = const [],
+    this.failedInARow = 0,
+    this.unreachable = false,
+    this.lastSuccess,
+  }) : history = List.unmodifiable(history);
+
+  factory LatencySample.fromJson(Map<String, Object?> json) {
+    final history = json['history'];
+    return LatencySample(
+      milliseconds: json['milliseconds'] as int?,
+      history: history is List<Object?>
+          ? history.map((value) => value as int?).toList()
+          : const [],
+      failedInARow: (json['failedInARow'] as int?) ?? 0,
+      unreachable: (json['unreachable'] as bool?) ?? false,
+      lastSuccess: json['lastSuccess'] == null
+          ? null
+          : _date(json, 'lastSuccess'),
+    );
+  }
+
+  /// The last probe's round trip; null when it failed.
+  final int? milliseconds;
+
+  /// The last `LatencyProbe.historyLength` probes, oldest first; null entries
+  /// failed.
+  final List<int?> history;
+  final int failedInARow;
+
+  /// `failedInARow >= LatencyProbe.failureThreshold`.
+  final bool unreachable;
+  final DateTime? lastSuccess;
+
+  Map<String, Object?> toJson() => {
+    if (milliseconds != null) 'milliseconds': milliseconds,
+    'history': history,
+    'failedInARow': failedInARow,
+    'unreachable': unreachable,
+    if (lastSuccess != null) 'lastSuccess': JsonCoding.encodeDate(lastSuccess!),
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is LatencySample &&
+      milliseconds == other.milliseconds &&
+      const ListEquality<int?>().equals(history, other.history) &&
+      failedInARow == other.failedInARow &&
+      unreachable == other.unreachable &&
+      lastSuccess == other.lastSuccess;
+  @override
+  int get hashCode => Object.hash(
+    milliseconds,
+    const ListEquality<int?>().hash(history),
+    failedInARow,
+    unreachable,
+    lastSuccess,
+  );
+}
+
+/// What sing-box's selector / urltest for one group currently points at (F16).
+final class GroupState {
+  const GroupState({this.activeMember});
+
+  factory GroupState.fromJson(Map<String, Object?> json) =>
+      GroupState(activeMember: _optionalString(json, 'activeMember'));
+
+  /// Tunnel id of the member in use; null when sing-box named no member.
+  final String? activeMember;
+
+  Map<String, Object?> toJson() => {
+    if (activeMember != null) 'activeMember': activeMember,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is GroupState && activeMember == other.activeMember;
+  @override
+  int get hashCode => activeMember.hashCode;
+}
+
+/// One domain that went the default way with the process that opened it (F15).
+final class RecentHost {
+  const RecentHost({
+    required this.host,
+    this.processPath,
+    required this.exit,
+    required this.lastSeen,
+  });
+
+  factory RecentHost.fromJson(Map<String, Object?> json) => RecentHost(
+    host: _string(json, 'host'),
+    processPath: _optionalString(json, 'processPath'),
+    exit: _string(json, 'exit'),
+    lastSeen: _date(json, 'lastSeen'),
+  );
+
+  /// The service keeps this many; the app shows a window of them.
+  static const capacity = 200;
+
+  final String host;
+  final String? processPath;
+
+  /// "direct" or the tunnel / group id the flow left through.
+  final String exit;
+  final DateTime lastSeen;
+
+  Map<String, Object?> toJson() => {
+    'host': host,
+    if (processPath != null) 'processPath': processPath,
+    'exit': exit,
+    'lastSeen': JsonCoding.encodeDate(lastSeen),
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is RecentHost &&
+      host == other.host &&
+      processPath == other.processPath &&
+      exit == other.exit &&
+      lastSeen == other.lastSeen;
+  @override
+  int get hashCode => Object.hash(host, processPath, exit, lastSeen);
+}
+
+/// Why a connection could not be established (F19); the wire form is the
+/// Swift enum's one-key object (`{"noAnswer":{}}`, `{"other":{"_0":"…"}}`).
+enum FailureKind {
+  noAnswer,
+  refused,
+  reset,
+  noSuchName,
+  blocked,
+  tunnelDown,
+  other,
+}
+
+final class FailureReason {
+  const FailureReason(this.kind, {this.detail = ''});
+
+  factory FailureReason.fromJson(Map<String, Object?> json) {
+    for (final kind in FailureKind.values) {
+      final payload = json[kind.name];
+      if (payload is Map<String, Object?>) {
+        return FailureReason(kind, detail: (payload['_0'] as String?) ?? '');
+      }
+    }
+    throw const FormatException('failure reason has no case');
+  }
+
+  final FailureKind kind;
+
+  /// The raw error text for `other`.
+  final String detail;
+
+  Map<String, Object?> toJson() => {
+    kind.name: kind == FailureKind.other ? {'_0': detail} : <String, Object?>{},
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is FailureReason && kind == other.kind && detail == other.detail;
+  @override
+  int get hashCode => Object.hash(kind, detail);
+}
+
+/// One site + app that could not be reached, aggregated by the service (F19).
+final class FailedHost {
+  const FailedHost({
+    required this.host,
+    this.processPath,
+    required this.exit,
+    required this.reason,
+    this.count = 1,
+    required this.lastSeen,
+  });
+
+  factory FailedHost.fromJson(Map<String, Object?> json) => FailedHost(
+    host: _string(json, 'host'),
+    processPath: _optionalString(json, 'processPath'),
+    exit: _string(json, 'exit'),
+    reason: FailureReason.fromJson(_map(json['reason'], 'reason')),
+    count: _int(json, 'count'),
+    lastSeen: _date(json, 'lastSeen'),
+  );
+
+  static const capacity = 200;
+
+  /// Domain, or `ip:port` when there was no name.
+  final String host;
+  final String? processPath;
+
+  /// "direct", the tunnel or group id, or "" for a blocked lookup.
+  final String exit;
+  final FailureReason reason;
+  final int count;
+  final DateTime lastSeen;
+
+  /// Host + process, the row's identity in the pane.
+  String get id => '$host|${processPath ?? ''}';
+
+  Map<String, Object?> toJson() => {
+    'host': host,
+    if (processPath != null) 'processPath': processPath,
+    'exit': exit,
+    'reason': reason.toJson(),
+    'count': count,
+    'lastSeen': JsonCoding.encodeDate(lastSeen),
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is FailedHost &&
+      host == other.host &&
+      processPath == other.processPath &&
+      exit == other.exit &&
+      reason == other.reason &&
+      count == other.count &&
+      lastSeen == other.lastSeen;
+  @override
+  int get hashCode =>
+      Object.hash(host, processPath, exit, reason, count, lastSeen);
 }
 
 abstract final class IpcCodec {

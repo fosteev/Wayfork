@@ -60,20 +60,21 @@ void main() {
     await tester.pumpWidget(page(app, AppNavigator()).widget);
     await tester.pumpAndSettle();
 
-    expect(find.text('Direct'), findsOneWidget);
-    expect(find.text('exceptions'), findsOneWidget);
-    expect(find.text('0 rules'), findsOneWidget);
-    expect(find.text('3 rules'), findsOneWidget, reason: 'Work');
-    expect(find.text('2 rules'), findsOneWidget, reason: 'Home');
-    expect(find.text('1 rule'), findsOneWidget, reason: 'Lab');
+    expect(find.text('Not via any tunnel'), findsOneWidget);
     expect(
-      tester.getTopLeft(find.text('Direct')).dy,
+      find.text('stay on your normal connection, whatever other rules say'),
+      findsOneWidget,
+    );
+    expect(find.text('Work'), findsOneWidget);
+    expect(find.text('Lab'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Not via any tunnel')).dy,
       lessThan(tester.getTopLeft(find.text('Work')).dy),
     );
     // The rows carry the pattern and its match.
     expect(find.text('example.com'), findsOneWidget);
     expect(find.text('*.cdn.example.com'), findsOneWidget);
-    expect(find.text('Wildcard'), findsOneWidget);
+    expect(find.text('pattern'), findsOneWidget);
   });
 
   testWidgets('+ Domain adds a rule at the end of its group', (tester) async {
@@ -81,7 +82,7 @@ void main() {
     await tester.pumpWidget(page(app, AppNavigator()).widget);
     await tester.pumpAndSettle();
 
-    await openGroupMenu(tester, 2, 'Domain');
+    await openGroupMenu(tester, 2, 'Site');
     expect(find.byType(RuleEditor), findsOneWidget);
     await submit(tester, 'shop.example.com');
 
@@ -99,7 +100,7 @@ void main() {
     await tester.pumpWidget(page(app, AppNavigator()).widget);
     await tester.pumpAndSettle();
 
-    await openGroupMenu(tester, 0, 'Domain');
+    await openGroupMenu(tester, 0, 'Site');
     await submit(tester, 'not a domain');
 
     expect(find.text('Not a valid domain'), findsOneWidget);
@@ -112,11 +113,11 @@ void main() {
     await tester.pumpWidget(page(app, AppNavigator()).widget);
     await tester.pumpAndSettle();
 
-    await openGroupMenu(tester, 1, 'Domain');
+    await openGroupMenu(tester, 1, 'Site');
     await tester.enterText(find.byType(RuleEditor), '*.shop.example.com');
     await tester.pumpAndSettle();
     // Suffix, Exact, Wildcard and IP are the options; the editor picked one.
-    expect(find.text('Wildcard'), findsNWidgets(2), reason: 'row and editor');
+    expect(find.text('pattern'), findsNWidgets(2), reason: 'row and editor');
 
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
@@ -153,7 +154,10 @@ void main() {
     await tester.pumpWidget(page(app, AppNavigator()).widget);
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.widgetWithText(TextBox, 'Search rules'), 'cdn');
+    await tester.enterText(
+      find.widgetWithText(TextBox, 'Search sites and apps'),
+      'cdn',
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('*.cdn.example.com'), findsOneWidget);
@@ -182,8 +186,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('paused'), findsOneWidget, reason: 'old.example.com');
-    expect(find.text('shadowed'), findsOneWidget);
-    expect(find.text('tunnel disabled — goes direct'), findsOneWidget);
+    expect(
+      find.text('never used — "Not via any tunnel" has it'),
+      findsOneWidget,
+    );
+    expect(find.text('paused — Lab is off'), findsOneWidget);
   });
 
   testWidgets('Application… adds the app picked from the running ones', (
@@ -218,7 +225,7 @@ void main() {
     expect(rule.match, RuleMatch.app);
     expect(rule.pattern, r'C:\Program Files\Example\example.exe');
     expect(find.text('example'), findsOneWidget, reason: 'the name, not path');
-    expect(find.text('App'), findsOneWidget);
+    expect(find.text('the app'), findsOneWidget);
     expect(find.text('not found'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 100));
   });
@@ -232,7 +239,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Move to'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Direct (exception)'));
+    await tester.tap(find.text('Not via any tunnel').last);
     await tester.pumpAndSettle();
 
     expect(app.model.store.exceptions.map((rule) => rule.pattern), [
@@ -246,6 +253,7 @@ void main() {
     await tester.pumpWidget(page(app, AppNavigator()).widget);
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('docs.example.net'));
     await tester.tap(find.text('docs.example.net'), buttons: kSecondaryButton);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Delete'));
@@ -260,18 +268,24 @@ void main() {
     await tester.pumpWidget(page(app, AppNavigator()).widget);
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('docs.example.net'));
     final gesture = await tester.startGesture(
       tester.getCenter(find.text('docs.example.net')),
     );
     await tester.pump(const Duration(milliseconds: 200));
-    await gesture.moveTo(tester.getCenter(find.text('Direct')));
+    // Home's header is the nearest one still on screen once Lab's row is.
+    await gesture.moveTo(tester.getCenter(find.text('Home')));
     await tester.pumpAndSettle();
     await gesture.up();
     await tester.pumpAndSettle();
 
-    expect(app.model.store.exceptions.map((rule) => rule.pattern), [
-      'docs.example.net',
-    ]);
+    expect(
+      app.model.store
+          .rulesForTunnel(app.sample.home.id)
+          .map((rule) => rule.pattern),
+      contains('docs.example.net'),
+    );
+    expect(app.model.store.rulesForTunnel(app.sample.lab.id), isEmpty);
     await tester.pump(const Duration(milliseconds: 100));
   });
 

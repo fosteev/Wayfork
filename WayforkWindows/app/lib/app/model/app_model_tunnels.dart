@@ -422,10 +422,25 @@ extension AppModelTunnels on AppModel {
   String? deleteTunnelMessage(String tunnelID) {
     final tunnel = _store.tunnel(tunnelID);
     if (tunnel == null) return null;
-    final rules = ruleCountForTunnel(tunnelID);
+    // F16: the tunnel leaves every group; a group left with one member goes too.
+    final doomed = groupsLeftTooSmall(without: tunnelID);
+    final rules =
+        ruleCountForTunnel(tunnelID) +
+        doomed.fold<int>(
+          0,
+          (sum, group) => sum + _store.rulesForGroup(group.id).length,
+        );
+    final sites = StatusText.count(rules, 'site');
+    if (doomed.isNotEmpty) {
+      final groups = doomed.length == 1
+          ? 'the group ${doomed.single.name} it leaves too small'
+          : 'the groups ${doomed.map((g) => g.name).join(', ')} it leaves too small';
+      return rules > 0
+          ? 'Delete ${tunnel.name}, $groups, and their $sites? The rules go with them.'
+          : 'Delete ${tunnel.name} and $groups?';
+    }
     return rules > 0
-        ? 'Delete ${tunnel.name} and its ${StatusText.count(rules, 'rule')}? '
-              'The rules go with it.'
+        ? 'Delete ${tunnel.name} and its $sites? The rules go with it.'
         : 'Delete ${tunnel.name}?';
   }
 
@@ -434,15 +449,32 @@ extension AppModelTunnels on AppModel {
   Future<void> deleteTunnel(String tunnelID) async {
     final tunnel = _store.tunnel(tunnelID);
     if (tunnel == null) return;
+    final doomed = groupsLeftTooSmall(
+      without: tunnelID,
+    ).map((g) => g.id).toSet();
     await update(
       (store) => store.copyWith(
         tunnels: store.tunnels.where((t) => t.id != tunnelID).toList(),
         rules: store.rules
-            .where((rule) => rule.target != RuleTargetTunnel(tunnelID))
+            .where(
+              (rule) =>
+                  rule.target != RuleTargetTunnel(tunnelID) &&
+                  !(rule.target.groupID != null &&
+                      doomed.contains(rule.target.groupID)),
+            )
             .toList(),
-        defaultTunnelID: store.defaultTunnelID == tunnelID
+        defaultTunnelID:
+            store.defaultTunnelID == tunnelID ||
+                doomed.contains(store.defaultTunnelID)
             ? null
             : store.defaultTunnelID,
+        groups: [
+          for (final group in store.groups)
+            if (!doomed.contains(group.id))
+              group.copyWith(
+                members: group.members.where((m) => m != tunnelID).toList(),
+              ),
+        ],
       ),
     );
     try {

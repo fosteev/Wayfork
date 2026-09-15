@@ -6,7 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:wayfork/app/model/app_model.dart';
 import 'package:wayfork/app/services/log_center.dart';
 import 'package:wayfork/app/ui/app_scope.dart';
+import 'package:wayfork/app/ui/pages/dashboard_page.dart';
 import 'package:wayfork/app/ui/widgets/components.dart';
+import 'package:wayfork/core/app/feature_text.dart';
 import 'package:wayfork/core/ipc/payloads.dart';
 import 'package:wayfork/core/model/settings.dart';
 
@@ -34,6 +36,9 @@ class _LogsPageState extends State<LogsPage> {
   /// null is "All sources".
   String? _source;
   LogLevel _level = LogLevel.debug;
+
+  /// The Can't reach row whose lines are shown (F19), by host.
+  String? _selectedFailed;
   bool _follow = true;
 
   @override
@@ -49,6 +54,13 @@ class _LogsPageState extends State<LogsPage> {
     // "Show Log" points at one tunnel; a later visit keeps the user's filter.
     final preselected = NavigationScope.of(context).takeLogSource();
     if (preselected != null) _source = preselected;
+    // F19: the Dashboard's *Show* opens the page filtered to a host.
+    if (model.logsPreselectedSearch case final host?) {
+      _search.text = host;
+      _level = LogLevel.debug;
+      _selectedFailed = host;
+      model.logsPreselectedSearch = null;
+    }
     return ListenableBuilder(
       listenable: model.logs,
       builder: (context, _) {
@@ -68,6 +80,20 @@ class _LogsPageState extends State<LogsPage> {
               const SizedBox(height: 10),
               _filters(context, model),
               const SizedBox(height: 10),
+              // F19: what could not be reached, above the lines; a click
+              // filters to the host.
+              if (model.globalState.isRunning) ...[
+                FailedPane(
+                  model: model,
+                  selectedHost: _selectedFailed,
+                  onSelect: (row) => setState(() {
+                    _selectedFailed = row?.host;
+                    _search.text = row?.host ?? '';
+                    if (row != null) _level = LogLevel.debug;
+                  }),
+                ),
+                const SizedBox(height: 10),
+              ],
               Expanded(child: _lines(context, model, shown)),
             ],
           ),
@@ -341,3 +367,297 @@ Color _levelColor(FluentThemeData theme, LogLevel level) => switch (level) {
   LogLevel.info => theme.accentColor.defaultBrushFor(theme.brightness),
   LogLevel.debug => theme.resources.textFillColorTertiary,
 };
+
+/// *Can't reach* (F19, docs/design/prototype/windows.html, board 16): one row
+/// per site + app that could not be reached; clicking a row filters the log to
+/// that host.
+class FailedPane extends StatelessWidget {
+  const FailedPane({
+    required this.model,
+    required this.selectedHost,
+    required this.onSelect,
+    super.key,
+  });
+
+  final AppModel model;
+  final String? selectedHost;
+  final void Function(FailedHost? row) onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = FluentTheme.of(context);
+    final rows = model.failedHosts;
+    final appsUnknown =
+        rows.isNotEmpty &&
+        rows.every((row) => row.processPath == null) &&
+        !model.blockCountingPossible;
+    final selected = rows.where((row) => row.host == selectedHost).firstOrNull;
+    return GroupCard(
+      children: [
+        Container(
+          color: theme.resources.cardBackgroundFillColorSecondary,
+          padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+          child: Row(
+            children: [
+              Icon(
+                FluentIcons.warning,
+                size: 12,
+                color: rows.isEmpty
+                    ? theme.resources.textFillColorSecondary
+                    : theme.resources.systemFillColorCritical,
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                "Can't reach",
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: SecondaryText(
+                  rows.isEmpty
+                      ? FailedText.empty(since: model.failedSince)
+                      : FailedText.header(
+                          count: rows.length,
+                          since: model.failedSince,
+                          appsUnknown: appsUnknown,
+                        ),
+                ),
+              ),
+              if (rows.isNotEmpty)
+                HyperlinkButton(
+                  onPressed: () {
+                    for (final row in rows) {
+                      model.hideFailed(row);
+                    }
+                    onSelect(null);
+                  },
+                  child: const Text('Clear'),
+                ),
+            ],
+          ),
+        ),
+        if (rows.isNotEmpty) ...[
+          _columns(context),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 132),
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  for (final row in rows)
+                    _FailedRow(
+                      model: model,
+                      row: row,
+                      isSelected: row.host == selectedHost,
+                      onSelect: () => onSelect(row),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+        if (selected != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SecondaryText(
+                    FailedText.showing(
+                      host: selected.host,
+                      tries: selected.count,
+                      reason: model.failedReason(selected),
+                      via: model.failedVia(selected),
+                    ),
+                  ),
+                ),
+                HyperlinkButton(
+                  onPressed: () => onSelect(null),
+                  child: const Text('Show all lines'),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _columns(BuildContext context) {
+    final theme = FluentTheme.of(context);
+    final style = theme.typography.caption?.copyWith(
+      fontSize: 10,
+      fontWeight: FontWeight.w600,
+      color: theme.resources.textFillColorTertiary,
+    );
+    return Container(
+      color: theme.resources.subtleFillColorTertiary,
+      padding: const EdgeInsets.fromLTRB(12, 3, 12, 3),
+      child: Row(
+        children: [
+          SizedBox(
+            width: _FailedRow.siteWidth,
+            child: Text('SITE', style: style),
+          ),
+          SizedBox(
+            width: _FailedRow.appWidth,
+            child: Text('APP', style: style),
+          ),
+          SizedBox(
+            width: _FailedRow.triesWidth,
+            child: Text('TRIED', style: style),
+          ),
+          SizedBox(
+            width: _FailedRow.whyWidth,
+            child: Text('WHY', style: style),
+          ),
+          SizedBox(
+            width: _FailedRow.viaWidth,
+            child: Text('VIA', style: style),
+          ),
+          Text('LAST', style: style),
+        ],
+      ),
+    );
+  }
+}
+
+/// One pane row: site, app, tries, why, via, last; actions on hover.
+class _FailedRow extends StatefulWidget {
+  const _FailedRow({
+    required this.model,
+    required this.row,
+    required this.isSelected,
+    required this.onSelect,
+  });
+
+  final AppModel model;
+  final FailedHost row;
+  final bool isSelected;
+  final VoidCallback onSelect;
+
+  static const siteWidth = 240.0;
+  static const appWidth = 90.0;
+  static const triesWidth = 44.0;
+  static const whyWidth = 140.0;
+  static const viaWidth = 70.0;
+
+  @override
+  State<_FailedRow> createState() => _FailedRowState();
+}
+
+class _FailedRowState extends State<_FailedRow> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final model = widget.model;
+    final row = widget.row;
+    final theme = FluentTheme.of(context);
+    final reason = model.failedReason(row);
+    final isError = row.reason.kind != FailureKind.blocked;
+    final detail = FailedText.detail(row.reason);
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        onTap: widget.onSelect,
+        child: Container(
+          color: widget.isSelected
+              ? theme.accentColor.withValues(alpha: 0.12)
+              : null,
+          padding: const EdgeInsets.fromLTRB(12, 3, 8, 3),
+          child: Row(
+            children: [
+              SizedBox(
+                width: _FailedRow.siteWidth,
+                child: Row(
+                  children: [
+                    Icon(
+                      FluentIcons.app_icon_default,
+                      size: 14,
+                      color: row.processPath == null
+                          ? theme.resources.textFillColorTertiary
+                          : theme.resources.textFillColorSecondary,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        row.host,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                width: _FailedRow.appWidth,
+                child: SecondaryText(processName(row.processPath)),
+              ),
+              SizedBox(
+                width: _FailedRow.triesWidth,
+                child: Text(
+                  FailedText.tries(row.count),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w500,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: _FailedRow.whyWidth,
+                child: Tooltip(
+                  message: detail ?? reason,
+                  child: Text(
+                    reason,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: isError
+                          ? theme.resources.systemFillColorCritical
+                          : theme.resources.textFillColorPrimary,
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: _FailedRow.viaWidth,
+                child: SecondaryText(model.failedVia(row)),
+              ),
+              SecondaryText(
+                FailedText.lastSeen(
+                  row.lastSeen,
+                  now: model.traffic?.sampledAt ?? DateTime.now(),
+                ),
+              ),
+              const Spacer(),
+              if (_hovering || widget.isSelected) ...[
+                if (row.reason.kind == FailureKind.blocked)
+                  HyperlinkButton(
+                    onPressed: () => unawaited(model.neverBlockFailed(row)),
+                    child: const Text('Never block'),
+                  )
+                else if (model.canRouteFailed(row))
+                  RouteViaMenu(
+                    model: model,
+                    header:
+                        'Route ${model.recentRulePattern(row.host)} and '
+                        'subdomains via…',
+                    onPick: (target) =>
+                        unawaited(model.routeFailed(row, via: target)),
+                  ),
+                const SizedBox(width: 4),
+                Tooltip(
+                  message: 'Hide until the next Turn On',
+                  child: IconButton(
+                    icon: const Icon(FluentIcons.chrome_close, size: 9),
+                    onPressed: () => model.hideFailed(row),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

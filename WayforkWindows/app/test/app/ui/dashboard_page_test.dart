@@ -51,7 +51,7 @@ void main() {
     // Lab has no config in the store, so it is down: two of three are up.
     expect(find.text('3 tunnels · 2 up'), findsOneWidget);
     // Five active rules; the sixth is disabled, none of them an exception.
-    expect(find.text('5 rules · 0 exceptions'), findsOneWidget);
+    expect(find.text('5 sites via tunnels · 0 stay outside'), findsOneWidget);
     expect(find.text('↓ 1.5 MB/s'), findsOneWidget);
     expect(find.text('↑ 85 KB/s total'), findsOneWidget);
 
@@ -104,15 +104,12 @@ void main() {
     await tester.pumpAndSettle();
 
     // The names also fill the quick-add picker, so the rows are counted by
-    // their glyphs: three tunnels and Direct.
+    // their glyphs: three tunnels and Direct (variant C: no protocol badge on
+    // the card, the status word opens line 2).
     expect(find.byType(StatusGlyphView), findsNWidgets(4));
-    expect(find.text('OpenVPN'), findsNWidgets(2));
-    expect(find.text('VLESS'), findsOneWidget);
-    expect(find.text('Direct'), findsOneWidget);
-    expect(
-      find.text('connected · 10.8.0.27 on Wayfork-1 · 3 rules'),
-      findsOneWidget,
-    );
+    expect(find.text('Not via any tunnel'), findsOneWidget);
+    expect(find.text('Connected'), findsNWidgets(2));
+    expect(find.text('3 sites'), findsOneWidget);
   });
 
   testWidgets('the header toggle turns routing off', (tester) async {
@@ -199,7 +196,7 @@ void main() {
       scoped(app.model, navigator, const DashboardPage()),
     );
     await tester.pumpAndSettle();
-    expect(find.text('No tunnels yet.'), findsOneWidget);
+    expect(find.text('Add a VPN you already have'), findsOneWidget);
 
     await tester.tap(find.text('Add a tunnel…'));
     await tester.pumpAndSettle();
@@ -232,13 +229,10 @@ void main() {
       scoped(app.model, AppNavigator(), const DashboardPage()),
     );
     await tester.pumpAndSettle();
-    expect(
-      find.textContaining('failed: server rejected username/password'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('Server refused the login'), findsOneWidget);
 
     // Lab is broken too (no config in the store); Work's card comes first.
-    await tester.tap(find.byIcon(FluentIcons.edit).first);
+    await tester.tap(find.text('Fix…').first);
     await tester.pumpAndSettle();
     expect(app.model.expandedTunnelID, app.sample.work.id);
   });

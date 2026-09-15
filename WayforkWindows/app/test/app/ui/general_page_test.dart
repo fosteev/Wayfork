@@ -75,17 +75,17 @@ void main() {
     await tester.pumpWidget(page(app).widget);
     await tester.pumpAndSettle();
 
-    await tester.tap(controlFor<ToggleSwitch>('Start Wayfork at sign-in'));
+    await tester.tap(controlFor<ToggleSwitch>('Open Wayfork at sign-in'));
     await tester.pumpAndSettle();
     expect(app.model.settings.launchAtLogin, isTrue);
     expect(app.launchAtLogin.isEnabled, isTrue, reason: 'the registry half');
 
-    await tester.tap(controlFor<ToggleSwitch>('Connect on launch'));
+    await tester.tap(controlFor<ToggleSwitch>('Turn on when it opens'));
     await tester.pumpAndSettle();
     expect(app.model.settings.connectOnLaunch, isTrue);
 
     await tester.tap(
-      controlFor<ToggleSwitch>('Reconnect tunnels automatically'),
+      controlFor<ToggleSwitch>('Reconnect tunnels on their own'),
     );
     await tester.pumpAndSettle();
     expect(app.model.settings.autoReconnect, isFalse);
@@ -98,14 +98,19 @@ void main() {
     await tester.pumpWidget(page(app).widget);
     await tester.pumpAndSettle();
 
-    await tester.tap(controlFor<ComboBox<LogLevel>>('Level'));
+    // The Blocking section (F18) pushes Logs below the fold.
+    await tester.ensureVisible(controlFor<ComboBox<LogLevel>>('Detail'));
+    await tester.tap(controlFor<ComboBox<LogLevel>>('Detail'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Debug').last);
+    await tester.tap(find.text('Everything').last);
     await tester.pumpAndSettle();
 
     expect(app.model.settings.logLevel, LogLevel.debug);
     expect(app.logs.minimumLevel, LogLevel.debug);
-    expect(find.text('Debug logs may include hostnames.'), findsOneWidget);
+    expect(
+      find.text('"Everything" may include the names of sites you open.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('the retention is clamped and kept', (tester) async {
@@ -113,6 +118,7 @@ void main() {
     await tester.pumpWidget(page(app).widget);
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.byType(NumberBox<int>));
     await tester.enterText(find.byType(NumberBox<int>), '14');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
@@ -126,11 +132,12 @@ void main() {
     await tester.pumpWidget(page(app).widget);
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('Custom'));
     await tester.tap(find.text('Custom'));
     await tester.pumpAndSettle();
     expect(find.text('Enter at least one resolver address'), findsOneWidget);
 
-    final field = controlFor<TextBox>('Direct traffic resolver');
+    final field = controlFor<TextBox>('DNS for sites outside tunnels');
     await tester.enterText(field, 'not an address');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
@@ -145,7 +152,8 @@ void main() {
       DirectDNSCustom(const ['1.1.1.1', '9.9.9.9']),
     );
 
-    await tester.tap(find.text('System'));
+    await tester.ensureVisible(find.text('Same as Windows'));
+    await tester.tap(find.text('Same as Windows'));
     await tester.pumpAndSettle();
     expect(app.model.settings.directDNS, const DirectDNSSystem());
     await tester.pump(const Duration(milliseconds: 100));
@@ -157,6 +165,7 @@ void main() {
 
     await tester.pumpWidget(view.widget);
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Open Logs Folder'));
     await tester.tap(find.text('Open Logs Folder'));
     await tester.pumpAndSettle();
     expect(view.folders, hasLength(1));

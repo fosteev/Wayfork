@@ -112,7 +112,7 @@ void main() {
     await tester.tap(find.text('Delete…'));
     await tester.pumpAndSettle();
     expect(
-      find.text('Delete Office and its 3 rules? The rules go with it.'),
+      find.text('Delete Office and its 3 sites? The rules go with it.'),
       findsOneWidget,
     );
     await tester.tap(find.text('Delete'));

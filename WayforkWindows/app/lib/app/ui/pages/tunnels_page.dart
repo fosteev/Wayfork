@@ -6,9 +6,11 @@ import 'package:wayfork/app/model/app_model.dart';
 import 'package:wayfork/app/ui/add_link_dialog.dart';
 import 'package:wayfork/app/ui/add_wireguard_dialog.dart';
 import 'package:wayfork/app/ui/app_scope.dart';
+import 'package:wayfork/app/ui/pages/group_details.dart';
 import 'package:wayfork/app/ui/pages/tunnel_details.dart';
 import 'package:wayfork/app/ui/tunnel_import.dart';
 import 'package:wayfork/app/ui/widgets/components.dart';
+import 'package:wayfork/core/app/status_text.dart';
 import 'package:wayfork/core/model/tunnel.dart';
 
 /// Tunnels (docs/design/prototype/windows.html, board 4): rows that expand in
@@ -59,10 +61,8 @@ class _TunnelsPageState extends State<TunnelsPage> {
 
   /// The expansion is model state (an import and the ✎ of a failed card both
   /// point at a tunnel), but a click here only moves the UI.
-  void _toggle(AppModel model, Tunnel tunnel) => setState(() {
-    model.expandedTunnelID = model.expandedTunnelID == tunnel.id
-        ? null
-        : tunnel.id;
+  void _toggle(AppModel model, String id) => setState(() {
+    model.expandedTunnelID = model.expandedTunnelID == id ? null : id;
   });
 
   @override
@@ -112,7 +112,7 @@ class _TunnelsPageState extends State<TunnelsPage> {
                               _TunnelRow(
                                 tunnel: tunnel,
                                 expanded: model.expandedTunnelID == tunnel.id,
-                                onTap: () => _toggle(model, tunnel),
+                                onTap: () => _toggle(model, tunnel.id),
                               ),
                               if (model.expandedTunnelID == tunnel.id)
                                 switch (tunnel.kind) {
@@ -133,6 +133,27 @@ class _TunnelsPageState extends State<TunnelsPage> {
                                 },
                             ],
                           ),
+                        // F16: groups after the tunnels, *New group…* last.
+                        for (final group in model.store.groups)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              GroupRow(
+                                group: group,
+                                expanded: model.expandedTunnelID == group.id,
+                                onTap: () => _toggle(model, group.id),
+                              ),
+                              if (model.expandedTunnelID == group.id)
+                                GroupDetail(
+                                  key: ValueKey('detail-${group.id}'),
+                                  group: group,
+                                ),
+                            ],
+                          ),
+                        NewGroupRow(
+                          showsHint: model.store.groups.isEmpty,
+                          onTap: () => unawaited(showNewGroupDialog(context)),
+                        ),
                       ],
                     ),
                   ),
@@ -145,8 +166,8 @@ class _TunnelsPageState extends State<TunnelsPage> {
   Widget _emptyState(BuildContext context) => Align(
     alignment: Alignment.topLeft,
     child: SecondaryText(
-      'No tunnels yet. Import an OpenVPN or WireGuard config or add a link '
-      'with + Add, or drop a .ovpn or .conf file on the window.',
+      'No tunnels yet. Add an OpenVPN file (.ovpn), a WireGuard config or a '
+      'link with + Add, or drop a file on the window.',
       maxLines: 3,
       overflow: TextOverflow.clip,
     ),
@@ -190,8 +211,6 @@ class _TunnelRow extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
-            const SizedBox(width: 8),
-            TypeBadge(kind: tunnel.kind),
             const SizedBox(width: 10),
             Expanded(
               child: SecondaryText(
@@ -202,8 +221,19 @@ class _TunnelRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 10),
+            // F14: the same number as the card, for connected tunnels only.
+            if (model.globalState.isRunning &&
+                (summary.glyph == StatusGlyph.up ||
+                    summary.text.startsWith('Not reachable'))) ...[
+              LatencyLabel(sample: model.latency(tunnel)),
+              if (model.latency(tunnel) case final latency?) ...[
+                const SizedBox(width: 6),
+                SparklineView(sample: latency),
+              ],
+              const SizedBox(width: 10),
+            ],
             Tooltip(
-              message: tunnel.isEnabled ? 'Disable' : 'Enable',
+              message: tunnel.isEnabled ? 'Turn off' : 'Turn on',
               child: ToggleSwitch(
                 checked: tunnel.isEnabled,
                 onChanged: (enabled) =>

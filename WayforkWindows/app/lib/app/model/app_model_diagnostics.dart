@@ -31,6 +31,7 @@ extension AppModelDiagnostics on AppModel {
         store: _store,
         secrets: planSecrets,
         installDir: installDir,
+        blockListAvailable: blockList.isAvailable,
       ).plan;
     } on Object catch (error) {
       logs.app(LogLevel.warning, 'diagnostics: cannot build a plan: $error');

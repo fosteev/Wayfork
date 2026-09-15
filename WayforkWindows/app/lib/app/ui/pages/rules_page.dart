@@ -9,11 +9,13 @@ import 'package:wayfork/app/services/file_picker.dart';
 import 'package:wayfork/app/services/running_apps.dart';
 import 'package:wayfork/app/ui/app_navigation.dart';
 import 'package:wayfork/app/ui/app_scope.dart';
+import 'package:wayfork/app/ui/pages/dashboard_page.dart';
 import 'package:wayfork/app/ui/pick_application_dialog.dart';
 import 'package:wayfork/app/ui/widgets/components.dart';
 import 'package:wayfork/core/app/status_text.dart';
 import 'package:wayfork/core/model/rule.dart';
 import 'package:wayfork/core/model/tunnel.dart';
+import 'package:wayfork/core/model/tunnel_group.dart';
 import 'package:wayfork/core/rules/fake_ip.dart';
 import 'package:wayfork/core/rules/rule_pattern.dart';
 import 'package:wayfork/core/rules/rule_validator.dart';
@@ -126,7 +128,7 @@ class _RulesPageState extends State<RulesPage> {
                 width: 220,
                 child: TextBox(
                   controller: _search,
-                  placeholder: 'Search rules',
+                  placeholder: 'Search sites and apps',
                   prefix: const Padding(
                     padding: EdgeInsets.only(left: 8),
                     child: Icon(FluentIcons.search, size: 12),
@@ -147,22 +149,31 @@ class _RulesPageState extends State<RulesPage> {
                   children: [
                     if (model.store.rules.isEmpty && _addingTo == null) ...[
                       SecondaryText(
-                        'No rules yet — everything goes direct. Add one here '
-                        'or from the Dashboard.',
+                        'No sites yet. Everything stays on your normal '
+                        'connection. Add a site here or from the Dashboard.',
                         maxLines: 2,
                         overflow: TextOverflow.clip,
                       ),
                       const SizedBox(height: 10),
                     ],
+                    if (model.globalState.isRunning)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: RecentStrip(model: model),
+                      ),
                     for (final group in [
                       const RuleTargetDirect(),
                       for (final tunnel in tunnels) RuleTargetTunnel(tunnel.id),
+                      // F16: one section per group, after the tunnels.
+                      for (final tunnelGroup in model.store.groups)
+                        RuleTargetGroup(tunnelGroup.id),
                     ])
                       Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: _RuleGroup(
                           target: group,
                           tunnel: model.store.tunnel(group.tunnelID ?? ''),
+                          tunnelGroup: model.store.group(group.groupID ?? ''),
                           search: _search.text,
                           editingRuleID: _editingRuleID,
                           isAdding: _addingTo == group,
@@ -211,6 +222,7 @@ class _RuleGroup extends StatelessWidget {
   const _RuleGroup({
     required this.target,
     required this.tunnel,
+    this.tunnelGroup,
     required this.search,
     required this.editingRuleID,
     required this.isAdding,
@@ -225,6 +237,7 @@ class _RuleGroup extends StatelessWidget {
 
   final RuleTarget target;
   final Tunnel? tunnel;
+  final TunnelGroup? tunnelGroup;
   final String search;
   final String? editingRuleID;
   final bool isAdding;
@@ -245,11 +258,24 @@ class _RuleGroup extends StatelessWidget {
     final visible = _visible(model, rules);
     final issues = model.ruleIssues;
     final tunnel = this.tunnel;
+    final disabled =
+        (tunnel != null && !tunnel.isEnabled) ||
+        (tunnelGroup != null && !tunnelGroup!.isEnabled);
     return Opacity(
-      opacity: tunnel != null && !tunnel.isEnabled ? 0.55 : 1,
+      opacity: disabled ? 0.55 : 1,
       child: GroupCard(
         children: [
           _header(context, model, rules.length, visible.length),
+          if (rules.isEmpty && !isAdding && !_isDirect)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 7, 12, 8),
+              child: SecondaryText(
+                model.globalState.isRunning
+                    ? 'No sites yet — add one, or pick a tunnel for a site in '
+                          'Recent above.'
+                    : 'No sites yet — add one with "Add site".',
+              ),
+            ),
           for (final rule in visible)
             _RuleRow(
               key: ValueKey(rule.id),
@@ -312,7 +338,6 @@ class _RuleGroup extends StatelessWidget {
 
   Widget _header(BuildContext context, AppModel model, int total, int shown) {
     final theme = FluentTheme.of(context);
-    final tunnel = this.tunnel;
     return DragTarget<String>(
       onAcceptWithDetails: (details) =>
           unawaited(model.moveRule(details.data, to: target)),
@@ -326,27 +351,7 @@ class _RuleGroup extends StatelessWidget {
           children: [
             Row(
               children: [
-                StatusGlyphView(
-                  glyph: tunnel == null
-                      ? StatusGlyph.idle
-                      : model.rowSummary(tunnel).glyph,
-                ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    tunnel?.name ?? 'Direct',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                if (tunnel != null)
-                  TypeBadge(kind: tunnel.kind)
-                else
-                  const Chip('exceptions'),
-                const SizedBox(width: 6),
-                Chip(StatusText.count(total, 'rule')),
+                ..._title(context, model),
                 if (search.trim().isNotEmpty && shown != total) ...[
                   const SizedBox(width: 6),
                   SecondaryText(
@@ -355,13 +360,13 @@ class _RuleGroup extends StatelessWidget {
                   ),
                 ],
                 const Spacer(),
+                // F10: Site adds an empty row in edit mode; Application… opens
+                // the picker.
                 DropDownButton(
-                  title: const Icon(FluentIcons.add, size: 12),
+                  leading: const Icon(FluentIcons.add, size: 12),
+                  title: const Text('Add site'),
                   items: [
-                    MenuFlyoutItem(
-                      text: const Text('Domain'),
-                      onPressed: onAdd,
-                    ),
+                    MenuFlyoutItem(text: const Text('Site'), onPressed: onAdd),
                     MenuFlyoutItem(
                       text: const Text('Application…'),
                       onPressed: onChooseApplication,
@@ -370,22 +375,103 @@ class _RuleGroup extends StatelessWidget {
                 ),
               ],
             ),
-            if (_isDirect)
-              Padding(
-                padding: const EdgeInsets.only(left: 18, top: 2),
-                child: SecondaryText(
-                  model.directGroupHint,
-                  maxLines: 2,
-                  overflow: TextOverflow.clip,
-                ),
-              ),
           ],
         ),
       ),
     );
   }
 
-  static String _key(RuleTarget target) => target.tunnelID ?? 'direct';
+  /// Glyph, name, badges and the hint that says what the section means
+  /// (docs/design/02-ux.md, "Variant C" › Rules).
+  List<Widget> _title(BuildContext context, AppModel model) {
+    final theme = FluentTheme.of(context);
+    final tunnel = this.tunnel;
+    final group = tunnelGroup;
+    Widget name(String text) => Flexible(
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+    );
+    Widget hint(({String text, bool isError}) value) => Flexible(
+      child: Padding(
+        padding: const EdgeInsets.only(left: 6),
+        child: SecondaryText(
+          value.text,
+          color: value.isError ? theme.resources.systemFillColorCritical : null,
+        ),
+      ),
+    );
+    if (group != null) {
+      final summary = model.groupRowSummary(group);
+      return [
+        StatusGlyphView(glyph: summary.glyph),
+        const SizedBox(width: 8),
+        name(group.name),
+        const SizedBox(width: 6),
+        const AccentBadge('Group'),
+        if (model.isEffectiveDefault(group.id)) ...[
+          const SizedBox(width: 6),
+          const AccentBadge('Default'),
+        ],
+        hint(model.groupHint(group)),
+      ];
+    }
+    if (tunnel != null) {
+      final summary = model.rowSummary(tunnel);
+      final tunnelHint = _tunnelHint(model, tunnel, summary);
+      return [
+        StatusGlyphView(glyph: summary.glyph),
+        const SizedBox(width: 8),
+        name(tunnel.name),
+        if (model.effectiveDefaultTunnel?.id == tunnel.id) ...[
+          const SizedBox(width: 6),
+          const AccentBadge('Default'),
+        ],
+        if (tunnelHint != null) hint(tunnelHint),
+      ];
+    }
+    return [
+      StatusGlyphView(glyph: StatusGlyph.idle),
+      const SizedBox(width: 8),
+      name('Not via any tunnel'),
+      hint((text: model.directGroupHint, isError: false)),
+    ];
+  }
+
+  /// Header hint after the tunnel name: what happens to its sites right now.
+  ({String text, bool isError})? _tunnelHint(
+    AppModel model,
+    Tunnel tunnel,
+    TunnelRowSummary summary,
+  ) {
+    if (model.effectiveDefaultTunnel?.id == tunnel.id) {
+      return (
+        text: 'everything without a rule goes here, plus:',
+        isError: false,
+      );
+    }
+    if (!tunnel.isEnabled) {
+      final fallback = model.recentExitName;
+      return (
+        text: fallback == null
+            ? 'off — its sites stay outside a tunnel for now'
+            : 'off — its sites go via $fallback for now',
+        isError: false,
+      );
+    }
+    if (summary.text.startsWith('Not reachable')) {
+      return (text: 'not reachable — its sites wait', isError: true);
+    }
+    if (summary.isError) {
+      return (text: "can't connect — its sites wait", isError: true);
+    }
+    return null;
+  }
+
+  static String _key(RuleTarget target) => target.exitID ?? 'direct';
 }
 
 /// A rule: the enabled checkbox, the pattern (editable in place), its match,
@@ -488,7 +574,7 @@ class _RuleRowState extends State<_RuleRow> {
           SizedBox(
             width: 110,
             child: rule.isApp
-                ? SecondaryText('App')
+                ? SecondaryText(StatusText.matchWord(RuleMatch.app))
                 : ComboBox<RuleMatch>(
                     isExpanded: true,
                     value: rule.match,
@@ -605,16 +691,6 @@ class _RuleRowState extends State<_RuleRow> {
               // from a keyboard and from a test as well as from a mouse.
               showBehavior: SubItemShowAction.press,
               items: (context) => [
-                if (!rule.target.isDirect)
-                  MenuFlyoutItem(
-                    text: const Text('Direct (exception)'),
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      unawaited(
-                        model.moveRule(rule.id, to: const RuleTargetDirect()),
-                      );
-                    },
-                  ),
                 for (final tunnel in model.store.tunnels)
                   if (tunnel.id != rule.tunnelID)
                     MenuFlyoutItem(
@@ -629,6 +705,35 @@ class _RuleRowState extends State<_RuleRow> {
                         );
                       },
                     ),
+                // F16: groups under a separator.
+                if (model.store.groups.any((g) => g.id != rule.target.groupID))
+                  const MenuFlyoutSeparator(),
+                for (final group in model.store.groups)
+                  if (group.id != rule.target.groupID)
+                    MenuFlyoutItem(
+                      text: Text(group.name),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        unawaited(
+                          model.moveRule(
+                            rule.id,
+                            to: RuleTargetGroup(group.id),
+                          ),
+                        );
+                      },
+                    ),
+                if (!rule.target.isDirect) ...[
+                  const MenuFlyoutSeparator(),
+                  MenuFlyoutItem(
+                    text: const Text('Not via any tunnel'),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      unawaited(
+                        model.moveRule(rule.id, to: const RuleTargetDirect()),
+                      );
+                    },
+                  ),
+                ],
               ],
             ),
             const MenuFlyoutSeparator(),
@@ -663,10 +768,8 @@ class _RuleRowState extends State<_RuleRow> {
         ),
       for (final issue in widget.issues)
         switch (issue) {
-          RuleIssueShadowed(:final by) => Chip(
-            'shadowed',
-            tint: caution,
-            tooltip: _shadowedHint(model, by),
+          RuleIssueShadowed(:final by) => SecondaryText(
+            _shadowedHint(model, by),
           ),
           RuleIssueDuplicate() => Chip(
             'duplicate',
@@ -688,7 +791,7 @@ class _RuleRowState extends State<_RuleRow> {
                 'through the tunnel while Wayfork is on',
           ),
           RuleIssueTunnelDisabled() => SecondaryText(
-            'tunnel disabled — goes direct',
+            'paused — ${model.targetName(widget.rule.target)} is off',
           ),
           RuleIssueTunnelMissing() => Chip('no tunnel', tint: critical),
         },
@@ -699,13 +802,10 @@ class _RuleRowState extends State<_RuleRow> {
     final earlier = model.store.rules
         .where((rule) => rule.id == by)
         .firstOrNull;
-    if (earlier == null) {
-      return '${widget.rule.pattern} is already covered by an earlier group';
-    }
+    if (earlier == null) return 'never used — an earlier group has it';
     return earlier.target.isDirect
-        ? '${widget.rule.pattern} is an exception'
-        : '${widget.rule.pattern} is already routed via '
-              '${model.targetName(earlier.target)}';
+        ? 'never used — "Not via any tunnel" has it'
+        : 'never used — ${model.targetName(earlier.target)} has it';
   }
 }
 
@@ -942,10 +1042,83 @@ class _DragFeedback extends StatelessWidget {
   }
 }
 
-String _matchTitle(RuleMatch match) => switch (match) {
-  RuleMatch.suffix => 'Suffix',
-  RuleMatch.exact => 'Exact',
-  RuleMatch.wildcard => 'Wildcard',
-  RuleMatch.app => 'App',
-  RuleMatch.ip => 'IP',
-};
+String _matchTitle(RuleMatch match) => StatusText.matchWord(match);
+
+/// **Recent** as a strip above the sections (F15): three rows, *Show all*
+/// for the rest; collapses to its header when nothing is new.
+class RecentStrip extends StatefulWidget {
+  const RecentStrip({required this.model, super.key});
+
+  final AppModel model;
+
+  @override
+  State<RecentStrip> createState() => _RecentStripState();
+}
+
+class _RecentStripState extends State<RecentStrip> {
+  static const rowLimit = 3;
+  bool _showAll = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final model = widget.model;
+    final theme = FluentTheme.of(context);
+    final rows = model.recentHosts;
+    final shown = _showAll ? rows : rows.take(rowLimit).toList();
+    final went = switch (model.recentExitName) {
+      null => 'direct',
+      final name => 'via $name',
+    };
+    final minutes = AppModelFeatures.recentWindow.inMinutes;
+    return GroupCard(
+      children: [
+        Container(
+          color: theme.resources.cardBackgroundFillColorSecondary,
+          padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+          child: Row(
+            children: [
+              Icon(
+                FluentIcons.clock,
+                size: 12,
+                color: theme.resources.textFillColorSecondary,
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'Recent',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: SecondaryText(
+                  rows.isEmpty
+                      ? 'nothing new in the last $minutes min'
+                      : 'went $went in the last $minutes min — pick a tunnel '
+                            'to make a rule',
+                ),
+              ),
+              if (rows.length > rowLimit)
+                HyperlinkButton(
+                  onPressed: () => setState(() => _showAll = !_showAll),
+                  child: Text(
+                    _showAll ? 'Show fewer' : 'Show all ${rows.length}',
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (shown.isNotEmpty)
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: _showAll ? 220 : 120),
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  for (final row in shown)
+                    RecentRowView(model: model, row: row),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}

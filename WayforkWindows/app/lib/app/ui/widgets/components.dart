@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:wayfork/core/app/latency_format.dart';
 import 'package:wayfork/core/app/status_text.dart';
 import 'package:wayfork/core/app/traffic_format.dart';
 import 'package:wayfork/core/ipc/payloads.dart';
@@ -24,6 +25,7 @@ class StatusGlyphView extends StatelessWidget {
         StatusGlyph.idle => 'inactive',
         StatusGlyph.transitioning => 'connecting',
         StatusGlyph.failed => 'failed',
+        StatusGlyph.group => 'group',
       },
       child: CustomPaint(
         size: Size.square(size),
@@ -34,6 +36,7 @@ class StatusGlyphView extends StatelessWidget {
           transitioning: resources.systemFillColorCaution,
           failed: resources.systemFillColorCritical,
           cross: resources.textOnAccentFillColorPrimary,
+          accent: FluentTheme.of(context).accentColor,
         ),
       ),
     );
@@ -48,6 +51,7 @@ class _GlyphPainter extends CustomPainter {
     required this.transitioning,
     required this.failed,
     required this.cross,
+    required this.accent,
   });
 
   final StatusGlyph glyph;
@@ -56,6 +60,7 @@ class _GlyphPainter extends CustomPainter {
   final Color transitioning;
   final Color failed;
   final Color cross;
+  final Color accent;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -94,6 +99,19 @@ class _GlyphPainter extends CustomPainter {
           center + Offset(arm, -arm),
           pen,
         );
+      case StatusGlyph.group:
+        // Accent square instead of the status dot (F16).
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(
+              center: center,
+              width: size.width,
+              height: size.height,
+            ),
+            Radius.circular(size.width * 0.25),
+          ),
+          Paint()..color = accent,
+        );
     }
   }
 
@@ -104,7 +122,10 @@ class _GlyphPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_GlyphPainter old) =>
-      old.glyph != glyph || old.up != up || old.failed != failed;
+      old.glyph != glyph ||
+      old.up != up ||
+      old.failed != failed ||
+      old.accent != accent;
 }
 
 /// `OpenVPN` / `VLESS` pill.
@@ -350,6 +371,254 @@ class MonoText extends StatelessWidget {
         fontFamily: 'Consolas',
         color: theme.resources.textFillColorSecondary,
       ),
+    );
+  }
+}
+
+/// Accent marker next to a name: `Default`, `Group`.
+class AccentBadge extends StatelessWidget {
+  const AccentBadge(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = FluentTheme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: theme.accentColor.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        text,
+        style: theme.typography.caption?.copyWith(
+          color: theme.accentColor,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+/// Text colours for the latency bands (F14): darker than the status dots so
+/// they read on white, lighter in dark mode.
+Color bandColor(BuildContext context, LatencyBand band) {
+  final dark = FluentTheme.of(context).brightness == Brightness.dark;
+  return switch (band) {
+    LatencyBand.good =>
+      dark ? const Color(0xFF30D158) : const Color(0xFF1F8F3D),
+    LatencyBand.fair =>
+      dark ? const Color(0xFFFFB340) : const Color(0xFFA85900),
+    LatencyBand.poor =>
+      dark ? const Color(0xFFFF6961) : const Color(0xFFD1332B),
+  };
+}
+
+/// `62 ms` in the band colour, or the red words when the tunnel is unreachable;
+/// `—` while no probe has answered yet (F14).
+class LatencyLabel extends StatelessWidget {
+  const LatencyLabel({required this.sample, this.fontSize = 13, super.key});
+
+  final LatencySample? sample;
+  final double fontSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = FluentTheme.of(context);
+    final sample = this.sample;
+    final Widget child;
+    if (sample != null && sample.unreachable) {
+      child = Text(
+        'Not reachable',
+        style: TextStyle(
+          fontSize: fontSize,
+          fontWeight: FontWeight.w600,
+          color: theme.resources.systemFillColorCritical,
+        ),
+      );
+    } else if (sample != null && sample.milliseconds != null) {
+      final color = bandColor(context, LatencyBand.of(sample.milliseconds!));
+      child = Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: '${sample.milliseconds}',
+              style: TextStyle(fontWeight: FontWeight.w500, color: color),
+            ),
+            TextSpan(
+              text: ' ms',
+              style: TextStyle(fontSize: fontSize - 3, color: color),
+            ),
+          ],
+        ),
+        style: TextStyle(
+          fontSize: fontSize,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      );
+    } else {
+      child = Text(
+        '—',
+        style: TextStyle(
+          fontSize: fontSize,
+          color: theme.resources.textFillColorTertiary,
+        ),
+      );
+    }
+    return Tooltip(
+      message: sample == null
+          ? 'Measured through the tunnel every ${LatencyProbe.interval.inSeconds} s'
+          : LatencyFormat.tooltip(sample),
+      child: child,
+    );
+  }
+}
+
+/// Last 2 minutes of probes, 64 × 24 px, newest at the right edge; failed
+/// probes leave a dashed baseline segment (F14).
+class SparklineView extends StatelessWidget {
+  const SparklineView({required this.sample, super.key});
+
+  final LatencySample sample;
+  static const size = Size(64, 24);
+  static const ceiling = 400.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final latest =
+        sample.milliseconds ?? sample.history.whereType<int>().lastOrNull ?? 0;
+    final color = sample.unreachable
+        ? FluentTheme.of(context).resources.systemFillColorCritical
+        : bandColor(context, LatencyBand.of(latest));
+    return CustomPaint(
+      size: size,
+      painter: _SparklinePainter(
+        points: sample.history,
+        color: color,
+        gap: FluentTheme.of(context).resources.textFillColorTertiary,
+      ),
+    );
+  }
+}
+
+class _SparklinePainter extends CustomPainter {
+  const _SparklinePainter({
+    required this.points,
+    required this.color,
+    required this.gap,
+  });
+
+  final List<int?> points;
+  final Color color;
+  final Color gap;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final slots = max(LatencyProbe.historyLength, 2);
+    final step = size.width / (slots - 1);
+    final offset = slots - points.length;
+    final baseline = size.height - 2;
+    Offset point(int index, int value) {
+      final share =
+          min(value.toDouble(), SparklineView.ceiling) / SparklineView.ceiling;
+      return Offset(
+        (index + offset) * step,
+        baseline - share * (size.height - 4),
+      );
+    }
+
+    final line = Path();
+    var open = false;
+    final gapPaint = Paint()
+      ..color = gap.withValues(alpha: 0.5)
+      ..strokeWidth = 1;
+    for (var index = 0; index < points.length; index++) {
+      final value = points[index];
+      if (value != null) {
+        final p = point(index, value);
+        if (open) {
+          line.lineTo(p.dx, p.dy);
+        } else {
+          line.moveTo(p.dx, p.dy);
+        }
+        open = true;
+      } else {
+        open = false;
+        final x = (index + offset) * step;
+        final end = min(x + step, size.width);
+        // A dashed segment: two-pixel dashes along the baseline.
+        for (var dash = x; dash < end; dash += 4) {
+          canvas.drawLine(
+            Offset(dash, baseline),
+            Offset(min(dash + 2, end), baseline),
+            gapPaint,
+          );
+        }
+      }
+    }
+    canvas.drawPath(
+      line,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+    final last = points.lastOrNull;
+    if (last != null) {
+      canvas.drawCircle(
+        point(points.length - 1, last),
+        1.6,
+        Paint()..color = color,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_SparklinePainter old) =>
+      old.points != points || old.color != color;
+}
+
+/// One member line under a group card or in the expanded group (F16): dot,
+/// name, the `✓ in use` / `skipped — …` note, latency right-aligned.
+class GroupMemberRowView extends StatelessWidget {
+  const GroupMemberRowView({
+    required this.row,
+    this.showsLatency = true,
+    super.key,
+  });
+
+  final GroupMemberRow row;
+  final bool showsLatency;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = FluentTheme.of(context);
+    return Row(
+      children: [
+        StatusGlyphView(glyph: row.glyph, size: 8),
+        const SizedBox(width: 6),
+        Text(row.tunnel.name, style: theme.typography.caption),
+        if (row.note.isNotEmpty) ...[
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              row.note,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.typography.caption?.copyWith(
+                color: row.isActive
+                    ? theme.accentColor
+                    : theme.resources.textFillColorSecondary,
+              ),
+            ),
+          ),
+        ],
+        const Spacer(),
+        if (showsLatency) LatencyLabel(sample: row.latency, fontSize: 11),
+      ],
     );
   }
 }
