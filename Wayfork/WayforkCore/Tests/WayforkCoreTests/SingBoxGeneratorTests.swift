@@ -691,7 +691,34 @@ private func configVariants() -> [(String, SingBoxConfigGenerator.Input)] {
     // A LAN resolver carved into the TUN plus a public one: DDR refusal on both.
     variants.append(
         ("system-dns", input(twoTunnelStore(), systemDNS: ["192.168.31.5", "8.8.8.8"])))
+    // F16: a group of both tunnels with its own rules (urltest), the same as a first-live
+    // selector, the group as the default exit (DoT through it), and a member left out.
+    variants.append(("group-fastest", input(groupStore(policy: .fastest))))
+    variants.append(("group-first-live", input(groupStore(policy: .firstLive))))
+    var groupDefault = groupStore(policy: .fastest)
+    groupDefault.defaultTunnelID = groupID
+    variants.append(("group-default", input(groupDefault)))
+    var oneMember = groupStore(policy: .fastest)
+    oneMember.tunnels[1].isEnabled = false
+    variants.append(("group-one-member", input(oneMember)))
     return variants
+}
+
+private let groupID = UUID(uuidString: "00000000-0000-4000-8000-0000000000a1")!
+
+/// The two-tunnel store plus a group *Streaming* of Home then Work with two rules.
+private func groupStore(policy: GroupPolicy) -> Store {
+    var store = twoTunnelStore()
+    store.groups = [
+        TunnelGroup(
+            id: groupID, name: "Streaming", members: [Fixtures.homeID, Fixtures.workID],
+            policy: policy, createdAt: Date(timeIntervalSince1970: 1_700_000_000))
+    ]
+    store.rules += [
+        Rule(pattern: "video.example.com", target: .group(groupID)),
+        Rule(pattern: "*.stream.example.net", match: .wildcard, target: .group(groupID)),
+    ]
+    return store
 }
 
 /// Runs `sing-box check` on the generated config when the fetched binary is available

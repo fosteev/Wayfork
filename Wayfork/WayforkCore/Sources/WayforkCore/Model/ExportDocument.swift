@@ -70,7 +70,8 @@ public struct ExportedTunnel: Codable, Sendable, Hashable, Identifiable {
 /// `wayfork-export.json` (F7, docs/design/01-data-model.md).
 public struct ExportDocument: Codable, Sendable, Hashable {
     public static let formatName = "wayfork-export"
-    /// 2 since F10 (app rules); version 1 files import unchanged.
+    /// 2 since F10 (app rules); version 1 files import unchanged. F16's `groups` and
+    /// `groupID` rules are additive (a pre-F16 build skips such rules as "tunnel not found").
     public static let currentVersion = 2
 
     public var format: String
@@ -82,6 +83,8 @@ public struct ExportDocument: Codable, Sendable, Hashable {
     public var settings: Settings
     /// F8; absent in files written before it existed.
     public var defaultTunnelID: UUID?
+    /// F16; absent in files written before it existed.
+    public var groups: [TunnelGroup]
 
     public init(
         exportedAt: Date = Date(),
@@ -89,7 +92,8 @@ public struct ExportDocument: Codable, Sendable, Hashable {
         tunnels: [ExportedTunnel],
         rules: [Rule],
         settings: Settings,
-        defaultTunnelID: UUID? = nil
+        defaultTunnelID: UUID? = nil,
+        groups: [TunnelGroup] = []
     ) {
         format = ExportDocument.formatName
         version = ExportDocument.currentVersion
@@ -99,6 +103,38 @@ public struct ExportDocument: Codable, Sendable, Hashable {
         self.rules = rules
         self.settings = settings
         self.defaultTunnelID = defaultTunnelID
+        self.groups = groups
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case format, version, exportedAt, includesSecrets, tunnels, rules, settings
+        case defaultTunnelID, groups
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        format = try c.decode(String.self, forKey: .format)
+        version = try c.decode(Int.self, forKey: .version)
+        exportedAt = try c.decode(Date.self, forKey: .exportedAt)
+        includesSecrets = try c.decode(Bool.self, forKey: .includesSecrets)
+        tunnels = try c.decode([ExportedTunnel].self, forKey: .tunnels)
+        rules = try c.decode([Rule].self, forKey: .rules)
+        settings = try c.decode(Settings.self, forKey: .settings)
+        defaultTunnelID = try c.decodeIfPresent(UUID.self, forKey: .defaultTunnelID)
+        groups = try c.decodeIfPresent([TunnelGroup].self, forKey: .groups) ?? []
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(format, forKey: .format)
+        try c.encode(version, forKey: .version)
+        try c.encode(exportedAt, forKey: .exportedAt)
+        try c.encode(includesSecrets, forKey: .includesSecrets)
+        try c.encode(tunnels, forKey: .tunnels)
+        try c.encode(rules, forKey: .rules)
+        try c.encode(settings, forKey: .settings)
+        try c.encodeIfPresent(defaultTunnelID, forKey: .defaultTunnelID)
+        if !groups.isEmpty { try c.encode(groups, forKey: .groups) }
     }
 
     public enum Error: Swift.Error, Equatable {

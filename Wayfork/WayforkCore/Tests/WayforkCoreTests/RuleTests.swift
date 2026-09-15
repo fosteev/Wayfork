@@ -185,3 +185,47 @@ import Testing
     #expect(tunnel.routeFinal == "t-abc")
     #expect(SingBoxPlan(config: "not json", ruleSets: [:]).routeFinal == nil)
 }
+
+// MARK: - F16
+
+@Test func groupRulesRoundTripAndOrderAfterTunnels() throws {
+    var store = Fixtures.store(rules: [])
+    let group = TunnelGroup(
+        name: "Streaming", members: [Fixtures.homeID, Fixtures.workID], policy: .firstLive,
+        createdAt: Fixtures.date)
+    store.groups = [group]
+    store.rules = [
+        Rule(pattern: "video.example.com", target: .group(group.id)),
+        Rule(pattern: "example.com", tunnelID: Fixtures.workID),
+        Rule(pattern: "bank.example", target: .direct),
+    ]
+    // Direct, tunnels, then groups.
+    #expect(
+        store.effectiveRules.map(\.pattern) == ["bank.example", "example.com", "video.example.com"])
+    let data = try StoreCodec.encode(store)
+    let json = String(decoding: data, as: UTF8.self)
+    #expect(json.contains("\"groupID\""))
+    #expect(json.contains("\"policy\" : \"firstLive\""))
+    let decoded = try StoreCodec.decode(data)
+    #expect(decoded == store)
+    #expect(decoded.rules[0].target == .group(group.id))
+    #expect(decoded.rules[0].exitID == group.id && decoded.rules[0].tunnelID == nil)
+    #expect(store.exitName(id: group.id) == "Streaming")
+    #expect(!store.isNameAvailable("streaming"))
+
+    // The default may name a group; it needs an enabled member.
+    store.defaultTunnelID = group.id
+    #expect(store.effectiveDefaultExit == .group(group))
+    #expect(store.effectiveDefaultTunnel == nil)
+    store.tunnels[0].isEnabled = false
+    store.tunnels[1].isEnabled = false
+    #expect(store.effectiveDefaultExit == nil)
+    let issues = RuleValidator.validate(store)
+    #expect(issues[store.rules[0].id] == [.tunnelDisabled])
+    #expect(RuleValidator.activeRules(store)[group.id] == nil)
+    store.tunnels[0].isEnabled = true
+    #expect(RuleValidator.activeRules(store)[group.id]?.count == 1)
+    // A group rule shadowed by an earlier tunnel rule with the same pattern.
+    store.rules.append(Rule(pattern: "example.com", target: .group(group.id)))
+    #expect(RuleValidator.validate(store)[store.rules[3].id] == [.shadowed(by: store.rules[1].id)])
+}

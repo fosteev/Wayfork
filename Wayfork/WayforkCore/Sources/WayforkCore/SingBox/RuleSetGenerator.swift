@@ -25,14 +25,22 @@ public enum RuleSetGenerator {
     public static func generate(
         tunnels: [Tunnel], activeRules: [UUID: [Rule]], exceptions: [Rule] = []
     ) -> [String: String] {
+        generate(
+            exits: tunnels.map(RoutedExit.init), activeRules: activeRules, exceptions: exceptions)
+    }
+
+    /// The same for tunnels and groups alike (F16): `rules-t-<id>` / `rules-g-<id>`.
+    public static func generate(
+        exits: [RoutedExit], activeRules: [UUID: [Rule]], exceptions: [Rule] = []
+    ) -> [String: String] {
         var files: [String: String] = [
             directFileName: renderDirect(exceptions: exceptions),
             directIPFileName: renderIP(rules: exceptions),
         ]
-        for tunnel in tunnels {
-            let rules = activeRules[tunnel.id] ?? []
-            files[tunnel.ruleSetFileName] = render(rules: rules)
-            files[tunnel.ipRuleSetFileName] = renderIP(rules: rules)
+        for exit in exits {
+            let rules = activeRules[exit.id] ?? []
+            files[exit.ruleSetFileName] = render(rules: rules)
+            files[exit.ipRuleSetFileName] = renderIP(rules: rules)
         }
         return files
     }

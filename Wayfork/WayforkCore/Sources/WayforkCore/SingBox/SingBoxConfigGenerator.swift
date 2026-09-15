@@ -72,9 +72,19 @@ public enum SingBoxConfigGenerator {
         public var ruleSets: [String: String]
         /// Tunnels that made it into the config, in store order.
         public var routedTunnels: [Tunnel]
-        /// The tunnel behind `route.final` (F8), when the store's default is routed.
+        /// Groups that made it into the config (enabled, with at least one routed member),
+        /// in store order (F16).
+        public var routedGroups: [TunnelGroup] = []
+        /// The tunnel behind `route.final` (F8), when the store's default is a routed tunnel.
         public var defaultTunnel: Tunnel?
+        /// The tunnel or group behind `route.final` (F8, F16); nil means `direct`.
+        public var defaultExit: RoutedExit? = nil
     }
+
+    /// `urltest` options of a *fastest* group (docs/design/03-routing.md, "Tunnel groups").
+    public static let groupProbeInterval = "\(Int(LatencyProbe.interval))s"
+    public static let groupTolerance = 50
+    public static let groupIdleTimeout = "30m"
 
     public static let tunInterface = "utun100"
     public static let tunHostAddress = "172.19.0.1"
@@ -114,11 +124,25 @@ public enum SingBoxConfigGenerator {
             case .vmess: return input.vmessUUIDs[tunnel.id] != nil
             }
         }
+        // F16: a group is routed when it is enabled and at least one member is; members
+        // that are not routed are left out of its outbound list.
+        let routedIDs = Set(routed.map(\.id))
+        let routedGroups = store.groups.filter { group in
+            group.isEnabled && group.members.contains { routedIDs.contains($0) }
+        }
         let activeRules = RuleValidator.activeRules(store)
         let exceptions = RuleValidator.activeExceptions(store)
         let defaultTunnel = store.effectiveDefaultTunnel.flatMap { wanted in
             routed.first { $0.id == wanted.id }
         }
+        let defaultExit: RoutedExit? = {
+            switch store.effectiveDefaultExit {
+            case .tunnel(let tunnel): return defaultTunnel.map(RoutedExit.init)
+            case .group(let group):
+                return routedGroups.first { $0.id == group.id }.map(RoutedExit.init)
+            case nil: return nil
+            }
+        }()
 
         var dnsServers: [[String: Any]] = [
             directDNSServer(store.settings.directDNS, networkResolvers: input.networkResolvers)
@@ -219,6 +243,39 @@ public enum SingBoxConfigGenerator {
             ruleSetRefs.append(
                 localRuleSet(tag: tunnel.ipRuleSetTag, path: tunnel.ipRuleSetFileName))
         }
+        for group in routedGroups {
+            let members = group.members.filter { routedIDs.contains($0) }
+                .map { "\(Tunnel.outboundTagPrefix)\($0.uuidString.lowercased())" }
+            switch group.policy {
+            case .fastest:
+                outbounds.append([
+                    "type": "urltest",
+                    "tag": group.outboundTag,
+                    "outbounds": members,
+                    "url": LatencyProbe.url,
+                    "interval": groupProbeInterval,
+                    "tolerance": groupTolerance,
+                    "idle_timeout": groupIdleTimeout,
+                    "interrupt_exist_connections": false,
+                ])
+            case .firstLive:
+                // The daemon moves the selection after every probe round (05-daemon.md).
+                outbounds.append([
+                    "type": "selector",
+                    "tag": group.outboundTag,
+                    "outbounds": members,
+                    "default": members[0],
+                    "interrupt_exist_connections": false,
+                ])
+            }
+            routeRules.append([
+                "rule_set": [group.ruleSetTag, group.ipRuleSetTag],
+                "outbound": group.outboundTag,
+            ])
+            ruleSetRefs.append(localRuleSet(tag: group.ruleSetTag, path: group.ruleSetFileName))
+            ruleSetRefs.append(
+                localRuleSet(tag: group.ipRuleSetTag, path: group.ipRuleSetFileName))
+        }
         routeRules.append(["ip_is_private": true, "outbound": "direct"])
 
         // F11: a tunnel IP rule inside the LAN ranges must enter the TUN, so its range is
@@ -259,7 +316,7 @@ public enum SingBoxConfigGenerator {
         }
         if !routed.isEmpty {
             dnsRules.append([
-                "rule_set": routed.map(\.ruleSetTag),
+                "rule_set": routed.map(\.ruleSetTag) + routedGroups.map(\.ruleSetTag),
                 "query_type": ["A", "AAAA"],
                 "server": "fakeip",
             ])
@@ -268,15 +325,16 @@ public enum SingBoxConfigGenerator {
         // outbound dials by domain (VLESS resolves server-side, OpenVPN through its own
         // resolver); other query types go to the default tunnel's resolver.
         var dnsFinal = "dns-direct"
-        if let defaultTunnel {
+        if let defaultExit {
             dnsRules.append(["query_type": ["A", "AAAA"], "server": "fakeip"])
-            let tag = "dns-\(defaultTunnel.outboundTag)"
-            if !defaultTunnel.kind.hasOwnResolver {
+            let tag = "dns-\(defaultExit.outboundTag)"
+            // A group dials the DoT server through whichever member is active (F16).
+            if defaultTunnel?.kind.hasOwnResolver != true {
                 dnsServers.append([
                     "type": "tls",
                     "tag": tag,
                     "server": defaultTunnelDoTServer,
-                    "detour": defaultTunnel.outboundTag,
+                    "detour": defaultExit.outboundTag,
                 ])
             }
             dnsFinal = tag
@@ -291,7 +349,7 @@ public enum SingBoxConfigGenerator {
             "strategy": "ipv4_only",
             "independent_cache": true,
         ]
-        if defaultTunnel != nil {
+        if defaultExit != nil {
             // Remember which name a real answer was for, so that domain rules also match
             // flows that carry no SNI/Host (SSH to a Direct-listed host, 2026-08-26): the
             // exceptions get real IPs from `dns-direct`, and without this only sniffing
@@ -307,7 +365,7 @@ public enum SingBoxConfigGenerator {
             "rule_set": ruleSetRefs,
             // F8: unmatched traffic takes the default tunnel; when it is down the dials fail
             // instead of leaking direct (kill switch by construction).
-            "final": defaultTunnel?.outboundTag ?? "direct",
+            "final": defaultExit?.outboundTag ?? "direct",
             "auto_detect_interface": true,
             "default_domain_resolver": "dns-direct",
             "find_process": true,
@@ -330,9 +388,12 @@ public enum SingBoxConfigGenerator {
         return Output(
             config: JSONText.render(config),
             ruleSets: RuleSetGenerator.generate(
-                tunnels: routed, activeRules: activeRules, exceptions: exceptions),
+                exits: routed.map(RoutedExit.init) + routedGroups.map(RoutedExit.init),
+                activeRules: activeRules, exceptions: exceptions),
             routedTunnels: routed,
-            defaultTunnel: defaultTunnel)
+            routedGroups: routedGroups,
+            defaultTunnel: defaultTunnel,
+            defaultExit: defaultExit)
     }
 
     // MARK: - Pieces

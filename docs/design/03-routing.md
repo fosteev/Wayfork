@@ -481,10 +481,9 @@ route rule, the same fake-ip DNS rule, and — when it is the default exit — t
   member's number would otherwise double-count).
 - Golden variants: `group-fastest` (two members, rules under the group),
   `group-first-live`, `group-default` (the group as the default exit, DoT through it),
-  `group-one-member` (one member skipped). All pass `sing-box check` on 1.13.19 *(verify
-  when M12 starts: `urltest` with a `direct`-typed member outbound; the docs do not
-  restrict member types, but a `direct` member with `bind_interface` has not been run
-  inside a group yet)*.
+  `group-one-member` (one member skipped). All four pass `sing-box check` on 1.13.19,
+  `urltest` / `selector` with a `direct`-typed (`bind_interface`) member included
+  (verified 2026-09-15 by the golden tests on both the Swift and the Go side).
 
 ## Local proxy ports (F17)
 

@@ -7,9 +7,10 @@ public enum RuleIssue: Equatable, Sendable, Hashable {
     /// Same pattern and match as an active rule in an earlier group (Direct comes first);
     /// never matches.
     case shadowed(by: UUID)
-    /// The rule's tunnel is disabled: the rule is inert.
+    /// The rule's tunnel (or group, F16) is disabled — for a group also: has no enabled
+    /// member — so the rule is inert.
     case tunnelDisabled
-    /// The rule's tunnel no longer exists.
+    /// The rule's tunnel or group no longer exists.
     case tunnelMissing
     /// The pattern covers the server host of a tunnel — its own control traffic would
     /// try to go through a tunnel (docs/design/03-routing.md).
@@ -36,10 +37,15 @@ public enum RuleValidator {
     {
         var issues: [UUID: [RuleIssue]] = [:]
         let tunnelsByID = Dictionary(uniqueKeysWithValues: store.tunnels.map { ($0.id, $0) })
-        // Group order for shadowing: Direct first, then tunnels in store order.
+        let groupsByID = Dictionary(uniqueKeysWithValues: store.groups.map { ($0.id, $0) })
+        // Section order for shadowing: Direct first, then tunnels, then groups (F16), each
+        // in store order.
         var groupOrder: [RuleTarget: Int] = [.direct: 0]
         for (index, tunnel) in store.tunnels.enumerated() {
             groupOrder[.tunnel(tunnel.id)] = index + 1
+        }
+        for (index, group) in store.groups.enumerated() {
+            groupOrder[.group(group.id)] = store.tunnels.count + index + 1
         }
 
         // Duplicates within one group: the first occurrence in list order wins.
@@ -85,9 +91,13 @@ public enum RuleValidator {
         }
 
         for rule in store.rules {
-            guard let tunnelID = rule.tunnelID else { continue }  // exceptions: nothing more
-            if let tunnel = tunnelsByID[tunnelID] {
+            guard let exitID = rule.exitID else { continue }  // exceptions: nothing more
+            if let tunnel = tunnelsByID[exitID] {
                 if !tunnel.isEnabled {
+                    issues[rule.id, default: []].append(.tunnelDisabled)
+                }
+            } else if let group = groupsByID[exitID] {
+                if !group.isEnabled || store.enabledMembers(of: group).isEmpty {
                     issues[rule.id, default: []].append(.tunnelDisabled)
                 }
             } else {
@@ -120,17 +130,20 @@ public enum RuleValidator {
             switch target {
             case .direct: true
             case .tunnel(let id): tunnelsByID[id]?.isEnabled == true
+            case .group(let id):
+                groupsByID[id].map { $0.isEnabled && !store.enabledMembers(of: $0).isEmpty }
+                    == true
             }
         }
     }
 
-    /// Tunnel rules the routing engine should emit: enabled, tunnel enabled, not shadowed
-    /// or duplicated. Grouped by tunnel id, in effective order.
+    /// Tunnel and group rules the routing engine should emit: enabled, exit enabled, not
+    /// shadowed or duplicated. Keyed by the tunnel or group id, in effective order.
     public static func activeRules(_ store: Store) -> [UUID: [Rule]] {
         var result: [UUID: [Rule]] = [:]
         for rule in activeRulesInOrder(store) {
-            if let tunnelID = rule.tunnelID {
-                result[tunnelID, default: []].append(rule)
+            if let exitID = rule.exitID {
+                result[exitID, default: []].append(rule)
             }
         }
         return result

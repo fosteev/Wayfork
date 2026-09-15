@@ -19,7 +19,7 @@ public enum PlanValidator {
             else {
                 throw .planInvalid(
                     reason:
-                        "rule-set file name \"\(name)\" is not rules-t-<id>.json, rules-t-<id>-ip.json, \(RunLayout.directRuleSet) or \(RunLayout.directIPRuleSet)"
+                        "rule-set file name \"\(name)\" is not rules-t-<id>.json, rules-t-<id>-ip.json, their rules-g- twins, \(RunLayout.directRuleSet) or \(RunLayout.directIPRuleSet)"
                 )
             }
             try checkSize(contents, name: name, allowEmpty: false)
@@ -62,10 +62,12 @@ public enum PlanValidator {
         }
     }
 
-    /// `rules-t-<id>.json` or `rules-t-<id>-ip.json` → `<id>`.
+    /// `rules-t-<id>.json`, `rules-t-<id>-ip.json` and their `rules-g-` twins (F16) → `<id>`.
     public static func ruleSetID(fromFileName name: String) -> String? {
-        guard name.hasPrefix("rules-t-"), name.hasSuffix(".json") else { return nil }
-        var id = name.dropFirst("rules-t-".count).dropLast(".json".count)
+        guard let prefix = ["rules-t-", "rules-g-"].first(where: name.hasPrefix),
+            name.hasSuffix(".json")
+        else { return nil }
+        var id = name.dropFirst(prefix.count).dropLast(".json".count)
         if id.hasSuffix("-ip") { id = id.dropLast(3) }
         return id.isEmpty ? nil : String(id)
     }

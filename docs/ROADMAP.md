@@ -767,9 +767,15 @@ decision that `urltest` with `tolerance` covers it), 02-ux.md (boards C1, C3, C7
 
 - [x] Design notes as listed above; the *first live* vs `urltest` question decided there
       (2026-09-15: both kept, *first live* = daemon-driven `selector`).
-- [ ] `WayforkCore`: `TunnelGroup` (name, ordered members, policy) in `store.json`, rule
-      and default-tunnel targets widened, validation (no nested groups, ≥ 2 members).
-- [ ] Generator: `urltest` (fastest) / `selector` (first live) outbounds, goldens.
+- [x] `WayforkCore`: `TunnelGroup` (name, ordered members, policy) in `store.json`, rule
+      and default-tunnel targets widened, validation (no nested groups, ≥ 2 members)
+      (2026-09-15: `RuleTarget.group`, `Store.groups` / `effectiveDefaultExit`, validator
+      sections tunnels → groups, export/import; schema stays 2, additive).
+- [x] Generator: `urltest` (fastest) / `selector` (first live) outbounds, goldens
+      (2026-09-15: `group-fastest`, `group-first-live`, `group-default`,
+      `group-one-member`; `sing-box check` passes; the Dart replay skips `group-*` until
+      WM13; the daemon's `PlanValidator` accepts `rules-g-`, the accumulator attributes a
+      group's chains to the group).
 - [ ] Daemon: active member in the snapshot; the *first live* switch if the design keeps it.
 - [ ] App: group card (popover and Settings) with members and the member in use, *New
       group…* sheet (C7), group in every tunnel picker, group section on the Rules page.

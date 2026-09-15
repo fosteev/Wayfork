@@ -23,14 +23,29 @@ public enum RuleMatch: String, Codable, Sendable, CaseIterable {
     public var isIP: Bool { self == .ip }
 }
 
-/// Where a rule sends its traffic (F8): a tunnel, or `direct` for an exception.
+/// Where a rule sends its traffic (F8): a tunnel, a group (F16), or `direct` for an
+/// exception.
 public enum RuleTarget: Sendable, Hashable {
     case tunnel(UUID)
+    case group(UUID)
     case direct
 
     public var tunnelID: UUID? {
         if case .tunnel(let id) = self { return id }
         return nil
+    }
+
+    public var groupID: UUID? {
+        if case .group(let id) = self { return id }
+        return nil
+    }
+
+    /// The tunnel or group id; nil for Direct.
+    public var exitID: UUID? {
+        switch self {
+        case .tunnel(let id), .group(let id): id
+        case .direct: nil
+        }
     }
 
     public var isDirect: Bool { self == .direct }
@@ -47,8 +62,10 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
     public var isEnabled: Bool
     public var note: String?
 
-    /// The tunnel this rule routes to; nil for an exception.
+    /// The tunnel this rule routes to; nil for an exception or a group rule.
     public var tunnelID: UUID? { target.tunnelID }
+    /// The tunnel or group this rule routes to; nil for an exception.
+    public var exitID: UUID? { target.exitID }
     /// A Direct rule: carves the pattern out of the default tunnel or a broader rule.
     public var isException: Bool { target.isDirect }
     /// An application rule (F10).
@@ -85,13 +102,14 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
             isEnabled: isEnabled, note: note)
     }
 
-    // MARK: - JSON (schema 1; `"match": "app"` needs schema 2)
+    // MARK: - JSON (schema 1; `"match": "app"` needs schema 2; `groupID` is additive, F16)
 
-    // A tunnel rule carries `tunnelID`; an exception carries `"target": "direct"` and no
-    // `tunnelID`. A rule with neither is invalid (docs/design/01-data-model.md, F8).
+    // A tunnel rule carries `tunnelID`, a group rule `groupID`; an exception carries
+    // `"target": "direct"` and neither. A rule with none is invalid
+    // (docs/design/01-data-model.md, F8 / F16).
 
     private enum CodingKeys: String, CodingKey {
-        case id, pattern, match, tunnelID, target, isEnabled, note
+        case id, pattern, match, tunnelID, groupID, target, isEnabled, note
     }
 
     private static let directTargetName = "direct"
@@ -113,6 +131,8 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
             target = .direct
         } else if let tunnelID = try container.decodeIfPresent(UUID.self, forKey: .tunnelID) {
             target = .tunnel(tunnelID)
+        } else if let groupID = try container.decodeIfPresent(UUID.self, forKey: .groupID) {
+            target = .group(groupID)
         } else {
             throw DecodingError.dataCorruptedError(
                 forKey: .tunnelID, in: container,
@@ -128,6 +148,8 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
         switch target {
         case .tunnel(let tunnelID):
             try container.encode(tunnelID, forKey: .tunnelID)
+        case .group(let groupID):
+            try container.encode(groupID, forKey: .groupID)
         case .direct:
             try container.encode(Rule.directTargetName, forKey: .target)
         }

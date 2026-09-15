@@ -141,6 +141,7 @@ extension AppModel {
         switch target {
         case .direct: "Not via any tunnel"
         case .tunnel(let id): tunnelName(id)
+        case .group(let id): store.group(id: id)?.name ?? "Group"
         }
     }
 }

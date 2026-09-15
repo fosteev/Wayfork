@@ -289,7 +289,8 @@ Semantics:
   tunnel and group sections alike.
 - A group has no DNS setting: each member resolves as its kind does (03-routing.md).
 
-JSON, still schema 1 (additive): `"groups": [{ "id", "name", "isEnabled", "members":
+JSON, still schema 2 (additive, no bump — the F13 stance; `groups` is written only when
+non-empty so pre-F16 stores and goldens stay byte-identical): `"groups": [{ "id", "name", "isEnabled", "members":
 […], "policy": "fastest" | "firstLive", "createdAt", "localProxy"? }]`; a rule targeting
 a group carries `"groupID": "<uuid>"` and no `tunnelID`; `defaultTunnelID` may hold a
 group id. A build that predates F16 fails to decode a store with `groupID` (unknown

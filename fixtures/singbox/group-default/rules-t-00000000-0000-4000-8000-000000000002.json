@@ -1,0 +1,10 @@
+{
+  "rules" : [
+    {
+      "domain_regex" : [
+        "^.+\\.cdn\\.example\\.com$"
+      ]
+    }
+  ],
+  "version" : 3
+}

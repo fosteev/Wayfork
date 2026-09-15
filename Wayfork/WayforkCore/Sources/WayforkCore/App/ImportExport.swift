@@ -84,17 +84,42 @@ public enum StoreImporter {
             collect(exported.secrets, for: exported.id, into: &secrets)
         }
 
+        // F16: a group comes in when at least two of its members did; a colliding name is
+        // suffixed like a tunnel's. On Merge an existing group is replaced by id.
+        let tunnelIDs = Set(result.tunnels.map(\.id))
+        if mode == .replace {
+            result.groups = []
+        }
+        for group in document.groups {
+            let members = group.members.filter { tunnelIDs.contains($0) }
+            guard members.count >= TunnelGroup.minimumMembers else {
+                warnings.append(
+                    "Group \(group.name) skipped: fewer than two of its tunnels made it in")
+                continue
+            }
+            var imported = group
+            imported.members = members
+            if let index = result.groups.firstIndex(where: { $0.id == group.id }) {
+                result.groups[index] = imported
+            } else {
+                imported.name = availableName(
+                    group.name, for: group.id, in: result, warnings: &warnings)
+                result.groups.append(imported)
+            }
+        }
+        let exitIDs = tunnelIDs.union(result.groups.map(\.id))
+
         var rulesAdded = 0
         var rulesUpdated = 0
         var rulesSkipped = 0
         if mode == .replace {
             result.rules = []
         }
-        let tunnelIDs = Set(result.tunnels.map(\.id))
         for rule in document.rules {
-            if let tunnelID = rule.tunnelID, !tunnelIDs.contains(tunnelID) {
-                let shortID = tunnelID.uuidString.lowercased().prefix(4)
-                warnings.append("Rule \(rule.pattern) skipped: tunnel \(shortID)… not found")
+            if let exitID = rule.exitID, !exitIDs.contains(exitID) {
+                let shortID = exitID.uuidString.lowercased().prefix(4)
+                let what = rule.target.groupID == nil ? "tunnel" : "group"
+                warnings.append("Rule \(rule.pattern) skipped: \(what) \(shortID)… not found")
                 rulesSkipped += 1
                 continue
             }
@@ -112,7 +137,7 @@ public enum StoreImporter {
         // F8: the file's default replaces the current one only when it names a tunnel that
         // made it in; on Replace the fresh store has none to begin with.
         if let wanted = document.defaultTunnelID {
-            if tunnelIDs.contains(wanted) {
+            if exitIDs.contains(wanted) {
                 result.defaultTunnelID = wanted
             } else {
                 let shortID = wanted.uuidString.lowercased().prefix(4)
@@ -205,6 +230,7 @@ public enum StoreExporter {
             tunnels: tunnels,
             rules: store.rules,
             settings: store.settings,
-            defaultTunnelID: store.defaultTunnelID)
+            defaultTunnelID: store.defaultTunnelID,
+            groups: store.groups)
     }
 }

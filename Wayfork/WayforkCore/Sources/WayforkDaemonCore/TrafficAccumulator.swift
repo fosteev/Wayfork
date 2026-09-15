@@ -10,15 +10,19 @@ import WayforkCore
 /// `restartConnections` forgets the per-connection map for a sing-box restart but keeps
 /// the totals.
 public struct TrafficAccumulator: Sendable {
-    /// Where a connection left: a tunnel (by id) or everything else.
+    /// Where a connection left: a tunnel or a group (by id — the snapshot keys both the
+    /// same way) or everything else.
     public enum Exit: Hashable, Sendable {
         case tunnel(String)
         case direct
 
-        /// The first tunnel outbound in the chain wins; `direct`, `block` and DNS outbounds
-        /// count as Direct.
+        /// A group tag wins over the member it dialled through (F16: the group card shows
+        /// its own traffic), then the first tunnel outbound; `direct`, `block` and DNS
+        /// outbounds count as Direct.
         public init(chains: [String]) {
-            if let id = chains.lazy.compactMap(Tunnel.tunnelID(fromOutboundTag:)).first {
+            if let id = chains.lazy.compactMap(TunnelGroup.groupID(fromOutboundTag:)).first {
+                self = .tunnel(id)
+            } else if let id = chains.lazy.compactMap(Tunnel.tunnelID(fromOutboundTag:)).first {
                 self = .tunnel(id)
             } else {
                 self = .direct

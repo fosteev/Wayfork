@@ -509,7 +509,7 @@ private struct RuleRowView: View {
         }
         switch earlier.target {
         case .direct: return "never used — \"Not via any tunnel\" has it"
-        case .tunnel(let id): return "never used — \(model.tunnelName(id)) has it"
+        case .tunnel, .group: return "never used — \(model.targetName(earlier.target)) has it"
         }
     }
 
