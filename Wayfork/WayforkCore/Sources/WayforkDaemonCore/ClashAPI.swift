@@ -20,6 +20,12 @@ public struct ClashAPIEndpoint: Sendable, Hashable {
         URL(string: "http://\(externalController)/connections")!
     }
 
+    /// `GET /proxies/<tag>` (what a group points at) and `PUT /proxies/<tag>` with
+    /// `{"name": "<member tag>"}` (F16, docs/design/05-daemon.md, "Group selection").
+    public func proxyURL(outboundTag tag: String) -> URL {
+        URL(string: "http://\(externalController)/proxies/\(tag)")!
+    }
+
     /// `GET /proxies/<tag>/delay?url=…&timeout=<ms>`: sing-box sends one request to `url`
     /// through the outbound `tag` and answers `{"delay": <ms>}` (F14).
     public func delayURL(outboundTag tag: String, probeURL: String, timeout: TimeInterval) -> URL {
@@ -125,5 +131,27 @@ public enum ClashDelay {
 
     public static func decode(_ data: Data) throws -> Int {
         try JSONDecoder().decode(Body.self, from: data).delay
+    }
+}
+
+/// `GET /proxies/<tag>` for a `selector` / `urltest` outbound: `now` is the member tag it
+/// currently points at, `all` the members in the config's order (F16).
+public struct ClashProxy: Sendable, Hashable {
+    public var now: String?
+    public var all: [String]
+
+    private struct Body: Decodable {
+        var now: String?
+        var all: [String]?
+    }
+
+    public static func decode(_ data: Data) throws -> ClashProxy {
+        let body = try JSONDecoder().decode(Body.self, from: data)
+        return ClashProxy(now: body.now, all: body.all ?? [])
+    }
+
+    /// Body of the `PUT` that points a selector at `memberTag`.
+    public static func selectBody(memberTag: String) -> Data {
+        try! JSONEncoder().encode(["name": memberTag])
     }
 }

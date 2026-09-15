@@ -776,9 +776,15 @@ decision that `urltest` with `tolerance` covers it), 02-ux.md (boards C1, C3, C7
       `group-one-member`; `sing-box check` passes; the Dart replay skips `group-*` until
       WM13; the daemon's `PlanValidator` accepts `rules-g-`, the accumulator attributes a
       group's chains to the group).
-- [ ] Daemon: active member in the snapshot; the *first live* switch if the design keeps it.
-- [ ] App: group card (popover and Settings) with members and the member in use, *New
-      group…* sheet (C7), group in every tunnel picker, group section on the Rules page.
+- [x] Daemon: active member in the snapshot; the *first live* switch if the design keeps it
+      (2026-09-15: `TrafficSnapshot.groups` from `GET /proxies/g-<id>` once a second,
+      `LatencyProber` points every `selector` group at the first member whose probe passed
+      after each round — `SingBoxPlan.groupOutbounds`, `GroupSelection`, `ClashProxy`).
+- [x] App: group card (popover and Settings) with members and the member in use, *New
+      group…* sheet (C7), group in every tunnel picker, group section on the Rules page
+      (2026-09-15: `StatusText.groupCard` / `groupMembers` / `groupRowSummary` /
+      `groupHint`, `AppModel+Groups`, `GroupCardView`, `GroupSettingsViews.swift`; a
+      tunnel deletion takes a group it leaves too small with it, after one confirmation).
 - [ ] Manual check: a two-member group with one member unplugged serves its rules through
       the other; both up, *fastest* follows the lower F14 number.
 

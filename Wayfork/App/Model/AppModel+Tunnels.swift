@@ -419,17 +419,37 @@ extension AppModel {
     /// its Keychain items.
     func deleteTunnel(_ tunnelID: UUID) {
         guard let tunnel = store.tunnel(id: tunnelID) else { return }
-        let rules = ruleCount(for: tunnelID)
-        let message =
-            rules > 0
-            ? "Delete \(tunnel.name) and its \(StatusText.count(rules, "site"))? The rules go with it."
-            : "Delete \(tunnel.name)?"
+        // F16: the tunnel leaves every group; a group left with one member goes too.
+        let doomed = groupsLeftTooSmall(without: tunnelID)
+        let rules =
+            ruleCount(for: tunnelID) + doomed.reduce(0) { $0 + store.rules(forGroup: $1.id).count }
+        let sites = StatusText.count(rules, "site")
+        let message: String
+        if let group = doomed.first {
+            let groups =
+                doomed.count == 1
+                ? "the group \(group.name) it leaves too small"
+                : "the groups \(doomed.map(\.name).joined(separator: ", ")) it leaves too small"
+            message =
+                rules > 0
+                ? "Delete \(tunnel.name), \(groups), and their \(sites)? The rules go with them."
+                : "Delete \(tunnel.name) and \(groups)?"
+        } else {
+            message =
+                rules > 0
+                ? "Delete \(tunnel.name) and its \(sites)? The rules go with it."
+                : "Delete \(tunnel.name)?"
+        }
         guard Alerts.confirm(title: "Delete tunnel", message: message, destructive: "Delete")
         else { return }
+        if !doomed.isEmpty { removeGroups(doomed.map(\.id)) }
         update { store in
             store.tunnels.removeAll { $0.id == tunnelID }
             store.rules.removeAll { $0.tunnelID == tunnelID }
             if store.defaultTunnelID == tunnelID { store.defaultTunnelID = nil }
+            for index in store.groups.indices {
+                store.groups[index].members.removeAll { $0 == tunnelID }
+            }
         }
         try? secrets.deleteAll(for: tunnelID)
         if expandedTunnelID == tunnelID { expandedTunnelID = nil }

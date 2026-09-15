@@ -67,3 +67,32 @@ import WayforkCore
     #expect(try ClashDelay.decode(Data(#"{"delay": 62}"#.utf8)) == 62)
     #expect(throws: (any Error).self) { try ClashDelay.decode(Data(#"{"message":"x"}"#.utf8)) }
 }
+
+// MARK: - F16
+
+@Test func clashProxyDecodingAndSelectBody() throws {
+    let endpoint = ClashAPIEndpoint(port: 9090, secret: "s")
+    #expect(endpoint.proxyURL(outboundTag: "g-abc").path == "/proxies/g-abc")
+    let proxy = try ClashProxy.decode(
+        Data(
+            #"{"type":"Selector","name":"g-abc","now":"t-one","all":["t-one","t-two"],"history":[]}"#
+                .utf8))
+    #expect(proxy.now == "t-one" && proxy.all == ["t-one", "t-two"])
+    let bare = try ClashProxy.decode(Data(#"{"type":"URLTest","name":"g-abc"}"#.utf8))
+    #expect(bare.now == nil && bare.all.isEmpty)
+    #expect(throws: (any Error).self) { try ClashProxy.decode(Data("[]".utf8)) }
+    let body = try JSONSerialization.jsonObject(with: ClashProxy.selectBody(memberTag: "t-two"))
+    #expect(body as? [String: String] == ["name": "t-two"])
+}
+
+@Test func firstLiveWantsTheFirstMemberWhoseProbePassed() {
+    let samples: [String: LatencySample] = [
+        "a": LatencySample(milliseconds: nil, failedInARow: 1),
+        "b": LatencySample(milliseconds: 80),
+        "c": LatencySample(milliseconds: 20),
+    ]
+    #expect(GroupSelection.wantedMember(order: ["a", "b", "c"], samples: samples) == "b")
+    #expect(GroupSelection.wantedMember(order: ["c", "b"], samples: samples) == "c")
+    // A member without a sample yet is not live; nothing passing leaves the selector alone.
+    #expect(GroupSelection.wantedMember(order: ["a", "x"], samples: samples) == nil)
+}

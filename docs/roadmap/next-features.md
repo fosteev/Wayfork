@@ -167,7 +167,9 @@ ROADMAP.md: M10 (friendlier screens, existing features only), M9 (F14), M11–M1
       — code done 2026-09-15 (M11); manual check and WM12 owed.
 - [ ] F16: model + generator + goldens, the group card, group in every tunnel picker,
       `first live` in the daemon. — part 1 (model, validator, generator, goldens, daemon
-      core) done 2026-09-15 (724f71c); part 2 = the session prompt below.
+      core) done 2026-09-15 (724f71c); part 2 (snapshot `groups`, the *first live*
+      switch, group cards / rows / sheet / Rules section) code done 2026-09-15; manual
+      check and WM13 owed.
 - [ ] F17: model + generator + goldens, port on the card, copy button; LAN toggle only if
       approved.
 - [ ] F18: list source and fetch, generator, the switch, counter, exceptions.

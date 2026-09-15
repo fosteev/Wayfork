@@ -70,6 +70,8 @@ public enum StatusGlyph: Sendable, Hashable {
     case transitioning
     /// Red: failed / not ready.
     case failed
+    /// Accent square: a tunnel group (F16).
+    case group
 }
 
 /// Action button on a popover tunnel card.
@@ -105,6 +107,29 @@ public struct TunnelPresentation: Sendable, Hashable {
     }
 }
 
+/// One member line under a group card or in the expanded group (F16).
+public struct GroupMemberRow: Sendable, Hashable, Identifiable {
+    public var tunnel: Tunnel
+    public var glyph: StatusGlyph
+    /// `✓ in use` / `skipped — not reachable` / `skipped — off`; empty for a live backup.
+    public var note: String
+    public var isActive: Bool
+    public var latency: LatencySample?
+
+    public var id: UUID { tunnel.id }
+
+    public init(
+        tunnel: Tunnel, glyph: StatusGlyph, note: String = "", isActive: Bool = false,
+        latency: LatencySample? = nil
+    ) {
+        self.tunnel = tunnel
+        self.glyph = glyph
+        self.note = note
+        self.isActive = isActive
+        self.latency = latency
+    }
+}
+
 /// User-facing strings derived from store + runtime status (docs/design/02-ux.md).
 public enum StatusText {
     // MARK: - Failures
@@ -126,7 +151,9 @@ public enum StatusText {
     public static func summary(
         state: GlobalState, store: Store, status: RuntimeStatus?, missingSecrets: Set<UUID> = []
     ) -> String {
-        let defaultTunnel = effectiveDefaultTunnel(store, missingSecrets: missingSecrets)
+        // A tunnel or a group (F16) may take "everything else".
+        let defaultExit = effectiveDefaultExitName(store, missingSecrets: missingSecrets)
+            .map { (id: store.defaultTunnelID!, name: $0) }
         switch state {
         case .off:
             let sites = activeRuleCount(store)
@@ -143,21 +170,21 @@ public enum StatusText {
             let tunnels = store.tunnels.filter(\.isEnabled).count
             guard tunnels > 0 else { return "On — no tunnels" }
             let sites = activeRuleCount(store)
-            if let defaultTunnel {
+            if let defaultExit {
                 let otherSites = RuleValidator.activeRules(store)
-                    .filter { $0.key != defaultTunnel.id }
+                    .filter { $0.key != defaultExit.id }
                     .values.reduce(0) { $0 + $1.count }
                 guard otherSites > 0 else {
-                    return "On — everything goes via \(defaultTunnel.name)"
+                    return "On — everything goes via \(defaultExit.name)"
                 }
                 return
-                    "On — everything goes via \(defaultTunnel.name), \(count(otherSites, "site")) via other tunnels"
+                    "On — everything goes via \(defaultExit.name), \(count(otherSites, "site")) via other tunnels"
             }
             return "On — \(count(sites, "site")) via \(count(tunnels, "tunnel")), the rest as usual"
         case .degraded(let failing):
-            if let defaultTunnel, failing.contains(defaultTunnel.id) {
+            if let defaultExit, failing.contains(defaultExit.id) {
                 return
-                    "\(defaultTunnel.name) can't connect — sites without a rule are blocked until it is back"
+                    "\(defaultExit.name) can't connect — sites without a rule are blocked until it is back"
             }
             let names = failing.compactMap { store.tunnel(id: $0)?.name }
             let subject: String
@@ -170,7 +197,7 @@ public enum StatusText {
             let enabled = store.tunnels.filter(\.isEnabled).count
             let up = max(0, enabled - failing.count)
             var result = "\(subject) can't connect — \(count(up, "tunnel")) up"
-            if let defaultTunnel { result += ", everything else via \(defaultTunnel.name)" }
+            if let defaultExit { result += ", everything else via \(defaultExit.name)" }
             return result
         }
     }
@@ -268,6 +295,224 @@ public enum StatusText {
                 isError: true,
                 actions: [.reconnect, .edit(failureAction(code: reason) ?? .showLog)],
                 isDefault: isDefault)
+        }
+    }
+
+    // MARK: - Groups (F16)
+
+    /// `Fastest` / `First live`.
+    public static func policyWord(_ policy: GroupPolicy) -> String {
+        switch policy {
+        case .fastest: "Fastest"
+        case .firstLive: "First live"
+        }
+    }
+
+    /// `fastest of Home, Lab` — every member in the group's order.
+    public static func policyPhrase(group: TunnelGroup, store: Store) -> String {
+        let names = group.members.compactMap { store.tunnel(id: $0)?.name }
+        return "\(policyWord(group.policy).lowercased()) of \(names.joined(separator: ", "))"
+    }
+
+    /// The one-line meaning next to the *Pick by* control and in the New group sheet.
+    public static func policyMeaning(_ policy: GroupPolicy, short: Bool) -> String {
+        switch (policy, short) {
+        case (.fastest, true): "the member that answers quickest right now"
+        case (.firstLive, true): "the top member that works; the ones below are backups"
+        case (.fastest, false):
+            "Whichever member answers quickest right now — switches when another one gets faster."
+        case (.firstLive, false):
+            "Always the top member that works; the ones below are backups, in order."
+        }
+    }
+
+    /// The member sing-box is using, from the snapshot, when it is still one of the group's.
+    public static func activeMember(
+        group: TunnelGroup, store: Store, groups: [String: GroupState]
+    ) -> Tunnel? {
+        guard let id = groups[group.id.uuidString.lowercased()]?.activeMember,
+            let uuid = UUID(uuidString: id), group.members.contains(uuid)
+        else { return nil }
+        return store.tunnel(id: uuid)
+    }
+
+    /// Members that can carry traffic right now: enabled, with their secret, and not
+    /// unreachable or failed. Empty means the card says *No member reachable*.
+    static func liveMembers(
+        group: TunnelGroup, store: Store, states: [String: TunnelState],
+        latency: [String: LatencySample], missingSecrets: Set<UUID>
+    ) -> [Tunnel] {
+        store.enabledMembers(of: group).filter { member in
+            !missingSecrets.contains(member.id)
+                && memberSkipReason(
+                    member, state: states[member.id.uuidString.lowercased()],
+                    latency: latency[member.id.uuidString.lowercased()], missingSecret: false)
+                    == nil
+        }
+    }
+
+    /// Why a member is skipped (`off` / `not reachable`), or nil when it is live.
+    private static func memberSkipReason(
+        _ member: Tunnel, state: TunnelState?, latency: LatencySample?, missingSecret: Bool
+    ) -> String? {
+        if !member.isEnabled || missingSecret { return "off" }
+        if latency?.unreachable == true { return "not reachable" }
+        if member.kind.isOpenVPN, case .failed = state { return "not reachable" }
+        return nil
+    }
+
+    /// Popover card for a group: the policy word, the member in use and the site count;
+    /// red *No member reachable* when nothing can carry its sites right now.
+    public static func groupCard(
+        group: TunnelGroup, store: Store, global: GlobalState,
+        latency: [String: LatencySample] = [:], groups: [String: GroupState] = [:],
+        states: [String: TunnelState] = [:], missingSecrets: Set<UUID> = []
+    ) -> TunnelPresentation {
+        let ruleCount = store.rules(forGroup: group.id).count
+        let sites = count(ruleCount, "site")
+        // Default only while it actually takes "everything else" (like a tunnel card).
+        let isDefault =
+            store.defaultTunnelID == group.id
+            && effectiveDefaultExitName(store, missingSecrets: missingSecrets) != nil
+        if !group.isEnabled {
+            return TunnelPresentation(
+                glyph: .idle, status: "Off", detail: sites, isDimmed: true, actions: [.enable],
+                isDefault: isDefault)
+        }
+        switch global {
+        case .off, .stopping:
+            return TunnelPresentation(
+                glyph: .idle, status: "Not running", detail: sites, isDimmed: true,
+                isDefault: isDefault)
+        case .error:
+            return TunnelPresentation(
+                glyph: .idle, status: "Not routed", detail: sites, isDimmed: true,
+                isDefault: isDefault)
+        case .starting, .on, .degraded:
+            break
+        }
+        let live = liveMembers(
+            group: group, store: store, states: states, latency: latency,
+            missingSecrets: missingSecrets)
+        guard !live.isEmpty else {
+            let fallback: String
+            if isDefault {
+                fallback = "its \(sites) are blocked for now"
+            } else if let name = effectiveDefaultExitName(store, missingSecrets: missingSecrets) {
+                fallback = "its \(sites) go via \(name) for now"
+            } else {
+                fallback = "its \(sites) stay outside a tunnel for now"
+            }
+            return TunnelPresentation(
+                glyph: .failed, status: "No member reachable", detail: fallback, isError: true,
+                isDefault: isDefault)
+        }
+        var detail = sites
+        if let active = activeMember(group: group, store: store, groups: groups) {
+            detail = "using \(active.name) · \(sites)"
+        }
+        return TunnelPresentation(
+            glyph: .group, status: policyWord(group.policy), detail: detail, isDefault: isDefault)
+    }
+
+    /// Member rows under the group card and in the expanded group, in the group's order.
+    public static func groupMembers(
+        group: TunnelGroup, store: Store, global: GlobalState,
+        latency: [String: LatencySample] = [:], groups: [String: GroupState] = [:],
+        states: [String: TunnelState] = [:], missingSecrets: Set<UUID> = []
+    ) -> [GroupMemberRow] {
+        let running = global.isRunning && group.isEnabled
+        let active = running ? activeMember(group: group, store: store, groups: groups) : nil
+        return group.members.compactMap { id -> GroupMemberRow? in
+            guard let member = store.tunnel(id: id) else { return nil }
+            let key = id.uuidString.lowercased()
+            let sample = latency[key]
+            let missing = missingSecrets.contains(id)
+            let card = card(
+                tunnel: member, state: states[key], global: global, ruleCount: 0,
+                missingSecret: missing, latency: sample)
+            let reason = memberSkipReason(
+                member, state: states[key], latency: sample, missingSecret: missing)
+            // A skip reason wins over the tick: a selector left pointing at a dead member
+            // is not "in use" in any sense the user cares about.
+            if member.id == active?.id, reason == nil {
+                return GroupMemberRow(
+                    tunnel: member, glyph: card.glyph, note: "✓ in use", isActive: true,
+                    latency: sample)
+            }
+            let note = running || reason == "off" ? reason.map { "skipped — \($0)" } ?? "" : ""
+            return GroupMemberRow(
+                tunnel: member, glyph: card.glyph, note: note, latency: running ? sample : nil)
+        }
+    }
+
+    /// Subtitle of a Settings › Tunnels group row: `Group · fastest of Home, Lab · using
+    /// Home · N sites`, with the status word in front when it is not just running.
+    public static func groupRowSummary(
+        group: TunnelGroup, store: Store, global: GlobalState,
+        latency: [String: LatencySample] = [:], groups: [String: GroupState] = [:],
+        states: [String: TunnelState] = [:], missingSecrets: Set<UUID> = []
+    ) -> (text: String, glyph: StatusGlyph, isError: Bool) {
+        let card = groupCard(
+            group: group, store: store, global: global, latency: latency, groups: groups,
+            states: states, missingSecrets: missingSecrets)
+        var parts: [String] = []
+        if card.glyph != .group { parts.append(card.status) }
+        parts.append("Group")
+        parts.append(policyPhrase(group: group, store: store))
+        if card.glyph == .group,
+            let active = activeMember(group: group, store: store, groups: groups)
+        {
+            parts.append("using \(active.name)")
+        }
+        let ruleCount = store.rules(forGroup: group.id).count
+        parts.append(
+            card.isDefault
+                ? "routes everything else and \(count(ruleCount, "site"))"
+                : count(ruleCount, "site"))
+        return (parts.joined(separator: " · "), card.glyph, card.isError)
+    }
+
+    /// Header hint of a group's section on the Rules page: `fastest of Home, Lab · using
+    /// Home right now`, or what happens to its sites while it cannot deliver.
+    public static func groupHint(
+        group: TunnelGroup, store: Store, global: GlobalState,
+        latency: [String: LatencySample] = [:], groups: [String: GroupState] = [:],
+        states: [String: TunnelState] = [:], missingSecrets: Set<UUID> = []
+    ) -> (text: String, isError: Bool) {
+        let card = groupCard(
+            group: group, store: store, global: global, latency: latency, groups: groups,
+            states: states, missingSecrets: missingSecrets)
+        if !group.isEnabled {
+            if let name = effectiveDefaultExitName(store, missingSecrets: missingSecrets) {
+                return ("off — its sites go via \(name) for now", false)
+            }
+            return ("off — its sites stay outside a tunnel for now", false)
+        }
+        if card.isError { return ("no member reachable — its sites wait", true) }
+        var text = policyPhrase(group: group, store: store)
+        if card.glyph == .group,
+            let active = activeMember(group: group, store: store, groups: groups)
+        {
+            text += " · using \(active.name) right now"
+        }
+        return (text, false)
+    }
+
+    /// Name of the tunnel or group taking "everything else" (F8, F16), nil when direct.
+    public static func effectiveDefaultExitName(_ store: Store, missingSecrets: Set<UUID> = [])
+        -> String?
+    {
+        switch store.effectiveDefaultExit {
+        case .tunnel(let tunnel):
+            return missingSecrets.contains(tunnel.id) ? nil : tunnel.name
+        case .group(let group):
+            let usable = store.enabledMembers(of: group).contains {
+                !missingSecrets.contains($0.id)
+            }
+            return usable ? group.name : nil
+        case nil:
+            return nil
         }
     }
 

@@ -232,7 +232,7 @@ final class AppModel {
         guard store.defaultTunnelID != id else { return }
         update { $0.defaultTunnelID = id }
         if let id {
-            logs.app(.info, "default tunnel: \(tunnelName(id))")
+            logs.app(.info, "default exit: \(store.exitName(id: id) ?? "?")")
         } else {
             logs.app(.info, "default tunnel cleared")
         }

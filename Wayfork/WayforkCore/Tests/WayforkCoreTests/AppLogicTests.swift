@@ -525,3 +525,130 @@ private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased()
         RecentFilter.visible(hosts, sampledAt: now, window: 300, hidden: [], store: loose).count
             == 5)
 }
+
+// MARK: - Tunnel groups (F16)
+
+private func groupedStore() -> (Store, group: TunnelGroup, work: Tunnel, home: Tunnel, lab: Tunnel)
+{
+    var (store, work, home, lab) = sampleStore()
+    let group = TunnelGroup(name: "Streaming", members: [home.id, lab.id], policy: .fastest)
+    store.groups = [group]
+    store.rules.append(Rule(pattern: "video.example.com", target: .group(group.id)))
+    store.rules.append(Rule(pattern: "cdn.example.net", target: .group(group.id)))
+    return (store, group, work, home, lab)
+}
+
+@Test func groupCardStatesAndMembers() {
+    var (store, group, work, home, lab) = groupedStore()
+    let groups = [group.id.uuidString.lowercased(): GroupState(activeMember: key(home))]
+    let latency = [
+        key(home): LatencySample(milliseconds: 180), key(lab): LatencySample(milliseconds: 90),
+    ]
+    let states: [String: TunnelState] = [
+        key(lab): .connected(since: Date(), ip: "10.8.0.6", interface: "utun102")
+    ]
+
+    let running = StatusText.groupCard(
+        group: group, store: store, global: .on, latency: latency, groups: groups, states: states)
+    #expect(running.glyph == .group && running.status == "Fastest")
+    #expect(running.detail == "using Home · 2 sites")
+    #expect(!running.isError && !running.isDimmed)
+
+    // Before the first snapshot names a member the card only counts the sites.
+    let unknown = StatusText.groupCard(group: group, store: store, global: .on, latency: latency)
+    #expect(unknown.detail == "2 sites")
+
+    let members = StatusText.groupMembers(
+        group: group, store: store, global: .on, latency: latency, groups: groups, states: states)
+    #expect(members.map(\.tunnel.name) == ["Home", "Lab"])
+    #expect(members[0].note == "✓ in use" && members[0].isActive)
+    #expect(members[1].note == "" && !members[1].isActive)
+    #expect(members[1].latency?.milliseconds == 90)
+
+    // Off, not running, disabled group.
+    let off = StatusText.groupCard(group: group, store: store, global: .off)
+    #expect(off.status == "Not running" && off.isDimmed && off.detail == "2 sites")
+    var disabled = group
+    disabled.isEnabled = false
+    let disabledCard = StatusText.groupCard(group: disabled, store: store, global: .on)
+    #expect(disabledCard.status == "Off" && disabledCard.actions == [.enable])
+
+    // Every member gone: red, and the sites fall to the default exit.
+    let unreachable = [
+        key(home): LatencySample(milliseconds: nil, failedInARow: 3, unreachable: true),
+        key(lab): LatencySample(milliseconds: nil, failedInARow: 3, unreachable: true),
+    ]
+    let dead = StatusText.groupCard(
+        group: group, store: store, global: .on, latency: unreachable, groups: groups,
+        states: states)
+    #expect(dead.glyph == .failed && dead.isError && dead.status == "No member reachable")
+    #expect(dead.detail == "its 2 sites stay outside a tunnel for now")
+    store.defaultTunnelID = work.id
+    #expect(
+        StatusText.groupCard(
+            group: group, store: store, global: .on, latency: unreachable, groups: groups,
+            states: states
+        ).detail == "its 2 sites go via Work for now")
+    store.defaultTunnelID = group.id
+    #expect(
+        StatusText.groupCard(
+            group: group, store: store, global: .on, latency: unreachable, groups: groups,
+            states: states
+        ).detail == "its 2 sites are blocked for now")
+    let deadMembers = StatusText.groupMembers(
+        group: group, store: store, global: .on, latency: unreachable, groups: groups,
+        states: states)
+    #expect(deadMembers.map(\.note) == ["skipped — not reachable", "skipped — not reachable"])
+
+    // A disabled member is skipped as off; a failed OpenVPN member as not reachable.
+    store.tunnels[1].isEnabled = false
+    let failing: [String: TunnelState] = [
+        key(lab): .failed(reason: "ovpn.authFailed", permanent: true)
+    ]
+    let mixed = StatusText.groupMembers(
+        group: group, store: store, global: .on, states: failing)
+    #expect(mixed.map(\.note) == ["skipped — off", "skipped — not reachable"])
+    #expect(
+        StatusText.groupCard(group: group, store: store, global: .on, states: failing).status
+            == "No member reachable")
+}
+
+@Test func groupRowSummaryAndRulesHint() {
+    var (store, group, work, home, _) = groupedStore()
+    let groups = [group.id.uuidString.lowercased(): GroupState(activeMember: key(home))]
+    #expect(
+        StatusText.groupRowSummary(group: group, store: store, global: .on, groups: groups).text
+            == "Group · fastest of Home, Lab · using Home · 2 sites")
+    #expect(
+        StatusText.groupRowSummary(group: group, store: store, global: .off).text
+            == "Not running · Group · fastest of Home, Lab · 2 sites")
+    #expect(
+        StatusText.groupHint(group: group, store: store, global: .on, groups: groups).text
+            == "fastest of Home, Lab · using Home right now")
+    var firstLive = group
+    firstLive.policy = .firstLive
+    #expect(
+        StatusText.groupHint(group: firstLive, store: store, global: .off).text
+            == "first live of Home, Lab")
+    #expect(StatusText.policyWord(.firstLive) == "First live")
+
+    store.defaultTunnelID = work.id
+    var disabled = group
+    disabled.isEnabled = false
+    let hint = StatusText.groupHint(group: disabled, store: store, global: .on)
+    #expect(hint.text == "off — its sites go via Work for now" && !hint.isError)
+
+    // The group as the default exit: the summary names it and its row says so.
+    store.defaultTunnelID = group.id
+    #expect(
+        StatusText.summary(state: .on, store: store, status: nil)
+            == "On — everything goes via Streaming, 5 sites via other tunnels")
+    #expect(
+        StatusText.groupRowSummary(group: group, store: store, global: .off).text
+            == "Not running · Group · fastest of Home, Lab · routes everything else and 2 sites")
+    #expect(StatusText.effectiveDefaultExitName(store) == "Streaming")
+    #expect(StatusText.effectiveDefaultExitName(store, missingSecrets: [home.id]) == "Streaming")
+    store.tunnels[1].isEnabled = false
+    #expect(
+        StatusText.effectiveDefaultExitName(store, missingSecrets: [store.tunnels[2].id]) == nil)
+}

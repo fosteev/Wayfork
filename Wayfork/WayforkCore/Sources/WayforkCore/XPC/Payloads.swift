@@ -249,11 +249,14 @@ public struct TrafficSnapshot: Codable, Sendable, Hashable {
     /// Hosts that took the default route since sing-box started, newest first, at most
     /// `RecentHost.capacity` (F15; docs/design/05-daemon.md, "Recent hosts").
     public var recentHosts: [RecentHost]
+    /// Which member each routed group is using, by group id (F16; docs/design/05-daemon.md,
+    /// "Group selection"). Absent in a payload from a build that predates it.
+    public var groups: [String: GroupState]
 
     public init(
         sampledAt: Date, interval: TimeInterval, tunnels: [String: TrafficCounters],
         direct: TrafficCounters, latency: [String: LatencySample] = [:],
-        recentHosts: [RecentHost] = []
+        recentHosts: [RecentHost] = [], groups: [String: GroupState] = [:]
     ) {
         self.sampledAt = sampledAt
         self.interval = interval
@@ -261,10 +264,11 @@ public struct TrafficSnapshot: Codable, Sendable, Hashable {
         self.direct = direct
         self.latency = latency
         self.recentHosts = recentHosts
+        self.groups = groups
     }
 
     private enum CodingKeys: String, CodingKey {
-        case sampledAt, interval, tunnels, direct, latency, recentHosts
+        case sampledAt, interval, tunnels, direct, latency, recentHosts, groups
     }
 
     public init(from decoder: Decoder) throws {
@@ -275,10 +279,22 @@ public struct TrafficSnapshot: Codable, Sendable, Hashable {
         direct = try c.decode(TrafficCounters.self, forKey: .direct)
         latency = try c.decodeIfPresent([String: LatencySample].self, forKey: .latency) ?? [:]
         recentHosts = try c.decodeIfPresent([RecentHost].self, forKey: .recentHosts) ?? []
+        groups = try c.decodeIfPresent([String: GroupState].self, forKey: .groups) ?? [:]
     }
 
     public func counters(forTunnel id: String) -> TrafficCounters {
         tunnels[id] ?? .zero
+    }
+}
+
+/// What sing-box's `selector` / `urltest` for one group currently points at (F16).
+public struct GroupState: Codable, Sendable, Hashable {
+    /// Tunnel id of the member in use; nil when sing-box named no member (none usable, or
+    /// the Clash API did not answer for the group).
+    public var activeMember: String?
+
+    public init(activeMember: String? = nil) {
+        self.activeMember = activeMember
     }
 }
 

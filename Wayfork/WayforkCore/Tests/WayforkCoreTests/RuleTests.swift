@@ -186,6 +186,23 @@ import Testing
     #expect(SingBoxPlan(config: "not json", ruleSets: [:]).routeFinal == nil)
 }
 
+@Test func planGroupOutboundsReadPolicyAndMemberOrder() {
+    let config = """
+        {"outbounds":[
+          {"type":"direct","tag":"direct"},
+          {"type":"vless","tag":"t-one"},
+          {"type":"selector","tag":"g-first","outbounds":["t-two","t-one"],"default":"t-two"},
+          {"type":"urltest","tag":"g-fast","outbounds":["t-one"]},
+          {"type":"block","tag":"g-odd"}
+        ]}
+        """
+    let groups = SingBoxPlan(config: config, ruleSets: [:]).groupOutbounds
+    #expect(groups.count == 2)
+    #expect(groups["first"] == GroupOutbound(policy: .selector, members: ["two", "one"]))
+    #expect(groups["fast"] == GroupOutbound(policy: .urltest, members: ["one"]))
+    #expect(SingBoxPlan(config: "not json", ruleSets: [:]).groupOutbounds.isEmpty)
+}
+
 // MARK: - F16
 
 @Test func groupRulesRoundTripAndOrderAfterTunnels() throws {

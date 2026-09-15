@@ -93,4 +93,26 @@ import Testing
             ]),
         openVPN: [], autoReconnect: true, logLevel: .info, overrideSystemDNS: true)
     #expect(plan.routedTunnelIDs == ["aaa", "bbb"])
+    #expect(plan.routedGroupIDs.isEmpty)
+}
+
+@Test func routedGroupIDsAndSnapshotGroupsRoundTrip() throws {
+    let plan = RuntimePlan(
+        singBox: SingBoxPlan(
+            config: "{}",
+            ruleSets: ["rules-g-ggg.json": "", "rules-g-ggg-ip.json": "", "rules-t-aaa.json": ""]),
+        openVPN: [])
+    #expect(plan.routedGroupIDs == ["ggg"])
+    #expect(plan.routedTunnelIDs == ["aaa"])
+    let legacy =
+        #"{"sampledAt":0,"interval":1,"tunnels":{},"direct":{"downBytesPerSecond":0,"upBytesPerSecond":0,"downTotal":0,"upTotal":0,"connections":0}}"#
+    let decoded = try JSONDecoder().decode(TrafficSnapshot.self, from: Data(legacy.utf8))
+    #expect(decoded.groups.isEmpty)
+    let full = TrafficSnapshot(
+        sampledAt: Date(), interval: 1, tunnels: [:], direct: .zero,
+        groups: ["ggg": GroupState(activeMember: "aaa"), "hhh": GroupState()])
+    let roundTrip = try JSONDecoder().decode(
+        TrafficSnapshot.self, from: try JSONEncoder().encode(full))
+    #expect(roundTrip.groups["ggg"]?.activeMember == "aaa")
+    #expect(roundTrip.groups["hhh"] == GroupState(activeMember: nil))
 }

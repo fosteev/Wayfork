@@ -7,6 +7,7 @@ struct TunnelsSettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var linkSheet: AddLinkSheet.Mode?
     @State private var wireGuardSheet: AddWireGuardSheet.Mode?
+    @State private var newGroupSheet = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -52,6 +53,18 @@ struct TunnelsSettingsView: View {
                                 }
                             }
                         }
+                        // F16: groups after the tunnels, *New group…* as the last row.
+                        ForEach(model.store.groups) { group in
+                            Divider()
+                            GroupRowView(group: group)
+                            if model.expandedTunnelID == group.id {
+                                GroupDetailView(group: group)
+                            }
+                        }
+                        Divider()
+                        NewGroupRow(showsHint: model.store.groups.isEmpty) {
+                            newGroupSheet = true
+                        }
                     }
                     .background(GroupBackground())
                 }
@@ -63,6 +76,9 @@ struct TunnelsSettingsView: View {
         }
         .sheet(item: $wireGuardSheet) { mode in
             AddWireGuardSheet(mode: mode)
+        }
+        .sheet(isPresented: $newGroupSheet) {
+            NewGroupSheet()
         }
     }
 }
@@ -623,6 +639,33 @@ private struct DefaultTunnelToggle: View {
                 .font(.system(size: 11))
                 .foregroundStyle(hint.isWarning ? Color.orange : Color.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// The same toggle for a group (F16): the default exit shares one UUID space.
+struct DefaultExitToggle: View {
+    @Environment(AppModel.self) private var model
+    let id: UUID
+    let name: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Toggle(
+                "Sites without a rule go through this group",
+                isOn: Binding(
+                    get: { model.isDefaultTunnel(id) },
+                    set: { model.setDefaultTunnel($0 ? id : nil) })
+            )
+            .toggleStyle(.checkbox)
+            Text(
+                model.isDefaultTunnel(id)
+                    ? "Sites without a rule use \(name); add sites that must stay outside under \"Not via any tunnel\" in Rules. While no member is reachable, those sites are blocked."
+                    : "Sites without a rule use this group instead of going direct."
+            )
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

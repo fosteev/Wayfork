@@ -22,6 +22,8 @@ struct StatusGlyphView: View {
                 Image(systemName: "xmark")
                     .font(.system(size: size * 0.6, weight: .bold))
                     .foregroundStyle(.white)
+            case .group:
+                RoundedRectangle(cornerRadius: size * 0.25).fill(Color.accentColor)
             }
         }
         .frame(width: size, height: size)
@@ -34,6 +36,7 @@ struct StatusGlyphView: View {
         case .idle: "inactive"
         case .transitioning: "connecting"
         case .failed: "failed"
+        case .group: "group"
         }
     }
 }
@@ -202,6 +205,30 @@ struct SparklineView: View {
             }
         }
         .frame(width: Self.size.width, height: Self.size.height)
+    }
+}
+
+/// One member line under a group card or in the expanded group (F16): dot, name, the
+/// `✓ in use` / `skipped — …` note, latency right-aligned.
+struct GroupMemberRowView: View {
+    let row: GroupMemberRow
+    var showsLatency = true
+
+    var body: some View {
+        HStack(spacing: 6) {
+            StatusGlyphView(glyph: row.glyph, size: 8)
+            Text(row.tunnel.name).lineLimit(1)
+            if !row.note.isEmpty {
+                Text(row.note)
+                    .foregroundStyle(row.isActive ? Color.accentColor : Color.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            if showsLatency {
+                LatencyLabel(sample: row.latency).font(.system(size: 11))
+            }
+        }
+        .font(.system(size: 11))
     }
 }
 

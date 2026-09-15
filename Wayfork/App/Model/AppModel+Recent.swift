@@ -20,15 +20,18 @@ extension AppModel {
             hidden: hiddenRecentHosts, store: store)
     }
 
-    /// Where the listed flows went: the default tunnel's name or "direct".
+    /// Where the listed flows went: the default tunnel's or group's name, or "direct".
     var recentExitName: String? {
-        effectiveDefaultTunnel?.name
+        StatusText.effectiveDefaultExitName(store, missingSecrets: missingSecrets)
     }
 
-    /// Targets a row can be routed to: every tunnel except the default one, then Direct.
+    /// Targets a row can be routed to: every tunnel and group except the default one, then
+    /// Direct.
     var recentTargets: [RuleTarget] {
-        store.tunnels.filter { $0.isEnabled && $0.id != effectiveDefaultTunnel?.id }
-            .map { .tunnel($0.id) } + [.direct]
+        let defaultID = recentExitName == nil ? nil : store.defaultTunnelID
+        return store.tunnels.filter { $0.isEnabled && $0.id != defaultID }.map { .tunnel($0.id) }
+            + store.groups.filter { $0.isEnabled && $0.id != defaultID }.map { .group($0.id) }
+            + [.direct]
     }
 
     /// The pattern *Route via* creates for a row.

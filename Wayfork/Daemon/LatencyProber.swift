@@ -9,6 +9,9 @@ actor LatencyProber {
     /// Ids of the tunnels worth probing right now: routed by the plan, and for OpenVPN
     /// tunnels in the `connected` state. Set by the supervisor, which knows both.
     typealias TunnelSource = @Sendable () async -> [String]
+    /// *First live* groups by id with their members in the group's order (F16): the
+    /// `selector` outbounds of the current plan. Set by the supervisor.
+    typealias GroupSource = @Sendable () async -> [String: [String]]
 
     private enum Failure: Error {
         case httpStatus(Int)
@@ -19,6 +22,7 @@ actor LatencyProber {
     private let session: URLSession
     private var tracker = LatencyTracker()
     private var tunnels: TunnelSource = { [] }
+    private var groups: GroupSource = { [:] }
     private var round: Task<Void, Never>?
     private var generation = 0
 
@@ -35,6 +39,10 @@ actor LatencyProber {
 
     func setTunnelSource(_ source: @escaping TunnelSource) {
         tunnels = source
+    }
+
+    func setGroupSource(_ source: @escaping GroupSource) {
+        groups = source
     }
 
     /// sing-box is up on `endpoint`: histories start over, the first round runs at once.
@@ -89,6 +97,54 @@ actor LatencyProber {
             case nil:
                 break
             }
+        }
+        await selectFirstLive(endpoint, generation: generation)
+    }
+
+    /// After a round, points every *first live* group at the first member whose latest
+    /// probe passed — only when sing-box's `now` differs (docs/design/05-daemon.md, "Group
+    /// selection"). No member passing: the selector is left where it is.
+    private func selectFirstLive(_ endpoint: ClashAPIEndpoint, generation: Int) async {
+        let groups = await groups()
+        for (id, members) in groups.sorted(by: { $0.key < $1.key }) {
+            guard generation == self.generation, round != nil else { return }
+            guard let wanted = GroupSelection.wantedMember(order: members, samples: tracker.samples)
+            else { continue }
+            let tag = TunnelGroup.outboundTagPrefix + id
+            let wantedTag = Tunnel.outboundTagPrefix + wanted
+            guard let current = await currentMember(of: tag, at: endpoint), current != wantedTag
+            else { continue }
+            var request = URLRequest(url: endpoint.proxyURL(outboundTag: tag))
+            request.httpMethod = "PUT"
+            request.setValue("Bearer \(endpoint.secret)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = ClashProxy.selectBody(memberTag: wantedTag)
+            do {
+                let (_, response) = try await session.data(for: request)
+                guard let http = response as? HTTPURLResponse else { throw Failure.notHTTP }
+                guard (200..<300).contains(http.statusCode) else {
+                    throw Failure.httpStatus(http.statusCode)
+                }
+                hub.post(.info, "group: \(tag) now via \(wantedTag) (was \(current))")
+            } catch {
+                hub.post(
+                    .warning, "group: \(tag) could not switch to \(wantedTag) (\(describe(error)))")
+            }
+        }
+    }
+
+    /// `now` of a group outbound; nil when the Clash API did not answer.
+    private func currentMember(of tag: String, at endpoint: ClashAPIEndpoint) async -> String? {
+        var request = URLRequest(url: endpoint.proxyURL(outboundTag: tag))
+        request.setValue("Bearer \(endpoint.secret)", forHTTPHeaderField: "Authorization")
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else { throw Failure.notHTTP }
+            guard http.statusCode == 200 else { throw Failure.httpStatus(http.statusCode) }
+            return try ClashProxy.decode(data).now
+        } catch {
+            hub.post(.debug, "group: \(tag) state unavailable (\(describe(error)))")
+            return nil
         }
     }
 

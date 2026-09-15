@@ -22,6 +22,8 @@ actor TrafficSampler {
     /// Domains that took the default route (F15); cleared with the connection map.
     private var recent = RecentHosts()
     private var defaultExit = TrafficAccumulator.Exit.direct
+    /// Groups the plan routes (F16); each is asked once a second which member it uses.
+    private var routedGroups: [String] = []
     private var poll: Task<Void, Never>?
     private var generation = 0
     /// One WARNING per failure streak.
@@ -44,6 +46,11 @@ actor TrafficSampler {
     /// Where a flow no rule matched leaves (`route.final`); set by the supervisor per plan.
     func setDefaultExit(_ exit: TrafficAccumulator.Exit) {
         defaultExit = exit
+    }
+
+    /// Ids of the groups in the plan (`RuntimePlan.routedGroupIDs`); set per plan.
+    func setRoutedGroups(_ ids: [String]) {
+        routedGroups = ids
     }
 
     /// sing-box is up on `endpoint`: (re)start polling; the per-connection map starts over.
@@ -96,6 +103,8 @@ actor TrafficSampler {
             snapshot.latency = await prober.current()
             recent.ingest(decoded.connections, defaultExit: defaultExit, at: now)
             snapshot.recentHosts = recent.snapshot
+            snapshot.groups = await groupStates(endpoint)
+            guard generation == self.generation, poll != nil else { return }
             if failing {
                 failing = false
                 hub.post(.info, "traffic: clash api reachable again")
@@ -107,6 +116,27 @@ actor TrafficSampler {
             failing = true
             hub.post(.warning, "traffic: clash api unreachable (\(describe(error)))")
         }
+    }
+
+    /// `GET /proxies/g-<id>` for every routed group: the member sing-box is using right now
+    /// (F16). A group that does not answer gets an entry without a member.
+    private func groupStates(_ endpoint: ClashAPIEndpoint) async -> [String: GroupState] {
+        var states: [String: GroupState] = [:]
+        for id in routedGroups {
+            var request = URLRequest(
+                url: endpoint.proxyURL(outboundTag: TunnelGroup.outboundTagPrefix + id))
+            request.setValue("Bearer \(endpoint.secret)", forHTTPHeaderField: "Authorization")
+            request.timeoutInterval = TrafficSampler.requestTimeout
+            var active: String?
+            if let (data, response) = try? await session.data(for: request),
+                (response as? HTTPURLResponse)?.statusCode == 200,
+                let proxy = try? ClashProxy.decode(data)
+            {
+                active = proxy.now.flatMap(Tunnel.tunnelID(fromOutboundTag:))
+            }
+            states[id] = GroupState(activeMember: active)
+        }
+        return states
     }
 
     /// One WARNING per tunnel per streak when its one-way UDP count leaves zero — counts

@@ -55,10 +55,19 @@ public struct RuntimePlan: Codable, Sendable, Hashable {
     /// (docs/design/03-routing.md, "Rule-set files"), so the daemon needs no separate list
     /// to know whom to probe (F14).
     public var routedTunnelIDs: [String] {
+        routedIDs(prefix: "rules-t-")
+    }
+
+    /// Ids of the groups the config routes, from their `rules-g-<id>.json` files (F16).
+    public var routedGroupIDs: [String] {
+        routedIDs(prefix: "rules-g-")
+    }
+
+    private func routedIDs(prefix: String) -> [String] {
         singBox.ruleSets.keys.compactMap { name in
-            guard name.hasPrefix("rules-t-"), name.hasSuffix(".json"), !name.hasSuffix("-ip.json")
+            guard name.hasPrefix(prefix), name.hasSuffix(".json"), !name.hasSuffix("-ip.json")
             else { return nil }
-            return String(name.dropFirst("rules-t-".count).dropLast(".json".count))
+            return String(name.dropFirst(prefix.count).dropLast(".json".count))
         }
         .sorted()
     }
@@ -96,10 +105,52 @@ public struct SingBoxPlan: Codable, Sendable, Hashable {
         return route["final"] as? String
     }
 
+    /// The group outbounds of the config by group id (F16): the policy behind each
+    /// (`selector` = *first live*, `urltest` = *fastest*) and the member tunnel ids in the
+    /// group's order. Empty when the config is not the generator's shape.
+    public var groupOutbounds: [String: GroupOutbound] {
+        guard
+            let root = try? JSONSerialization.jsonObject(with: Data(config.utf8)) as? [String: Any],
+            let outbounds = root["outbounds"] as? [[String: Any]]
+        else { return [:] }
+        var result: [String: GroupOutbound] = [:]
+        for outbound in outbounds {
+            guard let tag = outbound["tag"] as? String,
+                let id = TunnelGroup.groupID(fromOutboundTag: tag),
+                let type = outbound["type"] as? String,
+                let policy = GroupOutbound.Policy(rawValue: type)
+            else { continue }
+            let members = (outbound["outbounds"] as? [String] ?? [])
+                .compactMap(Tunnel.tunnelID(fromOutboundTag:))
+            result[id] = GroupOutbound(policy: policy, members: members)
+        }
+        return result
+    }
+
     public init(config: String, ruleSets: [String: String]) {
         self.config = config
         self.ruleSets = ruleSets
         configHash = Hashing.sha256Hex(config)
+    }
+}
+
+/// One group outbound as the daemon sees it in the config (F16).
+public struct GroupOutbound: Sendable, Hashable {
+    public enum Policy: String, Sendable {
+        /// The daemon points it at the first member whose probe passes.
+        case selector
+        /// sing-box picks the lowest delay itself.
+        case urltest
+    }
+
+    public var policy: Policy
+    /// Member tunnel ids in the group's order (usable members only — the generator left
+    /// the others out).
+    public var members: [String]
+
+    public init(policy: Policy, members: [String]) {
+        self.policy = policy
+        self.members = members
     }
 }
 

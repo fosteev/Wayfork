@@ -22,6 +22,9 @@ struct PopoverView: View {
                 ForEach(enabledTunnels) { tunnel in
                     TunnelCardView(tunnel: tunnel)
                 }
+                ForEach(enabledGroups) { group in
+                    GroupCardView(group: group)
+                }
                 if model.globalState.isRunning {
                     DirectRowView()
                     Divider()
@@ -63,6 +66,8 @@ struct PopoverView: View {
 
     /// Disabled tunnels are managed in Settings; the popover only lists enabled ones.
     private var enabledTunnels: [Tunnel] { model.store.tunnels.filter(\.isEnabled) }
+    /// Group cards follow the tunnel cards (F16).
+    private var enabledGroups: [TunnelGroup] { model.store.groups.filter(\.isEnabled) }
 
     private var allDisabledState: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -228,6 +233,77 @@ struct TunnelCardView: View {
     }
 }
 
+/// One group card (F16): accent square glyph, `Group` badge, the active member's latency
+/// and sparkline, the group's own rates, then one line per member.
+struct GroupCardView: View {
+    @Environment(AppModel.self) private var model
+    let group: TunnelGroup
+
+    var body: some View {
+        let card = model.groupCard(for: group)
+        let counters = model.trafficCounters(for: group)
+        let latency = model.latency(for: group)
+        let running = model.globalState.isRunning && card.glyph == .group
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 7) {
+                StatusGlyphView(glyph: card.glyph)
+                Text(group.name).fontWeight(.semibold).lineLimit(1)
+                AccentBadge(text: "Group")
+                if card.isDefault { AccentBadge(text: "Default") }
+                Spacer(minLength: 4)
+                if running {
+                    LatencyLabel(sample: latency)
+                    if let latency { SparklineView(sample: latency) }
+                }
+                if card.actions.contains(.enable) {
+                    Button("Enable") { model.setEnabled(groupID: group.id, true) }
+                        .controlSize(.small)
+                }
+            }
+            HStack(spacing: 4) {
+                Text(card.status)
+                    .fontWeight(.medium)
+                    .foregroundStyle(card.isError ? Color.red : Color.primary)
+                if running, counters?.isIdle == true {
+                    Text("·")
+                    Text("Idle")
+                } else if running {
+                    Text("·")
+                    RateLabel(counters: counters)
+                }
+                if !card.detail.isEmpty {
+                    Text("·")
+                    Text(card.detail)
+                }
+            }
+            .font(.system(size: 11))
+            .foregroundStyle(card.isError ? Color.red : Color.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .padding(.leading, 17)
+            if !card.isDimmed {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(model.groupMembers(for: group)) { row in
+                        GroupMemberRowView(row: row, showsLatency: model.globalState.isRunning)
+                    }
+                }
+                .foregroundStyle(.secondary)
+                .padding(.leading, 17)
+                .padding(.top, 2)
+            }
+        }
+        .padding(EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10))
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(nsColor: .controlBackgroundColor))
+                .shadow(color: .black.opacity(0.08), radius: 1, y: 1)
+        )
+        .opacity(card.isDimmed ? 0.55 : 1)
+        .contentShape(Rectangle())
+        .onTapGesture { model.openSettings(section: .tunnels, tunnel: group.id) }
+    }
+}
+
 /// `↓ 1.2 MB/s ↑ 85 KB/s` with the session totals as tooltip; `↓ — ↑ —` without a fresh
 /// sample. Monospaced digits and fixed formatting keep the card from jittering (F9).
 struct RateLabel: View {
@@ -385,7 +461,8 @@ struct RouteViaMenu: View {
     }
 }
 
-/// `[Site to route…] [Tunnel ▾] [Add]` (docs/design/02-ux.md, "Quick add").
+/// `[Site to route…] [Tunnel ▾] [Add]` (docs/design/02-ux.md, "Quick add"): tunnels, then
+/// groups under a separator (F16), then *Not via any tunnel*.
 struct QuickAddView: View {
     @Environment(AppModel.self) private var model
     @State private var input = ""
@@ -393,6 +470,11 @@ struct QuickAddView: View {
     @State private var error: String?
 
     private var enabledTunnels: [Tunnel] { model.store.tunnels.filter(\.isEnabled) }
+    private var enabledGroups: [TunnelGroup] { model.store.groups.filter(\.isEnabled) }
+    /// Everything the picker offers, in its order.
+    private var targets: [RuleTarget] {
+        enabledTunnels.map { .tunnel($0.id) } + enabledGroups.map { .group($0.id) } + [.direct]
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -405,6 +487,12 @@ struct QuickAddView: View {
                 Picker("Tunnel", selection: $target) {
                     ForEach(enabledTunnels) { tunnel in
                         Text(tunnel.name).tag(Optional(RuleTarget.tunnel(tunnel.id)))
+                    }
+                    if !enabledGroups.isEmpty {
+                        Divider()
+                        ForEach(enabledGroups) { group in
+                            Text(group.name).tag(Optional(RuleTarget.group(group.id)))
+                        }
                     }
                     Divider()
                     Text("Not via any tunnel").tag(Optional(RuleTarget.direct))
@@ -430,11 +518,9 @@ struct QuickAddView: View {
                 input = pattern
             }
         }
-        .onChange(of: enabledTunnels.map(\.id)) { _, ids in
-            if let tunnelID = target?.tunnelID, !ids.contains(tunnelID) {
-                target = ids.first.map(RuleTarget.tunnel)
-            }
-            if target == nil { target = ids.first.map(RuleTarget.tunnel) }
+        .onChange(of: targets) { _, targets in
+            if let target, !targets.contains(target) { self.target = targets.first }
+            if target == nil { target = targets.first }
         }
     }
 
@@ -445,14 +531,10 @@ struct QuickAddView: View {
         {
             input = candidate
         }
-        let ids = enabledTunnels.map(\.id)
-        switch model.quickAddTarget {
-        case .direct:
-            target = .direct
-        case .tunnel(let last) where ids.contains(last):
-            target = .tunnel(last)
-        default:
-            target = ids.first.map(RuleTarget.tunnel)
+        if let last = model.quickAddTarget, targets.contains(last) {
+            target = last
+        } else {
+            target = targets.first
         }
     }
 

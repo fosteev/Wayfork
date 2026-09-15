@@ -59,6 +59,12 @@ struct RulesSettingsView: View {
                     group: .tunnel(tunnel), search: search, selectedRuleID: $selectedRuleID,
                     editing: $editing, error: groupError(.tunnel(tunnel.id)))
             }
+            // F16: one section per tunnel group, after the tunnels (store order).
+            ForEach(model.store.groups) { group in
+                RuleGroupView(
+                    group: .group(group), search: search, selectedRuleID: $selectedRuleID,
+                    editing: $editing, error: groupError(.group(group.id)))
+            }
         }
     }
 
@@ -77,15 +83,18 @@ struct RuleEditState: Equatable {
     var match: RuleMatch
 }
 
-/// A group in the Rules list: the Direct group (exceptions) or one tunnel.
+/// A section in the Rules list: the Direct group (exceptions), one tunnel or one tunnel
+/// group (F16).
 private enum RuleGroup: Hashable {
     case direct
     case tunnel(Tunnel)
+    case group(TunnelGroup)
 
     var target: RuleTarget {
         switch self {
         case .direct: .direct
         case .tunnel(let tunnel): .tunnel(tunnel.id)
+        case .group(let group): .group(group.id)
         }
     }
 
@@ -93,12 +102,22 @@ private enum RuleGroup: Hashable {
         switch self {
         case .direct: "Direct"
         case .tunnel(let tunnel): tunnel.name
+        case .group(let group): group.name
         }
     }
 
     var tunnel: Tunnel? {
         if case .tunnel(let tunnel) = self { return tunnel }
         return nil
+    }
+
+    /// Whether the section's exit is switched off (dims the section).
+    var isDisabled: Bool {
+        switch self {
+        case .direct: false
+        case .tunnel(let tunnel): !tunnel.isEnabled
+        case .group(let group): !group.isEnabled
+        }
     }
 }
 
@@ -236,13 +255,24 @@ private struct RuleGroupView: View {
             }
         }
         .background(GroupBackground())
-        .opacity(group.tunnel?.isEnabled == false ? 0.55 : 1)
+        .opacity(group.isDisabled ? 0.55 : 1)
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
-                if let tunnel = group.tunnel {
+                if case .group(let tunnelGroup) = group {
+                    let summary = model.groupRowSummary(for: tunnelGroup)
+                    let hint = model.groupHint(for: tunnelGroup)
+                    StatusGlyphView(glyph: summary.glyph)
+                    Text(tunnelGroup.name).fontWeight(.semibold)
+                    AccentBadge(text: "Group")
+                    if model.isEffectiveDefault(tunnelGroup.id) { AccentBadge(text: "Default") }
+                    Text(hint.text)
+                        .font(.system(size: 11))
+                        .foregroundStyle(hint.isError ? Color.red : Color.secondary)
+                        .lineLimit(1)
+                } else if let tunnel = group.tunnel {
                     let summary = model.rowSummary(for: tunnel)
                     StatusGlyphView(glyph: summary.glyph)
                     Text(tunnel.name).fontWeight(.semibold)
@@ -449,15 +479,26 @@ private struct RuleRowView: View {
             } else {
                 Button("Edit") { startEditing() }
             }
+            // Tunnels, then groups under a separator, then Direct (docs/design/02-ux.md).
             Menu("Move to") {
-                if group != .direct {
-                    Button("Not via any tunnel") {
-                        model.moveRule(id: rule.id, to: .direct, before: nil)
-                    }
-                }
-                ForEach(model.store.tunnels.filter { $0.id != group.tunnel?.id }) { other in
+                ForEach(model.store.tunnels.filter { .tunnel($0.id) != group.target }) { other in
                     Button(other.name) {
                         model.moveRule(id: rule.id, to: .tunnel(other.id), before: nil)
+                    }
+                }
+                let groups = model.store.groups.filter { .group($0.id) != group.target }
+                if !groups.isEmpty {
+                    Divider()
+                    ForEach(groups) { other in
+                        Button(other.name) {
+                            model.moveRule(id: rule.id, to: .group(other.id), before: nil)
+                        }
+                    }
+                }
+                if group != .direct {
+                    Divider()
+                    Button("Not via any tunnel") {
+                        model.moveRule(id: rule.id, to: .direct, before: nil)
                     }
                 }
             }

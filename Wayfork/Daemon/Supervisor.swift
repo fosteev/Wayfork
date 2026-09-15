@@ -54,6 +54,7 @@ actor Supervisor {
     func bootstrap() async {
         startEventPump()
         await prober.setTunnelSource { [weak self] in await self?.probeTargets() ?? [] }
+        await prober.setGroupSource { [weak self] in await self?.firstLiveGroups() ?? [:] }
         await resolver.restoreLeftover()
         await killLeftovers()
         wipeRunDirectory()
@@ -202,6 +203,13 @@ actor Supervisor {
         }
     }
 
+    /// *First live* groups of the plan with their members, for the prober's switch (F16).
+    private func firstLiveGroups() -> [String: [String]] {
+        guard let plan else { return [:] }
+        return plan.singBox.groupOutbounds.filter { $0.value.policy == .selector }
+            .mapValues(\.members)
+    }
+
     func diagnostics() async -> DaemonDiagnostics {
         var tails = await hub.tails(200)
         let daemonTail = tails.removeValue(forKey: "daemon") ?? []
@@ -250,6 +258,7 @@ actor Supervisor {
         // moves (the config restarts sing-box, so the list starts over anyway).
         await sampler.setDefaultExit(
             TrafficAccumulator.Exit(chains: [plan.singBox.routeFinal ?? "direct"]))
+        await sampler.setRoutedGroups(plan.routedGroupIDs)
 
         await stopSessions(actions.stopOpenVPN)
         await engine.deleteRuleSets(actions.staleRuleSets)
