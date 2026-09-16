@@ -6,8 +6,12 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
-The F14–F18 wave on macOS (the Windows client follows in WM10–WM15): friendlier screens,
-latency on every card, a Recent list, tunnel groups, local proxy ports and a block list.
+## [0.7.0] — 2026-09-16
+
+The F14–F19 wave on both platforms: friendlier screens, latency on every card, a Recent
+list, tunnel groups, local proxy ports, a block list and a *Can't reach* pane. A
+pre-release: the code is complete and tested by its suites, the live checks are still
+being done.
 
 ### Added
 
