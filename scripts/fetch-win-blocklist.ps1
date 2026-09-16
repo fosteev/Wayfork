@@ -49,9 +49,17 @@ foreach ($key in @('BLOCKLIST_NAME', 'BLOCKLIST_HOMEPAGE', 'BLOCKLIST_COMMIT', '
     if (-not $pins.ContainsKey($key)) { Fail "missing $key in scripts/versions.env" }
 }
 
-$singBox = Join-Path $root "WayforkWindows\bin\$Arch\sing-box.exe"
-if (-not (Test-Path -LiteralPath $singBox -PathType Leaf)) {
-    Fail "$singBox not found; run scripts\fetch-win-bins.ps1 -Arch $Arch first"
+# The .srs is architecture-independent, so the compiler is whichever fetched sing-box.exe
+# runs on this host: the amd64 one when it is there (it runs on an x64 machine and, through
+# emulation, on ARM64 Windows), else the one of -Arch. An arm64 sing-box.exe on an x64 runner
+# does not run at all.
+$candidates = @(
+    (Join-Path $root 'WayforkWindows\bin\amd64\sing-box.exe'),
+    (Join-Path $root "WayforkWindows\bin\$Arch\sing-box.exe")
+)
+$singBox = $candidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+if (-not $singBox) {
+    Fail "no fetched sing-box.exe under WayforkWindows\bin; run scripts\fetch-win-bins.ps1 -Arch $Arch first"
 }
 $outDir = Join-Path $root 'WayforkWindows\rulesets'
 $buildDir = Join-Path $root 'build\blocklist'
