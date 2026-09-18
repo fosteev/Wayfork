@@ -1,7 +1,8 @@
 # Connections by exit — F20
 
 > Status: approved · created 2026-09-18 · § Feature approved 2026-09-18 (ROADMAP.md § F20,
-> M16 / WM17) · stage 2 done 2026-09-18 · stage 3 in progress. The executing session ticks the checkboxes below as it goes; statuses live
+> M16 / WM17) · stage 2 done 2026-09-18 · stage 3 (M16, macOS) done 2026-09-18, manual
+> check owed to stage 5 · stage 4 (WM17, Windows) not started. The executing session ticks the checkboxes below as it goes; statuses live
 > here and in the milestone skeletons ROADMAP.md § M16 / ROADMAP-windows.md § WM17 only.
 
 ## Goal
@@ -61,6 +62,31 @@ on macOS and Windows, from the log lines the F19 tracker already reads.
     *Connections* view the way `takePreselectedSearch()` preselects the search.
   - Sorting: fixed — tunnels in the popover's order, groups after their members, *Not via
     any tunnel*, *Blocked by your list* last. No column sorting in this round.
+
+### Decisions (2026-09-18, after the stage-3 review)
+
+Taken by the stage-3 session and kept, or made at the review; the Windows stage mirrors
+them.
+- View strings live in `WayforkCore/App/ExitsText.swift` (a sibling of `FailedText`, which
+  is untouched).
+- No fixture file: the line shapes are the inline arrays of
+  `FailedConnectionsTests.swift`; the Go tests mirror the same five cases (per-exit
+  opened/failed/blocked, group tag → group id, `direct` with no match line, nil opened
+  under ERROR-only input, reset on `clear()`).
+- `opened` counts once per connection id, guarded by the pending entry's `exit` being unset
+  at the first match / `using` line; `blocked` is always under `direct`, never per exit.
+- *Details* is on tunnel cards only; group cards do not get it (a group's failures show on
+  the member's card).
+- *Reset* takes a baseline for *Since Turn On* only; *Last 5 min* always subtracts from the
+  ring. The header's "since" switches to the Reset time once one happened. `lastFailure`
+  in *Last 5 min* is shown only when it falls inside the window.
+- The *Problems* hint reads the wire (`opened == nil` for every exit) and, while no exit
+  has been seen at all, the log-level setting like the F19 pane (review fix).
+- The rate is clamped to 100 % — an ERROR without its match line (log detail switched
+  mid-run) can put failed above opened (review fix); a 0 % bar is empty, not a 2 px stub.
+- *Copy* on the Connections view writes the table tab-separated (header, rows, total).
+- Windows: the flyout has no footer item, so the tray menu gets `Connections` next to
+  `Logs` (08-windows.md); the Logs page keeps the segment control W16 already uses.
 
 ## Feature
 
@@ -135,29 +161,38 @@ docs the skeletons link to).
 Core types, the daemon counters, the app view. One session, one commit series
 (`feat(core)`, `feat(daemon)`, `feat(app)`), tests alongside.
 
-- [ ] `WayforkCore`: `ExitStats` in `XPC/Payloads.swift`, `TrafficSnapshot.exits`
-      (optional on the wire, `[:]` default), `FailedText` strings for the view.
-- [ ] `WayforkDaemonCore.FailedConnections`: `opened[exit]` at the match / `using` line,
+- [x] `WayforkCore`: `ExitStats` in `XPC/Payloads.swift`, `TrafficSnapshot.exits`
+      (optional on the wire, `[:]` default), `FailedText` strings for the view. — 2026-09-18:
+      strings went into a sibling `ExitsText.swift` instead of `FailedText` itself, to keep
+      the F19 pane's strings from growing an unrelated section (see hand-back decisions).
+- [x] `WayforkDaemonCore.FailedConnections`: `opened[exit]` at the match / `using` line,
       `failed[exit]` + `lastFailure` at the `ERROR` line, `blocked` at the block-list
       `reject`; `exits` computed property; `clear()` resets them; `opened` is `nil` while
-      no match line has been seen since the last `clear()` (the *Problems* case).
-- [ ] `FailedConnectionsTests`: opened / failed / blocked per exit on the recorded line
+      no match line has been seen since the last `clear()` (the *Problems* case). — 2026-09-18.
+- [x] `FailedConnectionsTests`: opened / failed / blocked per exit on the recorded line
       shapes, the group tag → group id, `direct` when no match line preceded the error,
-      `nil` opened under *Problems*-only input, reset on `clear()`.
-- [ ] Daemon: `exits` filled into the snapshot next to `failedHosts`.
-- [ ] App model (`AppModel+Failed` or a new `AppModel+Exits`): the 5-minute ring of
+      `nil` opened under *Problems*-only input, reset on `clear()`. — 2026-09-18: extended
+      the two existing tests plus two new ones, all inline (no new fixture file — see
+      hand-back decisions).
+- [x] Daemon: `exits` filled into the snapshot next to `failedHosts`. — 2026-09-18.
+- [x] App model (`AppModel+Failed` or a new `AppModel+Exits`): the 5-minute ring of
       snapshots, the baseline for *Reset*, rows for the view in the fixed order with the
       group's *using* member from `groups`, the rate class, `Details` visibility per card.
-- [ ] `LogsWindowView`: the `Log · Connections` segmented picker in the toolbar (the
+      — 2026-09-18: new `AppModel+Exits.swift`.
+- [x] `LogsWindowView`: the `Log · Connections` segmented picker in the toolbar (the
       source / level / search controls hide under *Connections*; *Reset* and *Copy*
       show), `ExitsView` per C9 (columns, bar, expand → the F19 rows filtered by exit
       with the same row actions as `FailedPaneView`, the total row, the dimmed blocked
-      row, the *Problems* hint, the empty state).
-- [ ] Popover: footer item *Connections ⇧⌘L*, *Details* on a card with recent failures;
-      both open the Logs window with the *Connections* view preselected.
-- [ ] `scripts/format.sh`; package tests via `xcodebuild` from the package directory
+      row, the *Problems* hint, the empty state). — 2026-09-18: new `ExitsView.swift`;
+      `FailedRowView` un-privated for reuse.
+- [x] Popover: footer item *Connections ⇧⌘L*, *Details* on a card with recent failures;
+      both open the Logs window with the *Connections* view preselected. — 2026-09-18:
+      *Details* added to `TunnelCardView` only (groups out of the literal contract — see
+      hand-back decisions).
+- [x] `scripts/format.sh`; package tests via `xcodebuild` from the package directory
       (see the build quirks memory); the app builds in Xcode — **do not restart the
-      installed Wayfork**, the maintainer installs.
+      installed Wayfork**, the maintainer installs. — 2026-09-18: all green (see hand-back
+      for exact commands).
 
 **Done when:** `xcodebuild test` of `WayforkCore` passes with the new tests; the app
 builds; a fixture-driven `FailedConnections` sample yields the C9 numbers for a hand-made
@@ -178,8 +213,8 @@ Mirror of stage 3 on the Go service and the Flutter app, on the same fixtures.
 - [ ] `logs_page.dart`: the segment, `ExitsTable` per W17 reusing `FailedPane`'s row for
       the expansion; the flyout entry; `dart format`, `dart analyze --fatal-infos`,
       `logs_page_test.dart` extended.
-- [ ] Fixtures: if stage 3 adds a recorded line file under `fixtures/`, the Go and Dart
-      tests read the same file (fixtures/README.md).
+- [x] Fixtures: stage 3 added no line file — the Go tests mirror the cases of
+      `FailedConnectionsTests.swift` (decision above); nothing to share. — 2026-09-18.
 
 **Done when:** `go test ./...`, `dart test`, `dart analyze --fatal-infos` pass; the
 service and app build; the PC run (stage 5) is listed, not done.
@@ -275,8 +310,11 @@ dart format + dart analyze --fatal-infos in app/, gofmt + go vet in service/, go
 pass on macOS, GOOS=windows go build ./... must pass; commit only when asked, no AI
 trailers). Task: stage 4 (WM17) of ../docs/roadmap/connections-by-exit.md — the Windows
 mirror of F20. Read the roadmap file whole; the wire contract is what stage 3 shipped in
-Wayfork/WayforkCore/Sources/WayforkCore/XPC/Payloads.swift (ExitStats, TrafficSnapshot.exits)
-and the fixture file it added, if any. Then read board W17 in ../docs/design/prototype/
+Wayfork/WayforkCore/Sources/WayforkCore/XPC/Payloads.swift (ExitStats, TrafficSnapshot.exits) and the five cases of
+Wayfork/WayforkCore/Tests/WayforkDaemonCoreTests/FailedConnectionsTests.swift (no fixture
+file was added — mirror those cases in Go); the § Decisions block after § Context lists
+what stage 3 settled (Reset/Last 5 min semantics, rate clamp, Problems hint, Copy, tray
+entry) — follow it. Then read board W17 in ../docs/design/prototype/
 windows.html, ../docs/design/08-windows.md, service/internal/core/failed.go and its tests,
 app/lib/app/ui/pages/logs_page.dart and test/app/ui/logs_page_test.dart.
 

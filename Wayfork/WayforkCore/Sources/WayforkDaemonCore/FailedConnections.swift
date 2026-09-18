@@ -16,9 +16,27 @@ public struct FailedConnections: Sendable, Equatable {
         var exit: String?
     }
 
+    private struct LastFailure: Sendable, Equatable {
+        var reason: FailureReason
+        var at: Date
+    }
+
     private var pending: [String: Pending] = [:]
     private var pendingOrder: [String] = []
     private var rows: [String: FailedHost] = [:]
+
+    // MARK: - Counters by exit (F20)
+
+    /// Connections opened per exit, once per connection id, at the match/`using` line.
+    private var openedCounts: [String: Int] = [:]
+    /// Connections that failed per exit, at the `ERROR` line (blocked excluded).
+    private var failedCounts: [String: Int] = [:]
+    /// `=> reject` / `=> predefined` on the block list; always attributed to `direct`.
+    private var blockedCount = 0
+    private var lastFailureByExit: [String: LastFailure] = [:]
+    /// Whether a `match`/`using` line has been seen since the last `clear()` — while
+    /// false, `opened` stays nil for every exit (log detail *Problems*).
+    private var sawMatchLine = false
 
     public init() {}
 
@@ -51,13 +69,19 @@ public struct FailedConnections: Sendable, Equatable {
         {
             if target == "reject", rest.contains("rule_set=\(SingBoxConfigGenerator.blockListTag)")
             {
+                sawMatchLine = true
                 record(id, reason: .blocked, exitOverride: "", at: date)
             } else if target == "predefined",
                 rest.contains("rule_set=\(SingBoxConfigGenerator.blockListTag)")
             {
+                sawMatchLine = true
                 record(id, reason: .blocked, exitOverride: "", at: date)
             } else if rest.contains("router:") {
-                remember(id) { $0.exit = Self.exitID(fromOutboundTag: target) }
+                sawMatchLine = true
+                let exit = Self.exitID(fromOutboundTag: target)
+                // Opened counts once per connection id, at the first match/`using` line.
+                if pending[id]?.exit == nil { openedCounts[exit, default: 0] += 1 }
+                remember(id) { $0.exit = exit }
             }
         } else if level == .error,
             let failure = Self.value(after: "open connection to ", in: rest)
@@ -84,10 +108,34 @@ public struct FailedConnections: Sendable, Equatable {
         rows.values.sorted { $0.lastSeen > $1.lastSeen }
     }
 
+    /// Per-exit counters since the last `clear()` (F20), keyed by exit id (`direct`, a
+    /// tunnel id, a group id).
+    public var exits: [String: ExitStats] {
+        var ids = Set(openedCounts.keys).union(failedCounts.keys).union(lastFailureByExit.keys)
+        if blockedCount > 0 { ids.insert("direct") }
+        var result: [String: ExitStats] = [:]
+        for id in ids {
+            var stats = ExitStats(opened: sawMatchLine ? (openedCounts[id] ?? 0) : nil)
+            stats.failed = failedCounts[id] ?? 0
+            if id == "direct" { stats.blocked = blockedCount }
+            if let last = lastFailureByExit[id] {
+                stats.lastFailure = last.reason
+                stats.lastFailedAt = last.at
+            }
+            result[id] = stats
+        }
+        return result
+    }
+
     public mutating func clear() {
         pending.removeAll()
         pendingOrder.removeAll()
         rows.removeAll()
+        openedCounts.removeAll()
+        failedCounts.removeAll()
+        blockedCount = 0
+        lastFailureByExit.removeAll()
+        sawMatchLine = false
     }
 
     // MARK: - Pieces
@@ -158,6 +206,12 @@ public struct FailedConnections: Sendable, Equatable {
     ) {
         guard let info = pending[id], let host = info.host else { return }
         let exit = exitOverride ?? info.exit ?? "direct"
+        if reason == .blocked {
+            blockedCount += 1
+        } else {
+            failedCounts[exit, default: 0] += 1
+            lastFailureByExit[exit] = LastFailure(reason: reason, at: date)
+        }
         let key = "\(host)|\(info.processPath ?? "")"
         if var row = rows[key] {
             row.count += 1

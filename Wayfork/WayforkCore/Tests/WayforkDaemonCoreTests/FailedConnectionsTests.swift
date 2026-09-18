@@ -55,6 +55,14 @@ private func feed(_ tracker: inout FailedConnections, _ lines: [(LogLevel, Strin
     #expect(row.count == 2)
     #expect(row.lastSeen == t0.addingTimeInterval(11))
     #expect(row.id == "cdn.gamepatch.example.net|/Applications/Game.app/Contents/MacOS/Game")
+    // F20: opened once per id at the match line, failed once per ERROR line, both under
+    // the tunnel's exit id.
+    let exits = tracker.exits
+    #expect(exits["aaa"]?.opened == 2)
+    #expect(exits["aaa"]?.failed == 2)
+    #expect(exits["aaa"]?.blocked == 0)
+    #expect(exits["aaa"]?.lastFailure == .noAnswer)
+    #expect(exits["aaa"]?.lastFailedAt == t0.addingTimeInterval(11))
 }
 
 @Test func failedConnectionReasonsAndTheProblemsLevelShape() {
@@ -135,8 +143,66 @@ private func feed(_ tracker: inout FailedConnections, _ lines: [(LogLevel, Strin
     #expect(rows["ok.example.com"] == nil)
     // Newest first.
     #expect(tracker.snapshot.first?.host == "2001:db8::1")
+    // F20: opened only counts a routed exit (id 40/45/46/47 never saw a match line, so
+    // their failures land on `direct`); blocked lines never touch opened or failed.
+    let exits = tracker.exits
+    #expect(exits["direct"]?.opened == 1)  // id 42's `=> direct` match line
+    #expect(exits["direct"]?.failed == 5)  // id 40, 42, 45, 46, 47
+    #expect(exits["direct"]?.blocked == 2)  // the block-list reject + the predefined dns
+    #expect(exits["direct"]?.lastFailure == .noAnswer)  // id 47, the last error line
+    #expect(exits["bbb"]?.opened == 1)
+    #expect(exits["bbb"]?.failed == 1)
+    #expect(exits["bbb"]?.lastFailure == .tunnelDown)
+    #expect(exits["aaa"]?.opened == 1)  // id 48: routed but never failed
+    #expect(exits["aaa"]?.failed == 0)
+    #expect(exits["aaa"]?.blocked == 0)
     tracker.clear()
     #expect(tracker.snapshot.isEmpty)
+    #expect(tracker.exits.isEmpty)
+}
+
+@Test func failedConnectionExitsNilOpenedUnderProblemsOnly() {
+    // Log detail Problems: only ERROR lines exist, no match line is ever seen — opened
+    // stays nil for every exit and every failure is attributed to `direct`.
+    var tracker = FailedConnections()
+    feed(
+        &tracker,
+        [
+            (
+                .error,
+                "ERROR [70 30ms] inbound/tun[tun-in]: open connection to a.example.net:443: dial tcp 198.51.100.2:443: connect: connection refused"
+            ),
+            (
+                .error,
+                "ERROR [71 30ms] inbound/tun[tun-in]: open connection to b.example.net:443: dial tcp 198.51.100.3:443: connect: connection refused"
+            ),
+        ])
+    let exits = tracker.exits
+    #expect(exits["direct"]?.opened == nil)
+    #expect(exits["direct"]?.failed == 2)
+    #expect(exits.count == 1)
+}
+
+@Test func failedConnectionExitsGroupTagMapsToGroupID() {
+    var tracker = FailedConnections()
+    feed(
+        &tracker,
+        [
+            (
+                .info,
+                "[80 0ms] inbound/tun[tun-in]: inbound connection to streaming.example.com:443"
+            ),
+            (.info, "[80 1ms] router: match[1] rule_set=rules-g-ccc => g-ccc"),
+            (
+                .error,
+                "[80 3ms] inbound/tun[tun-in]: open connection to streaming.example.com:443: dial tcp 203.0.113.5:443: i/o timeout"
+            ),
+        ])
+    let exits = tracker.exits
+    #expect(exits["ccc"]?.opened == 1)
+    #expect(exits["ccc"]?.failed == 1)
+    #expect(exits["ccc"]?.lastFailure == .noAnswer)
+    #expect(exits["ccc"]?.blocked == 0)
 }
 
 @Test func failedConnectionsPreFilterAndCapacity() {

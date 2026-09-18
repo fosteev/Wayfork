@@ -109,8 +109,9 @@ struct FailedPaneView: View {
     }
 }
 
-/// One pane row: app icon, site, app, tries, why, via, last; actions on hover.
-private struct FailedRowView: View {
+/// One pane row: app icon, site, app, tries, why, via, last; actions on hover. Reused by
+/// `ExitsView` (F20) for the rows expanded under an exit.
+struct FailedRowView: View {
     @Environment(AppModel.self) private var model
     let row: FailedHost
     let isSelected: Bool

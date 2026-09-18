@@ -4,11 +4,16 @@ import WayforkCore
 
 /// Logs window (docs/design/06-logging.md, "Logs window").
 struct LogsWindowView: View {
+    /// `Log · Connections` (F20): the toolbar segment picking the window's body.
+    enum ActiveView: String, CaseIterable { case log = "Log", connections = "Connections" }
+
     @Environment(AppModel.self) private var model
     @State private var selectedSources: Set<String> = []
     @State private var level: LogLevel = .debug
     @State private var search = ""
     @State private var follow = true
+    @State private var activeView: ActiveView = .log
+    @State private var exitsWindow: AppModel.ExitsWindow = .sinceTurnOn
 
     private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -60,40 +65,74 @@ struct LogsWindowView: View {
 
     var body: some View {
         let rows = rows
-        VStack(spacing: 0) {
-            // F19: what could not be reached, above the lines; a click filters to the host.
-            if model.globalState.isRunning {
-                FailedPaneView(search: $search, level: $level)
-                    .padding(EdgeInsets(top: 8, leading: 8, bottom: 6, trailing: 8))
-                Divider()
+        Group {
+            if activeView == .connections {
+                ExitsView(window: $exitsWindow)
+            } else {
+                VStack(spacing: 0) {
+                    // F19: what could not be reached, above the lines; a click filters
+                    // to the host.
+                    if model.globalState.isRunning {
+                        FailedPaneView(search: $search, level: $level)
+                            .padding(EdgeInsets(top: 8, leading: 8, bottom: 6, trailing: 8))
+                        Divider()
+                    }
+                    logList(rows)
+                }
             }
-            logList(rows)
         }
         .frame(minWidth: 640, minHeight: 300)
         .toolbar {
             ToolbarItemGroup(placement: .principal) {
-                sourceMenu
-                Picker("Level", selection: $level) {
-                    ForEach(LogLevel.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
+                Picker("View", selection: $activeView) {
+                    ForEach(ActiveView.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
-                .frame(width: 110)
-                TextField("Search", text: $search)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 220)
+                .pickerStyle(.segmented)
+                .frame(width: 160)
+                .labelsHidden()
+                if activeView == .log {
+                    sourceMenu
+                    Picker("Level", selection: $level) {
+                        ForEach(LogLevel.allCases, id: \.self) {
+                            Text($0.rawValue.capitalized).tag($0)
+                        }
+                    }
+                    .frame(width: 110)
+                    TextField("Search", text: $search)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 220)
+                }
             }
             ToolbarItemGroup(placement: .primaryAction) {
-                Toggle("Follow", isOn: $follow).toggleStyle(.button)
-                Button("Clear") { model.logs.clear() }
-                Button("Copy") { copyVisible(rows) }
+                if activeView == .connections {
+                    Button("Reset") { model.resetExits() }
+                    Button("Copy") { copyExits() }
+                } else {
+                    Toggle("Follow", isOn: $follow).toggleStyle(.button)
+                    Button("Clear") { model.logs.clear() }
+                    Button("Copy") { copyVisible(rows) }
+                }
             }
         }
-        .onAppear(perform: takePreselectedSearch)
-        .onChange(of: model.logsPreselectedSearch) { takePreselectedSearch() }
+        .onAppear(perform: takePreselected)
+        .onChange(of: model.logsPreselectedSearch) { takePreselected() }
+        .onChange(of: model.logsPreselectedConnections) { takePreselected() }
+    }
+
+    /// The popover's *Show* opens the window filtered to a host (F19); the footer item
+    /// and a tunnel card's *Details* open it on the Connections view (F20).
+    private func takePreselected() {
+        if model.logsPreselectedConnections {
+            activeView = .connections
+            model.logsPreselectedConnections = false
+        }
+        takePreselectedSearch()
     }
 
     /// The popover's *Show* opens the window filtered to a host (F19).
     private func takePreselectedSearch() {
         guard let host = model.logsPreselectedSearch else { return }
+        activeView = .log
         search = host
         level = .debug
         model.logsPreselectedSearch = nil
@@ -182,6 +221,28 @@ struct LogsWindowView: View {
         }.joined(separator: "\n")
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    /// Copy on the Connections view (F20): one line per exit, tab-separated.
+    private func copyExits() {
+        let rows = model.exitRows(window: exitsWindow)
+        let totals = model.exitsTotals(window: exitsWindow)
+        var lines = ["Exit\tConnections\tReached\tFailed\tFail rate\tLast failure"]
+        lines += rows.map { row in
+            let rate = row.rate.map(ExitsText.rate) ?? (row.kind == .blocked ? "" : "—")
+            return [
+                row.name, row.connections.map(String.init) ?? "—",
+                row.reached.map(String.init) ?? "—", "\(row.failed)", rate,
+                row.lastFailureText ?? "—",
+            ].joined(separator: "\t")
+        }
+        lines.append(
+            [
+                ExitsText.totalLabel, "\(totals.connections)", "\(totals.reached)",
+                "\(totals.failed)", totals.rate.map(ExitsText.rate) ?? "—",
+            ].joined(separator: "\t"))
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
     }
 }
 

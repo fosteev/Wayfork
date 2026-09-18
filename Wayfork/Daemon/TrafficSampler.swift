@@ -129,6 +129,7 @@ actor TrafficSampler {
             snapshot.groups = await groupStates(endpoint)
             snapshot.blockedToday = blockCounting ? blocked.value(at: now) : nil
             snapshot.failedHosts = failed.snapshot
+            snapshot.exits = failed.exits
             guard generation == self.generation, poll != nil else { return }
             if failing {
                 failing = false

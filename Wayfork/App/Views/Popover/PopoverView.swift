@@ -128,6 +128,10 @@ struct PopoverView: View {
             .keyboardShortcut(",", modifiers: .command)
             FooterButton(title: "Logs", shortcut: "⌘L") { model.openLogs() }
                 .keyboardShortcut("l", modifiers: .command)
+            FooterButton(title: ExitsText.footerTitle, shortcut: ExitsText.footerShortcut) {
+                model.openLogs(connections: true)
+            }
+            .keyboardShortcut("l", modifiers: [.command, .shift])
             Spacer()
             FooterButton(title: "Quit", shortcut: "⌘Q") { NSApp.terminate(nil) }
                 .keyboardShortcut("q", modifiers: .command)
@@ -191,6 +195,14 @@ struct TunnelCardView: View {
                 if !card.detail.isEmpty {
                     separator
                     Text(card.detail)
+                }
+                // F20: a link to the Connections view while this exit's connections have
+                // failed in the last 5 minutes.
+                if model.globalState.isRunning, model.exitHasRecentFailures(id: tunnel.id) {
+                    separator
+                    Button("Details") { model.openLogs(connections: true) }
+                        .buttonStyle(.link)
+                        .font(.system(size: 11, weight: .medium))
                 }
             }
             .font(.system(size: 11))

@@ -52,6 +52,9 @@ final class AppModel {
     var logsPreselectedSource: String?
     /// F19: a host the Logs window should filter to when it opens from the popover line.
     var logsPreselectedSearch: String?
+    /// F20: the Logs window should open on the Connections view (footer item, card
+    /// *Details*), consumed once like `logsPreselectedSearch`.
+    var logsPreselectedConnections = false
     /// F19: rows of the Can't reach pane dismissed for the session (`FailedHost.id`).
     var hiddenFailedHosts: Set<String> = []
     /// Last tunnel used by quick add.
@@ -83,6 +86,13 @@ final class AppModel {
     private var pulseTask: Task<Void, Never>?
     private var pruneTask: Task<Void, Never>?
     private var trafficStaleTask: Task<Void, Never>?
+    /// F20: cumulative `exits` samples of the last ~6 minutes, oldest first, for the
+    /// Connections view's *Last 5 min*.
+    var exitsRing: [(Date, [String: ExitStats])] = []
+    /// F20: the counters at the last *Reset*; nil reads *Since Turn On* from zero.
+    var exitsBaseline: [String: ExitStats]?
+    /// F20: when `exitsBaseline` was taken.
+    var exitsResetAt: Date?
     private(set) var lastPlan: RuntimePlan?
     private var bootstrapped = false
     /// Re-applies when the system resolvers or the default gateway change: the resolvers are
@@ -356,6 +366,7 @@ final class AppModel {
         desiredOn = true
         hiddenRecentHosts = []
         hiddenFailedHosts = []
+        resetExitsTracking()
         setTransition(.starting(since: Date()))
         do {
             try await ensureHelperApproved()
@@ -670,6 +681,7 @@ final class AppModel {
     private func handleTraffic(_ snapshot: TrafficSnapshot) {
         guard desiredOn, status?.engine.isRunning == true else { return }
         traffic = snapshot
+        recordExitsSample(snapshot)
         trafficStaleTask?.cancel()
         trafficStaleTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(TrafficFormat.staleAfter))
@@ -925,9 +937,10 @@ final class AppModel {
         windowOpener?(AppModel.settingsWindowID)
     }
 
-    func openLogs(source: String? = nil, search: String? = nil) {
+    func openLogs(source: String? = nil, search: String? = nil, connections: Bool = false) {
         logsPreselectedSource = source
         logsPreselectedSearch = search
+        logsPreselectedConnections = connections
         NSApp.activate(ignoringOtherApps: true)
         windowOpener?(AppModel.logsWindowID)
     }

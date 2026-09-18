@@ -264,12 +264,17 @@ public struct TrafficSnapshot: Codable, Sendable, Hashable {
     /// Connections that could not be established since Turn On, newest first, at most
     /// `FailedHost.capacity` (F19; docs/design/05-daemon.md, "Failed connections").
     public var failedHosts: [FailedHost]
+    /// Per-exit connection counters since Turn On (F20; docs/design/05-daemon.md,
+    /// "Counters by exit"), keyed by exit id (`direct`, a tunnel id, a group id). Absent in
+    /// a payload from a build that predates it.
+    public var exits: [String: ExitStats]
 
     public init(
         sampledAt: Date, interval: TimeInterval, tunnels: [String: TrafficCounters],
         direct: TrafficCounters, latency: [String: LatencySample] = [:],
         recentHosts: [RecentHost] = [], groups: [String: GroupState] = [:],
-        blockedToday: Int? = nil, failedHosts: [FailedHost] = []
+        blockedToday: Int? = nil, failedHosts: [FailedHost] = [],
+        exits: [String: ExitStats] = [:]
     ) {
         self.sampledAt = sampledAt
         self.interval = interval
@@ -280,11 +285,12 @@ public struct TrafficSnapshot: Codable, Sendable, Hashable {
         self.groups = groups
         self.blockedToday = blockedToday
         self.failedHosts = failedHosts
+        self.exits = exits
     }
 
     private enum CodingKeys: String, CodingKey {
         case sampledAt, interval, tunnels, direct, latency, recentHosts, groups, blockedToday
-        case failedHosts
+        case failedHosts, exits
     }
 
     public init(from decoder: Decoder) throws {
@@ -298,6 +304,7 @@ public struct TrafficSnapshot: Codable, Sendable, Hashable {
         groups = try c.decodeIfPresent([String: GroupState].self, forKey: .groups) ?? [:]
         blockedToday = try c.decodeIfPresent(Int.self, forKey: .blockedToday)
         failedHosts = try c.decodeIfPresent([FailedHost].self, forKey: .failedHosts) ?? []
+        exits = try c.decodeIfPresent([String: ExitStats].self, forKey: .exits) ?? [:]
     }
 
     public func counters(forTunnel id: String) -> TrafficCounters {
@@ -428,5 +435,32 @@ public struct FailedHost: Codable, Sendable, Hashable, Identifiable {
         self.reason = reason
         self.count = count
         self.lastSeen = lastSeen
+    }
+}
+
+/// Connection counters for one exit since Turn On (F20), fed by the same lines
+/// `FailedHost` reads. Lives in memory on both sides, never on disk.
+public struct ExitStats: Codable, Sendable, Hashable {
+    /// Connections opened through this exit; nil while no `match`/`using` line has been
+    /// seen since the last `clear()` (log detail *Problems* — the *Via* column's own
+    /// limit). 0 once a match line has been seen but this exit has carried nothing.
+    public var opened: Int?
+    /// Connections through this exit that could not be established.
+    public var failed: Int
+    /// Flows and lookups the block list rejected; only ever non-zero under the `direct`
+    /// key (a blocked connection never reaches an outbound).
+    public var blocked: Int
+    public var lastFailure: FailureReason?
+    public var lastFailedAt: Date?
+
+    public init(
+        opened: Int? = nil, failed: Int = 0, blocked: Int = 0, lastFailure: FailureReason? = nil,
+        lastFailedAt: Date? = nil
+    ) {
+        self.opened = opened
+        self.failed = failed
+        self.blocked = blocked
+        self.lastFailure = lastFailure
+        self.lastFailedAt = lastFailedAt
     }
 }
