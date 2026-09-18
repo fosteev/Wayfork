@@ -263,6 +263,30 @@ Written as user scenarios. Technical details belong to Phase 2.
 Feature text, stages and working order for F15–F18 and the friendlier UI pass:
 [roadmap/next-features.md](roadmap/next-features.md).
 
+**F20. Connections by exit** *(added 2026-09-18; approved 2026-09-18)*
+- The user's question: "is it the tunnel or the site?" — one exit failing for many hosts
+  looks, in the Can't reach pane, like many unrelated failures. The Logs window gets a
+  second view, **Connections**, chosen by a `Log · Connections` segment in its toolbar:
+  one row per exit — every tunnel, every group (with the member it is using), *Not via any
+  tunnel*, and a dimmed *Blocked by your list* row outside the totals — with
+  **Connections** (opened through the exit since Turn On), **Reached** (sing-box opened
+  them), **Failed** (it could not), the **fail rate** with a bar (grey ≤ 1 %, amber ≤ 5 %,
+  red above), the last failure's reason and time, and a total row.
+- Clicking an exit expands the F19 rows that went through it, with *Route via ▾*.
+  `Since Turn On · Last 5 min` switches the window; *Reset* zeroes the counters. Opened
+  from the popover footer (*Connections ⇧⌘L*), from *Details* on a tunnel card whose
+  connections fail, and by the segment.
+- Data: the F19 tracker already sees, per connection id, the chosen outbound and the
+  failure; F20 adds two counters per exit and forwards them in the traffic snapshot. Same
+  log lines for the numerator and the denominator; the Clash API is not used. At log
+  detail *Problems* only the failed column is available.
+- Numbers are connections, not requests, and *reached* means the dial succeeded — an
+  HTTP 403 or a stalled download inside a reached connection is invisible. Not a live
+  connection view (L2), no history across Turn Off.
+- Text, decisions, stages and session prompts:
+  [roadmap/connections-by-exit.md](roadmap/connections-by-exit.md); boards
+  `prototype/variant-c.html` C9, `prototype/windows.html` W17.
+
 ### Later
 
 The F15–F18 wave (recent domains → rule, tunnel groups, local proxy ports, block lists) was
@@ -374,6 +398,8 @@ General with block lists, New group sheet), light and dark. Its friction audit (
 at the top of the file) lists the wording, empty-state and one-click fixes that M10 applies
 to the existing screens before the features land. Windows twin: boards W9–W15 of
 [design/prototype/windows.html](design/prototype/windows.html).
+Board **C9** (2026-09-18) adds the *Connections* view of the Logs window for F20; its
+Windows twin is W17.
 
 [design/prototype/index.html](design/prototype/index.html) — rejected v1 (native NSMenu,
 toolbar tabs, flat rules table); still the reference for the Logs window, helper alert and
@@ -883,3 +909,25 @@ pane and click-to-filter), 02-ux.md (§ Variant C › Can't reach: wording), boa
       `no answer`; a listed ad host as `blocked by your list`; clicking the row shows its
       lines; the popover line appears within a second and goes after 5 minutes.
 - [ ] Windows: WM16 in ROADMAP-windows.md.
+
+### M16 — Connections by exit (F20)
+
+Phase 1 above, § F20; stages, decisions and the session prompt in
+[roadmap/connections-by-exit.md](roadmap/connections-by-exit.md) (stage 3). Design in
+05-daemon.md (§ Failed connections › Counters by exit), 06-logging.md (§ Logs window ›
+Connections), 02-ux.md (§ Variant C › Connections), board C9. Starts only after the M15
+manual check passed — F20 counts from the same log lines.
+
+- [ ] Design notes as listed above (roadmap stage 2).
+- [ ] `WayforkCore`: `ExitStats`, `TrafficSnapshot.exits` (optional on the wire),
+      `FailedText` strings.
+- [ ] Daemon: opened / failed / blocked counters per exit in `FailedConnections`,
+      `nil` opened at log detail *Problems*, cleared on `stop`; tests on the recorded line
+      shapes.
+- [ ] App: the `Log · Connections` segment and `ExitsView` in the Logs window (expand →
+      F19 rows, total row, blocked row, *Problems* hint, empty state), the 5-minute ring
+      and *Reset* baseline in the model, footer item ⇧⌘L and *Details* on the card.
+- [ ] Manual check: a tunnel with a wrong port at 100 %, direct at 0 %, the expanded
+      tunnel lists the host with `‹tunnel› is down`, *Last 5 min* / *Reset* / ⇧⌘L /
+      *Problems* hint behave.
+- [ ] Windows: WM17 in ROADMAP-windows.md.

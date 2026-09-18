@@ -54,6 +54,22 @@ not running; they are included in diagnostics via `collectDiagnostics`.
   Normal`; with no rows the strip collapses to `Every site your apps tried since ‹time›
   could be reached`. The popover shows `N sites can't be reached · Show` under the summary
   while a row is younger than 5 minutes; *Show* opens this window.
+- **Connections view (F20)**: a second view of the same window, chosen by a `Log ·
+  Connections` segment in the toolbar; the source/level/search controls hide, *Reset* and
+  *Copy* show. One row per exit — every tunnel, every group (with the member it is using),
+  *Not via any tunnel*, and a dimmed *Blocked by your list* row outside the totals — with
+  columns Connections, Reached, Failed, a fail-rate bar (grey ≤ 1 %, amber ≤ 5 %, red above)
+  and the last failure's reason and time; a total row at the bottom. Clicking an exit
+  expands the F19 rows that went through it (site, app, tries, why, when) with the same row
+  actions as the Can't reach pane. `Since Turn On · Last 5 min` switches the window; the
+  daemon only ever sends cumulative counters (05-daemon.md § Failed connections ›
+  *Counters by exit*), so the app keeps a 5-minute ring of snapshots and subtracts for that
+  view, and *Reset* stores a baseline — both live in the app, nothing new on the wire beyond
+  `TrafficSnapshot.exits`. Row order is fixed: tunnels in the popover's order, groups after
+  their members, *Not via any tunnel*, then *Blocked by your list* — no column sorting this
+  round. Opened from the popover footer (*Connections ⇧⌘L*), from *Details* on a tunnel
+  card whose exit has failed in the last 5 minutes, and from the segment; opening from the
+  popover preselects this view the way `takePreselectedSearch()` preselects the search.
 
 ## Export Diagnostics
 

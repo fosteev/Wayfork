@@ -321,6 +321,41 @@ h2 { font-size:15px; font-weight:600; margin:0 0 10px; color:rgba(0,0,0,0.75); }
 .log .filt { display:flex; align-items:center; gap:6px; font-family:-apple-system,"SF Pro Text",system-ui,sans-serif; font-size:11px; color:var(--fg2); padding-bottom:4px; margin-bottom:4px; border-bottom:1px solid var(--sep); }
 .pv .trouble { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--badt); padding-left:26px; margin-top:-4px; }
 .pv .trouble .link { margin-left:auto; font-weight:500; }
+
+/* ---- C9 · Connections by exit ---- */
+.lw .tb .seg { margin-right:4px; }
+.strip.cx .cols, .strip.cx .rec { display:grid; grid-template-columns:16px 1fr 96px 72px 72px 150px 118px 22px; gap:8px; align-items:center; padding:0 12px; }
+.strip.cx .cols { height:20px; font-size:10px; font-weight:600; color:var(--fg3); text-transform:uppercase; letter-spacing:0.4px; border-bottom:1px solid var(--sep); background:var(--card2); }
+.strip.cx .cols .c1 { grid-column:1 / 3; }
+.strip.cx .cols .num, .strip.cx .rec .num { text-align:right; }
+.strip.cx .rec { height:30px; font-size:12px; border-bottom:1px solid var(--sep); }
+.strip.cx .rec .n { font-weight:600; display:flex; align-items:center; gap:7px; min-width:0; }
+.strip.cx .rec .n .sub { font-weight:400; color:var(--fg2); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.strip.cx .rec .num { font-variant-numeric:tabular-nums; color:var(--fg2); }
+.strip.cx .rec .num.ok { color:var(--fg); }
+.strip.cx .rec .num.fail { font-weight:500; }
+.strip.cx .rec .num.fail.badt { color:var(--badt); }
+.strip.cx .rec .num.fail.zero { color:var(--fg3); font-weight:400; }
+.strip.cx .rate { display:flex; align-items:center; gap:8px; font-variant-numeric:tabular-nums; font-size:11px; color:var(--fg2); }
+.strip.cx .rate .bar { flex:1; height:5px; border-radius:3px; background:var(--hl); overflow:hidden; }
+.strip.cx .rate .bar i { display:block; height:100%; border-radius:3px; background:var(--ok); }
+.strip.cx .rate.warn .bar i { background:var(--warn); } .strip.cx .rate.warn { color:var(--warnt); }
+.strip.cx .rate.bad .bar i { background:var(--bad); } .strip.cx .rate.bad { color:var(--badt); }
+.strip.cx .rate.none { color:var(--fg3); }
+.strip.cx .rec .last { font-size:11px; color:var(--fg2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.strip.cx .rec .last.badt { color:var(--badt); }
+.strip.cx .rec > .chev { width:14px; height:14px; color:var(--fg3); justify-self:end; }
+.strip.cx .rec.open { background:var(--hl); border-bottom:none; }
+.strip.cx .rec.open > .chev { transform:rotate(90deg); color:var(--fg2); }
+.strip.cx .sub-rows { background:var(--card2); border-bottom:1px solid var(--sep); padding:2px 0 4px; }
+.strip.cx .sub-rows .rec { display:grid; grid-template-columns:16px 1fr 70px 44px 128px 100px; height:24px; padding:0 12px 0 36px; border-bottom:none; font-size:12px; }
+.strip.cx .sub-rows .rec .app { color:var(--fg2); font-size:11px; }
+.strip.cx .sub-rows .rec .tries { font-weight:500; text-align:right; font-variant-numeric:tabular-nums; }
+.strip.cx .sub-rows .rec .ago { font-size:11px; color:var(--fg2); text-align:right; }
+.strip.cx .sub-rows .rec .act { display:flex; justify-content:flex-end; gap:6px; }
+.strip.cx .tot { display:grid; grid-template-columns:16px 1fr 96px 72px 72px 150px 118px 22px; gap:8px; align-items:center; padding:0 12px; height:26px; font-size:11px; color:var(--fg2); background:var(--card2); border-top:1px solid var(--sep); }
+.strip.cx .tot .c1 { grid-column:1 / 3; font-weight:600; color:var(--fg); }
+.strip.cx .tot .num { text-align:right; font-variant-numeric:tabular-nums; }
 </style>
 </head>
 <body>
@@ -335,6 +370,7 @@ h2 { font-size:15px; font-weight:600; margin:0 0 10px; color:rgba(0,0,0,0.75); }
 <li><a href="#C6">C6 · Settings › General with Block ads and trackers</a></li>
 <li><a href="#C7">C7 · New group sheet</a></li>
 <li><a href="#C8">C8 · Logs window with the "Can't reach" pane (F19)</a></li>
+<li><a href="#C9">C9 · Logs window › Connections by exit (F20 draft)</a></li>
 </ol>
 
 <!-- ============================ C1 ============================ -->
@@ -749,6 +785,53 @@ h2 { font-size:15px; font-weight:600; margin:0 0 10px; color:rgba(0,0,0,0.75); }
 </div>
 </div>
 <div class="note"><b>Can't reach</b> (F19) is a pane on top of the Logs window, not a new page: the question "what could my app not reach?" ends in the log anyway. One row per site + app — the site (domain, or <code>ip:port</code> when there was no name), the app that opened it, how many tries, why in the user's words (<i>no answer</i> · <i>refused</i> · <i>blocked by your list</i> · <i>no such name</i> · <i>‹tunnel› is down</i>), the exit it went through, when last. <b>Clicking a row filters the log below to that site</b> — the search field takes the host, the level goes to All, and a line above the log says what is shown with <i>Show all lines</i> to go back. Row actions on hover: <i>Route via ▾</i> (a suffix rule, as in Recent — the usual fix for a site that works only through a tunnel), <i>Never block</i> when the reason is the block list, × to dismiss. The <b>popover</b> gets one red line under the summary while anything failed in the last 5 minutes; <i>Show</i> opens this window. Rows live since Turn On (200 max, cleared on Turn Off). Callouts: at log detail <i>Problems</i> the app column is empty (sing-box prints the process only at <i>info</i>), and the empty state. Only connections that <b>could not be established</b> are listed — an HTTP 403 inside TLS is invisible and is not a failure here.</div>
+</div></section>
+
+<!-- ============================ C9 ============================ -->
+<section id="C9" class="board"><h2>C9 · Logs window › Connections — every exit with how many connections went through and how many failed (F20 draft) — and where it is opened from</h2>
+<div class="bd" style="width:1100px">
+<div style="display:flex;gap:24px;align-items:flex-start">
+<div class="t"><div class="win lw">
+  <div class="titlebar"><div class="tl"><span style="background:#ff5f57"></span><span style="background:#febc2e"></span><span style="background:#28c840"></span></div><div class="title">Wayfork Logs</div></div>
+  <div class="tb"><div class="seg"><span>Log</span><span class="on">Connections</span></div><div class="pop"><span style="flex:1">Since Turn On</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10l5-5 5 5"/><path d="M7 14l5 5 5-5"/></svg></span></div><span style="flex:1"></span><div class="btn">Reset</div><div class="btn">Copy</div></div>
+  <div class="body">
+    <div class="strip cx">
+      <div class="h"><svg class="icn sm" viewBox="0 0 18 18" style="color:var(--fg2)"><path d="M9 16V9.5M9 9.5L4 3.5M9 9.5L14 3.5"/><circle cx="4" cy="3.5" r="1.6" fill="currentColor" stroke="none"/><circle cx="14" cy="3.5" r="1.6" fill="currentColor" stroke="none"/><circle cx="9" cy="16" r="1.6" fill="currentColor" stroke="none"/></svg><span>Connections by exit</span><span class="hint">since 14:31 · click an exit to see what failed through it</span></div>
+      <div class="cols"><span class="c1">Exit</span><span class="num">Connections</span><span class="num">Reached</span><span class="num">Failed</span><span>Fail rate</span><span>Last failure</span><span></span></div>
+      <div class="rows">
+        <div class="rec"><span class="d ok"></span><span class="n">Work <span class="badge acc">Default</span></span><span class="num ok">1 214</span><span class="num">1 211</span><span class="num fail">3</span><span class="rate"><span class="bar"><i style="width:2%"></i></span>0.2%</span><span class="last">no answer · 12 min ago</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+        <div class="rec"><span class="d ok"></span><span class="n">Home</span><span class="num ok">306</span><span class="num">306</span><span class="num fail zero">0</span><span class="rate"><span class="bar"><i style="width:0"></i></span>0%</span><span class="last ter">—</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+        <div class="rec"><span class="d grp"></span><span class="n">Streaming <span class="badge">Group</span><span class="sub">· using Home</span></span><span class="num ok">188</span><span class="num">186</span><span class="num fail">2</span><span class="rate warn"><span class="bar"><i style="width:6%"></i></span>1.1%</span><span class="last">reset · 4 min ago</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+        <div class="rec open"><span class="d bad"></span><span class="n">Lab <span class="sub badt" style="color:var(--badt)">· not reachable</span></span><span class="num ok">9</span><span class="num">0</span><span class="num fail badt">9</span><span class="rate bad"><span class="bar"><i style="width:100%"></i></span>100%</span><span class="last badt">Lab is down · 3 min ago</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+        <div class="sub-rows">
+          <div class="rec"><span class="ai" style="background:#ff9f0a">T</span><span class="dom">git.lab.example.org</span><span class="app">Terminal</span><span class="tries">×7</span><span class="badt">Lab is down</span><span class="ago">3 min ago</span></div>
+          <div class="rec"><span class="ai" style="background:#ff9f0a">T</span><span class="dom">api.example.org</span><span class="app">Terminal</span><span class="tries">×2</span><span class="badt">Lab is down</span><span class="act"><div class="pop"><span>Route via</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></div></span></div>
+        </div>
+        <div class="rec"><span class="d off"></span><span class="n">Not via any tunnel</span><span class="num ok">512</span><span class="num">489</span><span class="num fail badt">23</span><span class="rate warn"><span class="bar"><i style="width:14%"></i></span>4.5%</span><span class="last">no answer · 12 s ago</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+        <div class="rec" style="opacity:0.7;border-bottom:none"><svg class="icn sm" viewBox="0 0 24 24" style="color:var(--fg3)"><circle cx="12" cy="12" r="8"/><path d="M6.5 6.5l11 11"/></svg><span class="n" style="font-weight:500">Blocked by your list</span><span class="num ter">—</span><span class="num ter">—</span><span class="num fail" style="color:var(--fg2)">41</span><span class="rate none">not counted as failures</span><span class="last">telemetry.example.com · 1 min ago</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+      </div>
+      <div class="tot"><span class="c1">All exits</span><span class="num">2 229</span><span class="num">2 192</span><span class="num badt" style="font-weight:500">37</span><span class="num" style="text-align:left">1.7%</span><span></span><span></span></div>
+    </div>
+    <div class="hint" style="font-size:11px;color:var(--fg3);line-height:14px">A connection counts as <i>reached</i> when sing-box could open it; what happened inside it (a slow page, an HTTP 403) is not visible here. Counters restart on Turn On and on <i>Reset</i>.</div>
+  </div>
+</div></div>
+<div style="display:flex;flex-direction:column;gap:14px;width:300px">
+  <div class="t dark"><div class="pv" style="width:300px;gap:6px">
+    <div class="hd"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M9 16V9.5M9 9.5L4 3.5M9 9.5L14 3.5"/><circle cx="4" cy="3.5" r="1.9" fill="rgba(255,255,255,0.9)" stroke="none"/><circle cx="14" cy="3.5" r="1.9" fill="rgba(255,255,255,0.9)" stroke="none"/><circle cx="9" cy="16" r="1.9" fill="rgba(255,255,255,0.9)" stroke="none"/></svg><span class="t">Wayfork</span><div class="sw on"><i></i></div></div>
+    <div class="sub">On — everything goes via Work, 9 sites via other tunnels</div>
+    <div class="trouble"><svg class="icn sm" viewBox="0 0 24 24" style="color:var(--badt)"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/></svg><span>3 sites can't be reached</span><a href="#" class="link">Show</a></div>
+    <div class="sep"></div>
+    <div class="sh">Tunnels</div>
+    <div class="card"><div class="l1"><span class="d ok"></span><span class="n">Work</span><span class="badge acc">Default</span><span class="fill"></span><span class="lat ok">62<small>ms</small></span></div><div class="l2"><b>Connected</b><span>·</span><span>↓ 1.2 MB/s ↑ 85 KB/s</span><span>·</span><span>6 sites</span></div></div>
+    <div class="card"><div class="l1"><span class="d bad"></span><span class="n">Lab</span><span class="fill"></span><span class="lat bad" style="font-weight:600">Not reachable</span></div><div class="l2"><span class="badt">9 of 9 connections failed</span><span>·</span><a href="#" class="link">Details</a></div></div>
+    <div class="ter" style="font-size:11px;text-align:center;padding:2px 0">…</div>
+    <div class="sep"></div>
+    <div class="ft"><span><b>Settings</b> <span class="ter">⌘,</span></span><span><b>Logs</b> <span class="ter">⌘L</span></span><span><b>Connections</b> <span class="ter">⇧⌘L</span></span><span class="q"><b>Quit</b></span></div>
+  </div></div>
+  <div class="callout"><div class="cap">Detail · dark, window set to Last 5 min</div><div class="t dark" style="margin:0 -12px"><div class="strip cx" style="border-radius:0;border-left:none;border-right:none;font-size:11px"><div class="rows"><div class="rec" style="grid-template-columns:12px 1fr 44px 36px 90px;padding:0 12px;height:24px"><span class="d ok"></span><span class="n">Work</span><span class="num ok">212</span><span class="num fail zero">0</span><span class="rate"><span class="bar"><i style="width:0"></i></span>0%</span></div><div class="rec" style="grid-template-columns:12px 1fr 44px 36px 90px;padding:0 12px;height:24px"><span class="d bad"></span><span class="n">Lab</span><span class="num ok">4</span><span class="num fail badt">4</span><span class="rate bad"><span class="bar"><i style="width:100%"></i></span>100%</span></div><div class="rec" style="grid-template-columns:12px 1fr 44px 36px 90px;padding:0 12px;height:24px;border-bottom:none"><span class="d off"></span><span class="n" style="font-weight:500">Not via any tunnel</span><span class="num ok">96</span><span class="num fail badt">11</span><span class="rate warn"><span class="bar"><i style="width:30%"></i></span>11%</span></div></div></div></div><div class="hint" style="font-size:11px;color:var(--fg2)">Same rows, shorter window: the popover's <i>Details</i> and the red line open the table with <i>Last 5 min</i> selected.</div></div>
+</div>
+</div>
+<div class="note"><b>Connections by exit</b> (F20 draft) is a second view of the Logs window, chosen by the <b>Log · Connections</b> segment in the toolbar — the <i>Can't reach</i> pane already lives there and both views answer the same "why doesn't it work?" question, so no new window. Opened from the popover footer (<b>Connections ⇧⌘L</b>), from <i>Details</i> on a tunnel card whose connections fail, and from the red line. One row per exit: every tunnel, every group (with the member it is using), <i>Not via any tunnel</i> (direct), and a dimmed <i>Blocked by your list</i> row that is shown for completeness but is excluded from the failure counts and the total. Columns: <b>Connections</b> (opened through the exit), <b>Reached</b> (sing-box opened them), <b>Failed</b> (sing-box could not — the F19 rows, summed), the <b>fail rate</b> with a bar (grey ≤ 1 %, amber ≤ 5 %, red above), the last failure's reason and time. Clicking an exit expands the F19 rows that went through it (site, app, tries, why, when), with <i>Route via ▾</i> on hover — the fix is one click away, as everywhere else. <b>Since Turn On · Last 5 min</b> switches the window; <i>Reset</i> zeroes the counters. Numbers are connections, not requests: one page load is dozens, a keep-alive connection carries hundreds of requests — the rate is what to read, the counts only say how busy an exit is. Both counts come from the same sing-box log lines the F19 tracker already parses (<code>inbound connection to</code> = opened, <code>ERROR … open connection</code> = failed), so the numerator and the denominator never disagree; the Clash API is not used — it lists live connections only and misses everything shorter than a second. What happened inside a reached connection (HTTP status, a stalled download) is invisible and is not counted.</div>
 </div></section>
 
 </body>

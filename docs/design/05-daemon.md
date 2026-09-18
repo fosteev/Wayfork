@@ -410,6 +410,22 @@ optional on the wire like `recentHosts`. Kept across a sing-box restart, cleared
 rows of the last 5 minutes. Only `ERROR` lines and the `reject` match count: a connection
 the app closed itself is not a failure, and an HTTP status is invisible inside TLS.
 
+**Counters by exit (F20)**: `FailedConnections` also keeps, per exit, an **opened** and a
+**failed** count next to the failure rows above. Opened increments once per connection id at
+the `match[N] rule => outbound` / `no match, using outbound` line — the same line the join
+already reads for the exit — under the assumption that sing-box prints it for every routed
+connection at `info` (verify with the F19 live check). Failed increments at the `ERROR …
+open connection to …` line, attributed to the exit the tracker had for that id (`direct`
+when none). `=> reject` on the block list increments a separate **blocked** count and is
+excluded from opened, failed and any total. At log detail *Problems* the match lines are
+absent, so `opened` stays `nil` on the wire and only `failed` is meaningful — the same
+"needs log detail Normal" case as the *Via* column. The counters ride in
+`TrafficSnapshot.exits: [String: ExitStats]`, keyed by exit id (`direct`, a tunnel id, a
+group id) — `ExitStats { opened: Int?, failed: Int, blocked: Int, lastFailure:
+FailureReason?, lastFailedAt: Date? }`, optional on the wire like `failedHosts`; `blocked`
+is only ever present under the `direct` key. Cleared by `FailedConnections.clear()` (Turn
+Off), kept across a sing-box restart.
+
 ## Connection cut on rule change
 
 sing-box reloads a rewritten rule-set within ~350 ms but leaves established connections on

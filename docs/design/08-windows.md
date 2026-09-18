@@ -1183,6 +1183,14 @@ Design in [02-ux.md](02-ux.md) § Variant C, [01-data-model.md](01-data-model.md
 - **Can't reach (WM16)**: the pane sits on the Logs page above the lines
   (`FailedPane`), the red line on the Dashboard header; the join is the same
   `FailedConnections` logic in `internal/core`, fed by the engine's log relay.
+- **Connections by exit (WM17)**: the `Log · Connections` segment sits on the Logs page's
+  header row next to the existing filters, which hide under this view per 06-logging.md §
+  Logs window; the table is `ExitsTable`, reusing `FailedPane`'s row widget for the
+  expanded exit's F19 rows, same fixed row order and thresholds as macOS, fed by the same
+  `internal/core` join WM16 uses. The tray menu gains a `Connections` entry next to `Logs`
+  (`TrayMenu.build`) opening the Logs page with this view preselected — the Windows
+  stand-in for the popover's `Connections ⇧⌘L` footer item, since Windows menus carry no
+  shortcut hint.
 
 ### As built (2026-09-16)
 

@@ -653,3 +653,15 @@ strings and states, Windows chrome). Deltas, if any, go to
 - [x] App (Flutter): the pane on the Logs page per W16, click → filter, the flyout line
       (2026-09-16: `FailedPane` on Logs, the line on the Dashboard header).
 - [ ] PC run: same check as M15.
+
+### WM17 — Connections by exit (F20)
+
+[ROADMAP.md](ROADMAP.md) § M16; stage 4 of
+[roadmap/connections-by-exit.md](roadmap/connections-by-exit.md), board W17. Same wire
+keys and optionality as the Swift side; Last 5 min and Reset are app-side there too.
+
+- [ ] Service (Go): the counters and `exits` in the snapshot JSON (`opened` omitted when
+      nil); tests on the shared line shapes; `GOOS=windows go build ./...`.
+- [ ] App (Flutter): `ExitStats` decoding, the 5-minute ring and baseline, the segment
+      and `ExitsTable` on the Logs page per W17, the flyout entry; `logs_page_test.dart`.
+- [ ] PC run: same check as M16.
