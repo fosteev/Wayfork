@@ -23,6 +23,9 @@ final class AppNavigator extends ChangeNotifier {
   int _diagnosticsToken = 0;
   String? _logSource;
 
+  /// F20: the Logs page should open on the Connections view.
+  bool _openConnections = false;
+
   AppPage get page => _page;
 
   /// Bumped every time the quick-add field is asked for, so a repeated
@@ -43,6 +46,14 @@ final class AppNavigator extends ChangeNotifier {
     final source = _logSource;
     _logSource = null;
     return source;
+  }
+
+  /// Reads whether Logs should open on Connections and forgets it, so the
+  /// next visit keeps whatever view the user picked there.
+  bool takeOpenConnections() {
+    final open = _openConnections;
+    _openConnections = false;
+    return open;
   }
 
   void go(AppPage page) {
@@ -69,6 +80,13 @@ final class AppNavigator extends ChangeNotifier {
   void showLogs({String? source}) {
     _page = AppPage.logs;
     _logSource = source;
+    notifyListeners();
+  }
+
+  /// Logs on the Connections view (F20): the tray's "Connections" entry.
+  void showConnections() {
+    _page = AppPage.logs;
+    _openConnections = true;
     notifyListeners();
   }
 }

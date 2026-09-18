@@ -215,7 +215,7 @@ func TestSmallPayloadsWire(t *testing.T) {
 	}
 	snapshot := TrafficSnapshot{SampledAt: NewTimestamp(fixtureDate), Interval: 1.25, Tunnels: map[string]TrafficCounters{"a": counters}}
 	wantSnapshot := `{"direct":{"connections":0,"downBytesPerSecond":0,"downTotal":0,"oneWayUDPFlows":0,"upBytesPerSecond":0,"upTotal":0},` +
-		`"failedHosts":[],"groups":{},"interval":1.25,"latency":{},"recentHosts":[],"sampledAt":"2026-08-25T12:00:00Z",` +
+		`"exits":{},"failedHosts":[],"groups":{},"interval":1.25,"latency":{},"recentHosts":[],"sampledAt":"2026-08-25T12:00:00Z",` +
 		`"tunnels":{"a":{"connections":3,"downBytesPerSecond":12.5,"downTotal":100,"oneWayUDPFlows":1,"upBytesPerSecond":2,"upTotal":20}}}`
 	if got := mustMarshal(t, snapshot); got != wantSnapshot {
 		t.Errorf("snapshot = %s, want %s", got, wantSnapshot)

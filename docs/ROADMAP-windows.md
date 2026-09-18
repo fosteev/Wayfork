@@ -660,8 +660,9 @@ strings and states, Windows chrome). Deltas, if any, go to
 [roadmap/connections-by-exit.md](roadmap/connections-by-exit.md), board W17. Same wire
 keys and optionality as the Swift side; Last 5 min and Reset are app-side there too.
 
-- [ ] Service (Go): the counters and `exits` in the snapshot JSON (`opened` omitted when
-      nil); tests on the shared line shapes; `GOOS=windows go build ./...`.
-- [ ] App (Flutter): `ExitStats` decoding, the 5-minute ring and baseline, the segment
+- [x] Service (Go): the counters and `exits` in the snapshot JSON (`opened` omitted when
+      nil); tests on the shared line shapes; `GOOS=windows go build ./...`. — 2026-09-18.
+- [x] App (Flutter): `ExitStats` decoding, the 5-minute ring and baseline, the segment
       and `ExitsTable` on the Logs page per W17, the flyout entry; `logs_page_test.dart`.
+      — 2026-09-18: tray `Connections` entry stands in for the flyout footer item.
 - [ ] PC run: same check as M16.

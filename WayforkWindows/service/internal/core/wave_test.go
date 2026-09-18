@@ -233,9 +233,74 @@ func TestFailedConnectionsJoin(t *testing.T) {
 	if !IsInterestingLogLine("[1 0ms] router: found process path: x") || IsInterestingLogLine("sing-box started") {
 		t.Fatal("pre-filter is wrong")
 	}
+	// F20: opened once per id at the match line, failed once per ERROR line, blocked
+	// always under direct and never counted as a failure.
+	exits := tracker.Exits()
+	if len(exits) != 3 {
+		t.Fatalf("exits = %+v", exits)
+	}
+	if got := exits["aaa"]; got.Opened == nil || *got.Opened != 2 || got.Failed != 2 || got.Blocked != 0 || got.LastFailure == nil || got.LastFailure.Kind != FailureNoAnswer {
+		t.Fatalf("aaa exit = %+v", got)
+	}
+	if got := exits["bbb"]; got.Opened == nil || *got.Opened != 1 || got.Failed != 1 || got.LastFailure == nil || got.LastFailure.Kind != FailureTunnelDown {
+		t.Fatalf("bbb exit = %+v", got)
+	}
+	// direct never saw its own match line here (id 40/45/47 fall back to it), but a
+	// match line was seen overall (aaa/bbb), so its opened is 0, not nil.
+	if got := exits["direct"]; got.Opened == nil || *got.Opened != 0 || got.Failed != 3 || got.Blocked != 2 {
+		t.Fatalf("direct exit = %+v", got)
+	}
 	tracker.Clear()
 	if len(tracker.Snapshot()) != 0 {
 		t.Fatal("Clear kept rows")
+	}
+	if len(tracker.Exits()) != 0 {
+		t.Fatal("Clear kept exit counters")
+	}
+}
+
+func TestFailedConnectionsExitsGroupTagMapsToGroupID(t *testing.T) {
+	tracker := NewFailedConnections()
+	t0 := time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
+	lines := []struct {
+		level LogLevel
+		line  string
+	}{
+		{LogLevelInfo, "[80 0ms] inbound/tun[tun-in]: inbound connection to streaming.example.com:443"},
+		{LogLevelInfo, "[80 1ms] router: match[1] rule_set=rules-g-ccc => g-ccc"},
+		{LogLevelError, "[80 3ms] inbound/tun[tun-in]: open connection to streaming.example.com:443: dial tcp 203.0.113.5:443: i/o timeout"},
+	}
+	for i, entry := range lines {
+		tracker.Ingest(entry.line, entry.level, t0.Add(time.Duration(i)*time.Second))
+	}
+	exits := tracker.Exits()
+	got := exits["ccc"]
+	if got.Opened == nil || *got.Opened != 1 || got.Failed != 1 || got.Blocked != 0 || got.LastFailure == nil || got.LastFailure.Kind != FailureNoAnswer {
+		t.Fatalf("ccc exit = %+v", got)
+	}
+}
+
+func TestFailedConnectionsExitsNilOpenedUnderProblemsOnly(t *testing.T) {
+	// Log detail Problems: only ERROR lines exist, no match line is ever seen — opened
+	// stays nil for every exit and every failure is attributed to direct.
+	tracker := NewFailedConnections()
+	t0 := time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
+	lines := []struct {
+		level LogLevel
+		line  string
+	}{
+		{LogLevelError, "ERROR [70 30ms] inbound/tun[tun-in]: open connection to a.example.net:443: dial tcp 198.51.100.2:443: connect: connection refused"},
+		{LogLevelError, "ERROR [71 30ms] inbound/tun[tun-in]: open connection to b.example.net:443: dial tcp 198.51.100.3:443: connect: connection refused"},
+	}
+	for i, entry := range lines {
+		tracker.Ingest(entry.line, entry.level, t0.Add(time.Duration(i)*time.Second))
+	}
+	exits := tracker.Exits()
+	if len(exits) != 1 {
+		t.Fatalf("exits = %+v", exits)
+	}
+	if got := exits["direct"]; got.Opened != nil || got.Failed != 2 {
+		t.Fatalf("direct exit = %+v", got)
 	}
 }
 

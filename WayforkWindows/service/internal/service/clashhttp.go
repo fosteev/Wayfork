@@ -254,6 +254,7 @@ func (s *TrafficSampler) sample(ctx context.Context, endpoint core.ClashAPIEndpo
 		snapshot.BlockedToday = &blocked
 	}
 	snapshot.FailedHosts = s.failed.Snapshot()
+	snapshot.Exits = s.failed.Exits()
 	if s.failing {
 		s.failing = false
 		s.hub.Log(core.LogLevelInfo, "traffic: clash api reachable again")

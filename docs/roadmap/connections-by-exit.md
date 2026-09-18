@@ -1,8 +1,9 @@
 # Connections by exit — F20
 
 > Status: approved · created 2026-09-18 · § Feature approved 2026-09-18 (ROADMAP.md § F20,
-> M16 / WM17) · stage 2 done 2026-09-18 · stage 3 (M16, macOS) done 2026-09-18, manual
-> check owed to stage 5 · stage 4 (WM17, Windows) not started. The executing session ticks the checkboxes below as it goes; statuses live
+> M16 / WM17) · stage 2 done 2026-09-18 · stage 3 (M16, macOS) and stage 4 (WM17,
+> Windows) done 2026-09-18 · stage 5 owed: the manual walks (macOS, PC), F19 live check,
+> CHANGELOG, release. The executing session ticks the checkboxes below as it goes; statuses live
 > here and in the milestone skeletons ROADMAP.md § M16 / ROADMAP-windows.md § WM17 only.
 
 ## Goal
@@ -87,6 +88,17 @@ them.
 - *Copy* on the Connections view writes the table tab-separated (header, rows, total).
 - Windows: the flyout has no footer item, so the tray menu gets `Connections` next to
   `Logs` (08-windows.md); the Logs page keeps the segment control W16 already uses.
+
+Stage 4 (Windows, 2026-09-18):
+- The `Log · Connections` toggle pair sits on its own row above the Logs page's filter
+  row — inline it overflowed at the width `app_shell_test.dart` renders.
+- `FailedRow` (was `_FailedRow`) is public and reused for the expanded exit; the tray entry
+  is `TrayCommandShowConnections` through `AppNavigator.showConnections()`.
+- *Reset* is disabled while not running.
+- Test harness: a widget test that boots the model *on*, feeds traffic and pumps
+  `LogsPage` leaves the 30 s traffic-stale timer pending at teardown (pre-existing, not
+  F20's); the new tests end with `drainTrafficStaleTimer(tester)`. Fixing the timer's
+  disposal is a separate chore.
 
 ## Feature
 
@@ -206,13 +218,29 @@ stage 2.
 
 Mirror of stage 3 on the Go service and the Flutter app, on the same fixtures.
 
-- [ ] `internal/core/failed.go`: the counters and `ExitStats` (`exits` in the snapshot
+- [x] `internal/core/failed.go`: the counters and `ExitStats` (`exits` in the snapshot
       JSON, same keys and optionality as macOS; `opened` omitted when nil); tests on the
-      shared line shapes; `go test ./...` on macOS and `GOOS=windows go build ./...`.
-- [ ] Dart core: `ExitStats` decoding, the 5-minute ring and the baseline.
-- [ ] `logs_page.dart`: the segment, `ExitsTable` per W17 reusing `FailedPane`'s row for
+      shared line shapes; `go test ./...` on macOS and `GOOS=windows go build ./...`. —
+      2026-09-18: counters added to `FailedConnections` + `Exits()` accessor; `ExitStats`
+      in `status.go` next to `FailedHost`; wired into `TrafficSnapshot.Exits` and the
+      service's snapshot builder (`clashhttp.go`); five cases mirrored in `wave_test.go`
+      (extended `TestFailedConnectionsJoin`, two new tests); `gofmt -l`, `go vet ./...`,
+      `go test ./...`, `GOOS=windows go build ./...` all clean.
+- [x] Dart core: `ExitStats` decoding, the 5-minute ring and the baseline. — 2026-09-18:
+      `ExitStats` in `payloads.dart` (`TrafficSnapshot.exits`); new `app_model_exits.dart`
+      (`ExitRow`/`ExitsTotals`/`AppModelExits`) mirrors `AppModel+Exits.swift` — ring fed
+      from `_handleTraffic`, baseline from `resetExits()`, tracking cleared on Turn On;
+      `ExitsText` added to `feature_text.dart` next to `FailedText`.
+- [x] `logs_page.dart`: the segment, `ExitsTable` per W17 reusing `FailedPane`'s row for
       the expansion; the flyout entry; `dart format`, `dart analyze --fatal-infos`,
-      `logs_page_test.dart` extended.
+      `logs_page_test.dart` extended. — 2026-09-18: `Log · Connections` ToggleButton
+      segment (own row, to avoid a `RenderFlex` overflow at narrow window widths);
+      `FailedRow` un-privated (was `_FailedRow`) and reused for the expanded exit; tray
+      gets a `Connections` entry (`TrayCommandShowConnections`, `AppNavigator.
+      showConnections()`) since the flyout has no footer; `tray_menu_test.dart` updated
+      for the new entry; 5 new `logs_page_test.dart` cases. `dart format`, `dart analyze
+      --fatal-infos`, `flutter test` (this project has no bare `dart test` target) all
+      clean, 357 tests green.
 - [x] Fixtures: stage 3 added no line file — the Go tests mirror the cases of
       `FailedConnectionsTests.swift` (decision above); nothing to share. — 2026-09-18.
 

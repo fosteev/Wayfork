@@ -12,6 +12,16 @@ import 'ui_harness.dart';
 LogLine line(String source, String message, {LogLevel level = LogLevel.info}) =>
     LogLine(source: source, level: level, message: message);
 
+/// A test that pushes traffic (`goRunning(..., traffic: ...)`) while running
+/// leaves `AppModel`'s traffic-stale `Timer` pending: it is real (fake-clock)
+/// and only cancelled by `dispose()` or by firing, and `boot()`'s
+/// `trafficStaleAfter` override (30 s) outlives the test body. Advancing the
+/// fake clock past it here lets the timer fire — and be forgotten — before
+/// teardown checks for pending timers. Call this last, after every
+/// assertion: firing the timer clears `model.traffic`.
+Future<void> drainTrafficStaleTimer(WidgetTester tester) =>
+    tester.pump(const Duration(seconds: 31));
+
 void main() {
   testWidgets('every line shows its source, level and message', (tester) async {
     final app = await boot(tester);
@@ -200,5 +210,136 @@ void main() {
           .checked,
       isFalse,
     );
+  });
+
+  // F20: Connections by exit.
+
+  testWidgets('Connections lists a row per exit with its own counters', (
+    tester,
+  ) async {
+    final app = await boot(tester, on: true);
+    await goRunning(
+      tester,
+      app,
+      traffic: TrafficSnapshot(
+        sampledAt: DateTime.utc(2026, 1, 1),
+        interval: 1,
+        tunnels: const {},
+        direct: const TrafficCounters(),
+        exits: {
+          app.sample.work.id: const ExitStats(opened: 10, failed: 2),
+          'direct': const ExitStats(opened: 5, failed: 0),
+        },
+      ),
+    );
+
+    await tester.pumpWidget(
+      scoped(app.model, AppNavigator(), const LogsPage()),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Connections'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Work'), findsOneWidget);
+    expect(find.text('10'), findsOneWidget);
+    expect(find.text('20.0%'), findsOneWidget);
+    expect(find.text('Not via any tunnel'), findsOneWidget);
+    expect(find.text('0%'), findsOneWidget);
+    // The total row, blocked excluded: 10 + 5 connections.
+    expect(find.text('15'), findsOneWidget);
+    await drainTrafficStaleTimer(tester);
+  });
+
+  testWidgets('Reset zeroes the Since Turn On counters', (tester) async {
+    final app = await boot(tester, on: true);
+    await goRunning(
+      tester,
+      app,
+      traffic: TrafficSnapshot(
+        sampledAt: DateTime.utc(2026, 1, 1),
+        interval: 1,
+        tunnels: const {},
+        direct: const TrafficCounters(),
+        exits: {'direct': const ExitStats(opened: 5, failed: 3)},
+      ),
+    );
+
+    await tester.pumpWidget(
+      scoped(app.model, AppNavigator(), const LogsPage()),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Connections'));
+    await tester.pumpAndSettle();
+    expect(find.text('3'), findsWidgets);
+
+    await tester.tap(find.text('Reset'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('3'), findsNothing);
+    await drainTrafficStaleTimer(tester);
+  });
+
+  testWidgets('the tray Connections entry opens Logs on that view', (
+    tester,
+  ) async {
+    final app = await boot(tester);
+    final navigator = AppNavigator();
+    navigator.showConnections();
+
+    await tester.pumpWidget(scoped(app.model, navigator, const LogsPage()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reset'), findsOneWidget);
+    expect(find.text('Follow'), findsNothing);
+  });
+
+  testWidgets('Copy on Connections writes the table tab-separated', (
+    tester,
+  ) async {
+    final app = await boot(tester, on: true);
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add(((call.arguments as Map)['text'] as String?) ?? '');
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await goRunning(
+      tester,
+      app,
+      traffic: TrafficSnapshot(
+        sampledAt: DateTime.utc(2026, 1, 1),
+        interval: 1,
+        tunnels: const {},
+        direct: const TrafficCounters(),
+        exits: {'direct': const ExitStats(opened: 4, failed: 1)},
+      ),
+    );
+
+    await tester.pumpWidget(
+      scoped(app.model, AppNavigator(), const LogsPage()),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Connections'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Copy'));
+    await tester.pumpAndSettle();
+
+    expect(copied, hasLength(1));
+    expect(
+      copied.single,
+      contains('Exit\tConnections\tReached\tFailed\tFail rate\tLast failure'),
+    );
+    expect(copied.single, contains('Not via any tunnel\t4\t3\t1\t25.0%'));
+    await drainTrafficStaleTimer(tester);
   });
 }

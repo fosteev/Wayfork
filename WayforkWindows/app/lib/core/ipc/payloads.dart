@@ -813,11 +813,13 @@ final class TrafficSnapshot {
     Map<String, GroupState> groups = const {},
     this.blockedToday,
     List<FailedHost> failedHosts = const [],
+    Map<String, ExitStats> exits = const {},
   }) : tunnels = Map.unmodifiable(tunnels),
        latency = Map.unmodifiable(latency),
        recentHosts = List.unmodifiable(recentHosts),
        groups = Map.unmodifiable(groups),
-       failedHosts = List.unmodifiable(failedHosts);
+       failedHosts = List.unmodifiable(failedHosts),
+       exits = Map.unmodifiable(exits);
 
   factory TrafficSnapshot.fromJson(Map<String, Object?> json) =>
       TrafficSnapshot(
@@ -853,6 +855,12 @@ final class TrafficSnapshot {
             : _list(json, 'failedHosts')
                   .map((value) => FailedHost.fromJson(_map(value, 'failed')))
                   .toList(),
+        exits: json['exits'] == null
+            ? const {}
+            : _objectMap(json['exits'], 'exits').map(
+                (key, value) =>
+                    MapEntry(key, ExitStats.fromJson(_map(value, key))),
+              ),
       );
 
   final DateTime sampledAt;
@@ -876,6 +884,10 @@ final class TrafficSnapshot {
   /// F19: connections that could not be established since Turn On.
   final List<FailedHost> failedHosts;
 
+  /// F20: per-exit connection counters since Turn On, keyed by exit id
+  /// (`direct`, a tunnel id, a group id).
+  final Map<String, ExitStats> exits;
+
   TrafficCounters countersForTunnel(String id) =>
       tunnels[id] ?? TrafficCounters.zero;
 
@@ -889,6 +901,7 @@ final class TrafficSnapshot {
     'groups': groups.map((key, value) => MapEntry(key, value.toJson())),
     if (blockedToday != null) 'blockedToday': blockedToday,
     'failedHosts': failedHosts.map((host) => host.toJson()).toList(),
+    'exits': exits.map((key, value) => MapEntry(key, value.toJson())),
   };
 
   @override
@@ -908,7 +921,8 @@ final class TrafficSnapshot {
       const ListEquality<RecentHost>().equals(recentHosts, other.recentHosts) &&
       const MapEquality<String, GroupState>().equals(groups, other.groups) &&
       blockedToday == other.blockedToday &&
-      const ListEquality<FailedHost>().equals(failedHosts, other.failedHosts);
+      const ListEquality<FailedHost>().equals(failedHosts, other.failedHosts) &&
+      const MapEquality<String, ExitStats>().equals(exits, other.exits);
   @override
   int get hashCode => Object.hash(
     sampledAt,
@@ -920,6 +934,7 @@ final class TrafficSnapshot {
     const MapEquality<String, GroupState>().hash(groups),
     blockedToday,
     const ListEquality<FailedHost>().hash(failedHosts),
+    const MapEquality<String, ExitStats>().hash(exits),
   );
 }
 
@@ -1162,6 +1177,66 @@ final class FailedHost {
   @override
   int get hashCode =>
       Object.hash(host, processPath, exit, reason, count, lastSeen);
+}
+
+/// Connection counters for one exit since Turn On (F20), fed by the same
+/// lines [FailedHost] reads.
+final class ExitStats {
+  const ExitStats({
+    this.opened,
+    this.failed = 0,
+    this.blocked = 0,
+    this.lastFailure,
+    this.lastFailedAt,
+  });
+
+  factory ExitStats.fromJson(Map<String, Object?> json) => ExitStats(
+    opened: json['opened'] == null ? null : _int(json, 'opened'),
+    failed: _int(json, 'failed'),
+    blocked: _int(json, 'blocked'),
+    lastFailure: json['lastFailure'] == null
+        ? null
+        : FailureReason.fromJson(_map(json['lastFailure'], 'lastFailure')),
+    lastFailedAt: json['lastFailedAt'] == null
+        ? null
+        : _date(json, 'lastFailedAt'),
+  );
+
+  /// Connections opened through this exit; null while no match/`using` line
+  /// has been seen since the last reset (log detail Problems — the Via
+  /// column's own limit). 0 once a match line has been seen but this exit
+  /// has carried nothing.
+  final int? opened;
+
+  /// Connections through this exit that could not be established.
+  final int failed;
+
+  /// Flows and lookups the block list rejected; only ever non-zero under the
+  /// `direct` key (a blocked connection never reaches an outbound).
+  final int blocked;
+  final FailureReason? lastFailure;
+  final DateTime? lastFailedAt;
+
+  Map<String, Object?> toJson() => {
+    if (opened != null) 'opened': opened,
+    'failed': failed,
+    'blocked': blocked,
+    if (lastFailure != null) 'lastFailure': lastFailure!.toJson(),
+    if (lastFailedAt != null)
+      'lastFailedAt': JsonCoding.encodeDate(lastFailedAt!),
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is ExitStats &&
+      opened == other.opened &&
+      failed == other.failed &&
+      blocked == other.blocked &&
+      lastFailure == other.lastFailure &&
+      lastFailedAt == other.lastFailedAt;
+  @override
+  int get hashCode =>
+      Object.hash(opened, failed, blocked, lastFailure, lastFailedAt);
 }
 
 abstract final class IpcCodec {

@@ -769,6 +769,9 @@ type TrafficSnapshot struct {
 	BlockedToday *int `json:"blockedToday,omitempty"`
 	// F19: connections that could not be established since Turn On, newest first.
 	FailedHosts []FailedHost `json:"failedHosts"`
+	// F20: per-exit connection counters since Turn On, keyed by exit id (direct, a
+	// tunnel id, a group id).
+	Exits map[string]ExitStats `json:"exits"`
 }
 
 // CountersForTunnel returns zero counters when id is absent.
@@ -786,6 +789,7 @@ func (s TrafficSnapshot) MarshalJSON() ([]byte, error) {
 		"recentHosts": nonNilSlice(s.RecentHosts),
 		"groups":      nonNilMap(s.Groups),
 		"failedHosts": nonNilSlice(s.FailedHosts),
+		"exits":       nonNilMap(s.Exits),
 	}
 	if s.BlockedToday != nil {
 		object["blockedToday"] = *s.BlockedToday
@@ -805,6 +809,7 @@ func (s *TrafficSnapshot) UnmarshalJSON(data []byte) error {
 		Groups       map[string]GroupState      `json:"groups"`
 		BlockedToday *int                       `json:"blockedToday"`
 		FailedHosts  []FailedHost               `json:"failedHosts"`
+		Exits        map[string]ExitStats       `json:"exits"`
 	}
 	if err := decodeRequiredObject(data, "traffic snapshot", &wire); err != nil {
 		return err
@@ -814,6 +819,7 @@ func (s *TrafficSnapshot) UnmarshalJSON(data []byte) error {
 		Direct: wire.Direct, Latency: nonNilMap(wire.Latency),
 		RecentHosts: nonNilSlice(wire.RecentHosts), Groups: nonNilMap(wire.Groups),
 		BlockedToday: wire.BlockedToday, FailedHosts: nonNilSlice(wire.FailedHosts),
+		Exits: nonNilMap(wire.Exits),
 	}
 	return nil
 }
@@ -951,6 +957,37 @@ func (f FailedHost) MarshalJSON() ([]byte, error) {
 	}
 	if f.ProcessPath != "" {
 		object["processPath"] = f.ProcessPath
+	}
+	return MarshalWire(object)
+}
+
+// ExitStats holds per-exit connection counters since Turn On (F20), fed by the same lines
+// FailedHost reads.
+type ExitStats struct {
+	// Connections opened through this exit; nil while no match/`using` line has been
+	// seen since the last Clear() (log detail Problems — the Via column's own limit). 0
+	// once a match line has been seen but this exit has carried nothing.
+	Opened *int `json:"opened"`
+	// Connections through this exit that could not be established.
+	Failed int `json:"failed"`
+	// Flows and lookups the block list rejected; only ever non-zero under the direct key
+	// (a blocked connection never reaches an outbound).
+	Blocked      int            `json:"blocked"`
+	LastFailure  *FailureReason `json:"lastFailure"`
+	LastFailedAt *Timestamp     `json:"lastFailedAt"`
+}
+
+// MarshalJSON omits opened/lastFailure/lastFailedAt like the Swift optionals.
+func (e ExitStats) MarshalJSON() ([]byte, error) {
+	object := map[string]any{"failed": e.Failed, "blocked": e.Blocked}
+	if e.Opened != nil {
+		object["opened"] = *e.Opened
+	}
+	if e.LastFailure != nil {
+		object["lastFailure"] = *e.LastFailure
+	}
+	if e.LastFailedAt != nil {
+		object["lastFailedAt"] = *e.LastFailedAt
 	}
 	return MarshalWire(object)
 }

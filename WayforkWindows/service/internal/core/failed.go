@@ -14,6 +14,21 @@ type FailedConnections struct {
 	pending      map[string]*failedPending
 	pendingOrder []string
 	rows         map[string]FailedHost
+
+	// F20: per-exit connection counters since the last Clear(), fed by the same lines.
+	openedCounts      map[string]int
+	failedCounts      map[string]int
+	blockedCount      int
+	lastFailureByExit map[string]lastFailureAt
+	// sawMatchLine is whether a match/`using` line has been seen since the last Clear() —
+	// while false, Exits() reports a nil Opened for every exit (log detail Problems).
+	sawMatchLine bool
+}
+
+// lastFailureAt is the last failure recorded for one exit (F20).
+type lastFailureAt struct {
+	reason FailureReason
+	at     time.Time
 }
 
 // FailedIDCapacity is how many connection ids the join remembers.
@@ -26,7 +41,11 @@ type failedPending struct {
 
 // NewFailedConnections returns an empty tracker.
 func NewFailedConnections() *FailedConnections {
-	return &FailedConnections{pending: map[string]*failedPending{}, rows: map[string]FailedHost{}}
+	return &FailedConnections{
+		pending: map[string]*failedPending{}, rows: map[string]FailedHost{},
+		openedCounts: map[string]int{}, failedCounts: map[string]int{},
+		lastFailureByExit: map[string]lastFailureAt{},
+	}
 }
 
 // IsInterestingLogLine is the cheap pre-filter for the engine's relay.
@@ -59,10 +78,17 @@ func (f *FailedConnections) Ingest(line string, level LogLevel, now time.Time) {
 		blockList := strings.Contains(rest, "rule_set="+BlockListRuleSetTag)
 		switch {
 		case (target == "reject" || target == "predefined") && blockList:
+			f.sawMatchLine = true
 			f.record(id, FailureReason{Kind: FailureBlocked}, "", true, now)
 		case strings.Contains(rest, "router:"):
+			f.sawMatchLine = true
 			pending := f.remember(id)
-			pending.exit, pending.hasExit = exitIDForTarget(target), true
+			exit := exitIDForTarget(target)
+			// Opened counts once per connection id, at the first match/`using` line.
+			if !pending.hasExit {
+				f.openedCounts[exit]++
+			}
+			pending.exit, pending.hasExit = exit, true
 		}
 	} else if level == LogLevelError {
 		failure, ok := valueAfter(rest, "open connection to ")
@@ -100,11 +126,53 @@ func (f *FailedConnections) Snapshot() []FailedHost {
 	return out
 }
 
+// Exits returns per-exit counters since the last Clear() (F20), keyed by exit id
+// (`direct`, a tunnel id, a group id).
+func (f *FailedConnections) Exits() map[string]ExitStats {
+	ids := map[string]struct{}{}
+	for id := range f.openedCounts {
+		ids[id] = struct{}{}
+	}
+	for id := range f.failedCounts {
+		ids[id] = struct{}{}
+	}
+	for id := range f.lastFailureByExit {
+		ids[id] = struct{}{}
+	}
+	if f.blockedCount > 0 {
+		ids["direct"] = struct{}{}
+	}
+	result := make(map[string]ExitStats, len(ids))
+	for id := range ids {
+		stats := ExitStats{Failed: f.failedCounts[id]}
+		if f.sawMatchLine {
+			opened := f.openedCounts[id]
+			stats.Opened = &opened
+		}
+		if id == "direct" {
+			stats.Blocked = f.blockedCount
+		}
+		if last, ok := f.lastFailureByExit[id]; ok {
+			reason := last.reason
+			stats.LastFailure = &reason
+			at := NewTimestamp(last.at)
+			stats.LastFailedAt = &at
+		}
+		result[id] = stats
+	}
+	return result
+}
+
 // Clear forgets everything (Turn Off).
 func (f *FailedConnections) Clear() {
 	f.pending = map[string]*failedPending{}
 	f.pendingOrder = nil
 	f.rows = map[string]FailedHost{}
+	f.openedCounts = map[string]int{}
+	f.failedCounts = map[string]int{}
+	f.blockedCount = 0
+	f.lastFailureByExit = map[string]lastFailureAt{}
+	f.sawMatchLine = false
 }
 
 func (f *FailedConnections) remember(id string) *failedPending {
@@ -132,6 +200,12 @@ func (f *FailedConnections) record(id string, reason FailureReason, exitOverride
 		exit = exitOverride
 	} else if pending.hasExit {
 		exit = pending.exit
+	}
+	if reason.Kind == FailureBlocked {
+		f.blockedCount++
+	} else {
+		f.failedCounts[exit]++
+		f.lastFailureByExit[exit] = lastFailureAt{reason: reason, at: now}
 	}
 	key := pending.host + "|" + pending.processPath
 	if row, ok := f.rows[key]; ok {

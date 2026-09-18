@@ -155,6 +155,9 @@ final class TrayController {
       case TrayCommandShowLogs():
         navigator.showLogs();
         await window.showAndFocus();
+      case TrayCommandShowConnections():
+        navigator.showConnections();
+        await window.showAndFocus();
       case TrayCommandShowSettings():
         navigator.go(AppPage.general);
         await window.showAndFocus();

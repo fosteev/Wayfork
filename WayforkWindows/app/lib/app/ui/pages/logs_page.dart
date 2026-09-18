@@ -29,6 +29,10 @@ class LogsPage extends StatefulWidget {
   State<LogsPage> createState() => _LogsPageState();
 }
 
+/// `Log` (the ring buffer) or `Connections` (F20, the per-exit table) — the
+/// `Log · Connections` segment in the page header.
+enum _LogsView { log, connections }
+
 class _LogsPageState extends State<LogsPage> {
   final _search = TextEditingController();
   final _scroll = ScrollController();
@@ -40,6 +44,9 @@ class _LogsPageState extends State<LogsPage> {
   /// The Can't reach row whose lines are shown (F19), by host.
   String? _selectedFailed;
   bool _follow = true;
+
+  _LogsView _view = _LogsView.log;
+  ExitsWindow _exitsWindow = ExitsWindow.sinceTurnOn;
 
   @override
   void dispose() {
@@ -54,11 +61,16 @@ class _LogsPageState extends State<LogsPage> {
     // "Show Log" points at one tunnel; a later visit keeps the user's filter.
     final preselected = NavigationScope.of(context).takeLogSource();
     if (preselected != null) _source = preselected;
+    // F20: the tray's Connections entry opens straight on that view.
+    if (NavigationScope.of(context).takeOpenConnections()) {
+      _view = _LogsView.connections;
+    }
     // F19: the Dashboard's *Show* opens the page filtered to a host.
     if (model.logsPreselectedSearch case final host?) {
       _search.text = host;
       _level = LogLevel.debug;
       _selectedFailed = host;
+      _view = _LogsView.log;
       model.logsPreselectedSearch = null;
     }
     return ListenableBuilder(
@@ -68,72 +80,144 @@ class _LogsPageState extends State<LogsPage> {
         final shown = _follow && lines.length > LogsPage.followWindow
             ? lines.sublist(lines.length - LogsPage.followWindow)
             : lines;
-        if (_follow) {
+        if (_follow && _view == _LogsView.log) {
           WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToEnd());
         }
         return Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _header(context, model, lines),
-              const SizedBox(height: 10),
-              _filters(context, model),
-              const SizedBox(height: 10),
-              // F19: what could not be reached, above the lines; a click
-              // filters to the host.
-              if (model.globalState.isRunning) ...[
-                FailedPane(
-                  model: model,
-                  selectedHost: _selectedFailed,
-                  onSelect: (row) => setState(() {
-                    _selectedFailed = row?.host;
-                    _search.text = row?.host ?? '';
-                    if (row != null) _level = LogLevel.debug;
-                  }),
-                ),
-                const SizedBox(height: 10),
-              ],
-              Expanded(child: _lines(context, model, shown)),
-            ],
+            children: _view == _LogsView.log
+                ? [
+                    _titleRow(),
+                    const SizedBox(height: 8),
+                    _header(context, model, lines),
+                    const SizedBox(height: 10),
+                    _filters(context, model),
+                    const SizedBox(height: 10),
+                    // F19: what could not be reached, above the lines; a
+                    // click filters to the host.
+                    if (model.globalState.isRunning) ...[
+                      FailedPane(
+                        model: model,
+                        selectedHost: _selectedFailed,
+                        onSelect: (row) => setState(() {
+                          _selectedFailed = row?.host;
+                          _search.text = row?.host ?? '';
+                          if (row != null) _level = LogLevel.debug;
+                        }),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    Expanded(child: _lines(context, model, shown)),
+                  ]
+                : [
+                    _titleRow(),
+                    const SizedBox(height: 8),
+                    _header(context, model, lines),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: ExitsTable(model: model, window: _exitsWindow),
+                    ),
+                  ],
           ),
         );
       },
     );
   }
 
+  /// Page title and the `Log · Connections` segment (F20), on their own row
+  /// so the controls below keep the width they had before the segment.
+  Widget _titleRow() => Row(
+    children: [
+      const PageTitle('Logs'),
+      const SizedBox(width: 10),
+      _viewSegment(),
+    ],
+  );
+
   Widget _header(BuildContext context, AppModel model, List<LogLine> lines) =>
       Row(
         children: [
-          const PageTitle('Logs'),
-          const SizedBox(width: 10),
-          Expanded(
-            child: SecondaryText(
-              '${lines.length} of ${model.logs.lines.length} lines',
-              color: FluentTheme.of(context).resources.textFillColorTertiary,
+          if (_view == _LogsView.log) ...[
+            Expanded(
+              child: SecondaryText(
+                '${lines.length} of ${model.logs.lines.length} lines',
+                color: FluentTheme.of(context).resources.textFillColorTertiary,
+              ),
             ),
-          ),
-          const SizedBox(width: 10),
-          ToggleButton(
-            checked: _follow,
-            onChanged: (on) {
-              setState(() => _follow = on);
-              if (on) _scrollToEnd();
-            },
-            child: const Text('Follow'),
-          ),
-          const SizedBox(width: 8),
-          Button(
-            onPressed: () => unawaited(_copy(model, lines)),
-            child: const Text('Copy'),
-          ),
-          const SizedBox(width: 8),
-          Button(
-            onPressed: model.logs.lines.isEmpty ? null : model.logs.clear,
-            child: const Text('Clear'),
-          ),
+            const SizedBox(width: 10),
+            ToggleButton(
+              checked: _follow,
+              onChanged: (on) {
+                setState(() => _follow = on);
+                if (on) _scrollToEnd();
+              },
+              child: const Text('Follow'),
+            ),
+            const SizedBox(width: 8),
+            Button(
+              onPressed: () => unawaited(_copy(model, lines)),
+              child: const Text('Copy'),
+            ),
+            const SizedBox(width: 8),
+            Button(
+              onPressed: model.logs.lines.isEmpty ? null : model.logs.clear,
+              child: const Text('Clear'),
+            ),
+          ] else ...[
+            SizedBox(
+              width: 150,
+              child: ComboBox<ExitsWindow>(
+                isExpanded: true,
+                value: _exitsWindow,
+                items: const [
+                  ComboBoxItem(
+                    value: ExitsWindow.sinceTurnOn,
+                    child: Text('Since Turn On'),
+                  ),
+                  ComboBoxItem(
+                    value: ExitsWindow.last5Min,
+                    child: Text('Last 5 min'),
+                  ),
+                ],
+                onChanged: (window) =>
+                    setState(() => _exitsWindow = window ?? _exitsWindow),
+              ),
+            ),
+            const Spacer(),
+            Button(
+              onPressed: model.globalState.isRunning
+                  ? () => model.resetExits()
+                  : null,
+              child: const Text('Reset'),
+            ),
+            const SizedBox(width: 8),
+            Button(
+              onPressed: () => unawaited(_copyExits(model)),
+              child: const Text('Copy'),
+            ),
+          ],
         ],
       );
+
+  /// The `Log · Connections` segment (F20).
+  Widget _viewSegment() => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      ToggleButton(
+        checked: _view == _LogsView.log,
+        onChanged: (_) => setState(() => _view = _LogsView.log),
+        child: const Text('Log'),
+      ),
+      const SizedBox(width: 4),
+      ToggleButton(
+        checked: _view == _LogsView.connections,
+        onChanged: (_) => setState(() => _view = _LogsView.connections),
+        child: const Text('Connections'),
+      ),
+    ],
+  );
 
   Widget _filters(BuildContext context, AppModel model) => Row(
     children: [
@@ -269,6 +353,51 @@ class _LogsPageState extends State<LogsPage> {
     if (!source.startsWith('openvpn:')) return source;
     final tunnel = model.store.tunnel(source.substring(8));
     return tunnel == null ? source : 'openvpn:${tunnel.name}';
+  }
+
+  /// *Copy* on the Connections view: the table tab-separated (header, rows,
+  /// total).
+  Future<void> _copyExits(AppModel model) {
+    final rows = model.exitRows(_exitsWindow);
+    final totals = model.exitsTotals(_exitsWindow);
+    const columns = [
+      'Exit',
+      'Connections',
+      'Reached',
+      'Failed',
+      'Fail rate',
+      'Last failure',
+    ];
+    final lines = <String>[
+      columns.join('\t'),
+      for (final row in rows) _exitRowLine(row),
+      [
+        ExitsText.totalLabel,
+        '${totals.connections}',
+        '${totals.reached}',
+        '${totals.failed}',
+        totals.rate == null ? '—' : ExitsText.rate(totals.rate!),
+        '',
+      ].join('\t'),
+    ];
+    return Clipboard.setData(ClipboardData(text: lines.join('\n')));
+  }
+
+  String _exitRowLine(ExitRow row) {
+    final name = row.usingMember == null
+        ? row.name
+        : '${row.name} (${ExitsText.using(row.usingMember!)})';
+    final rate = row.kind == ExitRowKind.blocked
+        ? ExitsText.notCountedAsFailures
+        : (row.rate == null ? '—' : ExitsText.rate(row.rate!));
+    return [
+      name,
+      row.connections?.toString() ?? '—',
+      row.reached?.toString() ?? '—',
+      '${row.failed}',
+      rate,
+      row.lastFailureText ?? '',
+    ].join('\t');
   }
 
   Future<void> _copy(AppModel model, List<LogLine> lines) => Clipboard.setData(
@@ -444,7 +573,7 @@ class FailedPane extends StatelessWidget {
               child: Column(
                 children: [
                   for (final row in rows)
-                    _FailedRow(
+                    FailedRow(
                       model: model,
                       row: row,
                       isSelected: row.host == selectedHost,
@@ -494,23 +623,23 @@ class FailedPane extends StatelessWidget {
       child: Row(
         children: [
           SizedBox(
-            width: _FailedRow.siteWidth,
+            width: FailedRow.siteWidth,
             child: Text('SITE', style: style),
           ),
           SizedBox(
-            width: _FailedRow.appWidth,
+            width: FailedRow.appWidth,
             child: Text('APP', style: style),
           ),
           SizedBox(
-            width: _FailedRow.triesWidth,
+            width: FailedRow.triesWidth,
             child: Text('TRIED', style: style),
           ),
           SizedBox(
-            width: _FailedRow.whyWidth,
+            width: FailedRow.whyWidth,
             child: Text('WHY', style: style),
           ),
           SizedBox(
-            width: _FailedRow.viaWidth,
+            width: FailedRow.viaWidth,
             child: Text('VIA', style: style),
           ),
           Text('LAST', style: style),
@@ -521,12 +650,13 @@ class FailedPane extends StatelessWidget {
 }
 
 /// One pane row: site, app, tries, why, via, last; actions on hover.
-class _FailedRow extends StatefulWidget {
-  const _FailedRow({
+class FailedRow extends StatefulWidget {
+  const FailedRow({
     required this.model,
     required this.row,
     required this.isSelected,
     required this.onSelect,
+    super.key,
   });
 
   final AppModel model;
@@ -541,10 +671,10 @@ class _FailedRow extends StatefulWidget {
   static const viaWidth = 70.0;
 
   @override
-  State<_FailedRow> createState() => _FailedRowState();
+  State<FailedRow> createState() => FailedRowState();
 }
 
-class _FailedRowState extends State<_FailedRow> {
+class FailedRowState extends State<FailedRow> {
   bool _hovering = false;
 
   @override
@@ -568,7 +698,7 @@ class _FailedRowState extends State<_FailedRow> {
           child: Row(
             children: [
               SizedBox(
-                width: _FailedRow.siteWidth,
+                width: FailedRow.siteWidth,
                 child: Row(
                   children: [
                     Icon(
@@ -590,11 +720,11 @@ class _FailedRowState extends State<_FailedRow> {
                 ),
               ),
               SizedBox(
-                width: _FailedRow.appWidth,
+                width: FailedRow.appWidth,
                 child: SecondaryText(processName(row.processPath)),
               ),
               SizedBox(
-                width: _FailedRow.triesWidth,
+                width: FailedRow.triesWidth,
                 child: Text(
                   FailedText.tries(row.count),
                   style: const TextStyle(
@@ -604,7 +734,7 @@ class _FailedRowState extends State<_FailedRow> {
                 ),
               ),
               SizedBox(
-                width: _FailedRow.whyWidth,
+                width: FailedRow.whyWidth,
                 child: Tooltip(
                   message: detail ?? reason,
                   child: Text(
@@ -620,7 +750,7 @@ class _FailedRowState extends State<_FailedRow> {
                 ),
               ),
               SizedBox(
-                width: _FailedRow.viaWidth,
+                width: FailedRow.viaWidth,
                 child: SecondaryText(model.failedVia(row)),
               ),
               SecondaryText(
@@ -656,6 +786,367 @@ class _FailedRowState extends State<_FailedRow> {
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// *Connections by exit* (F20, docs/design/prototype/windows.html board
+/// W17): one row per exit — every tunnel, every group (with the member it
+/// is using), *Not via any tunnel*, and a dimmed *Blocked by your list* row
+/// outside the total. Clicking a row expands the F19 rows that went through
+/// it, reusing [FailedRow].
+class ExitsTable extends StatefulWidget {
+  const ExitsTable({required this.model, required this.window, super.key});
+
+  final AppModel model;
+  final ExitsWindow window;
+
+  static const exitWidth = 220.0;
+  static const numWidth = 90.0;
+  static const rateWidth = 110.0;
+
+  @override
+  State<ExitsTable> createState() => _ExitsTableState();
+}
+
+class _ExitsTableState extends State<ExitsTable> {
+  String? _expanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final model = widget.model;
+    if (!model.globalState.isRunning) {
+      return const Padding(
+        padding: EdgeInsets.all(12),
+        child: SecondaryText('Turn on to see connections by exit.'),
+      );
+    }
+    final rows = model.exitRows(widget.window);
+    final totals = model.exitsTotals(widget.window);
+    final isEmpty = totals.connections == 0 && totals.failed == 0;
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          GroupCard(
+            children: [
+              _header(context, since: model.exitsSince, isEmpty: isEmpty),
+              _columns(context),
+              for (final row in rows) ...[
+                _ExitRow(
+                  row: row,
+                  isExpanded: _expanded == row.id,
+                  onTap: () => setState(
+                    () => _expanded = _expanded == row.id ? null : row.id,
+                  ),
+                ),
+                if (_expanded == row.id)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 28),
+                    child: Column(
+                      children: [
+                        for (final host in model.failedHostsForExit(row.id))
+                          FailedRow(
+                            model: model,
+                            row: host,
+                            isSelected: false,
+                            onSelect: () {},
+                          ),
+                      ],
+                    ),
+                  ),
+              ],
+              _totalRow(context, totals),
+            ],
+          ),
+          if (model.exitsNeedNormalLogLevel) ...[
+            const SizedBox(height: 8),
+            const SecondaryText(ExitsText.problemsHint, maxLines: 2),
+          ],
+          const SizedBox(height: 8),
+          const SecondaryText(
+            'A connection counts as reached when sing-box could open it; '
+            "what happened inside it (a slow page, an HTTP 403) is not "
+            'visible here. Counters restart on Turn On and on Reset.',
+            maxLines: 3,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _header(
+    BuildContext context, {
+    required DateTime? since,
+    required bool isEmpty,
+  }) {
+    final theme = FluentTheme.of(context);
+    return Container(
+      color: theme.resources.cardBackgroundFillColorSecondary,
+      padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+      child: Row(
+        children: [
+          Icon(
+            FluentIcons.plug_connected,
+            size: 12,
+            color: theme.resources.textFillColorSecondary,
+          ),
+          const SizedBox(width: 8),
+          const Text(
+            ExitsText.header,
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: SecondaryText(
+              isEmpty
+                  ? ExitsText.empty(since: since)
+                  : ExitsText.hint(since: since),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _columns(BuildContext context) {
+    final theme = FluentTheme.of(context);
+    final style = theme.typography.caption?.copyWith(
+      fontSize: 10,
+      fontWeight: FontWeight.w600,
+      color: theme.resources.textFillColorTertiary,
+    );
+    Widget num(String text, double width) => SizedBox(
+      width: width,
+      child: Text(text, style: style),
+    );
+    return Container(
+      color: theme.resources.subtleFillColorTertiary,
+      padding: const EdgeInsets.fromLTRB(12, 3, 12, 3),
+      child: Row(
+        children: [
+          SizedBox(
+            width: ExitsTable.exitWidth,
+            child: Text('EXIT', style: style),
+          ),
+          num('CONNECTIONS', ExitsTable.numWidth),
+          num('REACHED', ExitsTable.numWidth),
+          num('FAILED', ExitsTable.numWidth),
+          SizedBox(
+            width: ExitsTable.rateWidth,
+            child: Text('FAIL RATE', style: style),
+          ),
+          Expanded(child: Text('LAST FAILURE', style: style)),
+        ],
+      ),
+    );
+  }
+
+  Widget _totalRow(BuildContext context, ExitsTotals totals) {
+    final theme = FluentTheme.of(context);
+    final style = TextStyle(
+      fontWeight: FontWeight.w600,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    Widget num(String text, double width) => SizedBox(
+      width: width,
+      child: Text(text, style: style),
+    );
+    return Container(
+      color: theme.resources.subtleFillColorTertiary,
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: ExitsTable.exitWidth,
+            child: Text(ExitsText.totalLabel, style: style),
+          ),
+          num('${totals.connections}', ExitsTable.numWidth),
+          num('${totals.reached}', ExitsTable.numWidth),
+          num('${totals.failed}', ExitsTable.numWidth),
+          SizedBox(
+            width: ExitsTable.rateWidth,
+            child: Text(
+              totals.rate == null ? '—' : ExitsText.rate(totals.rate!),
+              style: style,
+            ),
+          ),
+          const Expanded(child: SizedBox()),
+        ],
+      ),
+    );
+  }
+}
+
+/// One row of [ExitsTable]: name (+ default/group badge), the counters, the
+/// fail-rate bar and the last failure; a chevron expands the F19 rows.
+class _ExitRow extends StatelessWidget {
+  const _ExitRow({
+    required this.row,
+    required this.isExpanded,
+    required this.onTap,
+  });
+
+  final ExitRow row;
+  final bool isExpanded;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = FluentTheme.of(context);
+    final isBlocked = row.kind == ExitRowKind.blocked;
+    final numStyle = TextStyle(
+      fontFeatures: const [FontFeature.tabularFigures()],
+      color: isBlocked ? theme.resources.textFillColorTertiary : null,
+    );
+    Widget num(String text, double width) => SizedBox(
+      width: width,
+      child: Text(text, style: numStyle),
+    );
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        color: isExpanded ? theme.accentColor.withValues(alpha: 0.08) : null,
+        padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+        child: Row(
+          children: [
+            SizedBox(
+              width: ExitsTable.exitWidth,
+              child: Opacity(
+                opacity: isBlocked ? 0.7 : 1,
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        row.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: row.isDefault
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                    if (row.isDefault) ...[
+                      const SizedBox(width: 4),
+                      const _Badge('Default', accent: true),
+                    ],
+                    if (row.kind == ExitRowKind.group) ...[
+                      const SizedBox(width: 4),
+                      const _Badge('Group'),
+                    ],
+                    if (row.usingMember != null) ...[
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: SecondaryText(ExitsText.using(row.usingMember!)),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            num(row.connections?.toString() ?? '—', ExitsTable.numWidth),
+            num(row.reached?.toString() ?? '—', ExitsTable.numWidth),
+            num('${row.failed}', ExitsTable.numWidth),
+            SizedBox(
+              width: ExitsTable.rateWidth,
+              child: isBlocked
+                  ? SecondaryText(ExitsText.notCountedAsFailures, maxLines: 2)
+                  : (row.rate == null
+                        ? const Text('—')
+                        : _RateBar(rate: row.rate!)),
+            ),
+            Expanded(
+              child: SecondaryText(
+                row.lastFailureText ?? '—',
+                color: row.isError
+                    ? theme.resources.systemFillColorCritical
+                    : null,
+              ),
+            ),
+            Icon(
+              isExpanded ? FluentIcons.chevron_up : FluentIcons.chevron_down,
+              size: 10,
+              color: theme.resources.textFillColorTertiary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The fail-rate bar: grey ≤ 1 %, amber ≤ 5 %, red above.
+class _RateBar extends StatelessWidget {
+  const _RateBar({required this.rate});
+
+  final double rate;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = FluentTheme.of(context);
+    final rateClass = ExitsText.rateClass(rate);
+    final color = switch (rateClass) {
+      ExitsRateClass.ok => theme.resources.textFillColorTertiary,
+      ExitsRateClass.warn => Colors.orange,
+      ExitsRateClass.bad => theme.resources.systemFillColorCritical,
+    };
+    return Row(
+      children: [
+        Container(
+          width: 32,
+          height: 4,
+          decoration: BoxDecoration(
+            color: theme.resources.subtleFillColorTertiary,
+            borderRadius: BorderRadius.circular(2),
+          ),
+          child: FractionallySizedBox(
+            alignment: Alignment.centerLeft,
+            widthFactor: rate.clamp(0, 1),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(ExitsText.rate(rate)),
+      ],
+    );
+  }
+}
+
+/// A small pill label — *Default*, *Group*.
+class _Badge extends StatelessWidget {
+  const _Badge(this.text, {this.accent = false});
+
+  final String text;
+  final bool accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = FluentTheme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: accent
+            ? theme.accentColor.withValues(alpha: 0.15)
+            : theme.resources.subtleFillColorTertiary,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 9,
+          fontWeight: FontWeight.w600,
+          color: accent
+              ? theme.accentColor
+              : theme.resources.textFillColorSecondary,
         ),
       ),
     );

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
@@ -45,6 +46,7 @@ import 'package:wayfork/core/vless/vless_uri_parser.dart';
 import 'package:wayfork/core/wireguard/wireguard_conf_parser.dart';
 
 part 'app_model_diagnostics.dart';
+part 'app_model_exits.dart';
 part 'app_model_features.dart';
 part 'app_model_groups.dart';
 part 'app_model_import_export.dart';
@@ -154,6 +156,16 @@ final class AppModel extends ChangeNotifier {
   String? _lastServiceProblem;
   DaemonInfo? _serviceInfo;
   TrafficSnapshot? _traffic;
+
+  /// F20: samples of `traffic.exits`, oldest first, trimmed to a bit over
+  /// the ring window — answers *Last 5 min*.
+  final List<(DateTime, Map<String, ExitStats>)> _exitsRing = [];
+
+  /// F20: `traffic.exits` at the last *Reset*; null before one happens.
+  Map<String, ExitStats>? _exitsBaseline;
+
+  /// F20: when *Reset* last happened on the Connections view.
+  DateTime? _exitsResetAt;
   Set<String> _missingSecrets = const {};
   bool _iconPulse = false;
   bool _persistenceDisabled = false;
@@ -531,6 +543,7 @@ final class AppModel extends ChangeNotifier {
     _desiredOn = true;
     hiddenRecentHosts.clear();
     hiddenFailedHosts.clear();
+    resetExitsTracking();
     _setTransition(AppTransition.starting(since: _now()));
     notifyListeners();
     try {
@@ -919,6 +932,7 @@ final class AppModel extends ChangeNotifier {
   void _handleTraffic(TrafficSnapshot snapshot) {
     if (!_desiredOn || _status?.engine.isRunning != true) return;
     _traffic = snapshot;
+    recordExitsSample(snapshot);
     _trafficStaleTimer?.cancel();
     _trafficStaleTimer = Timer(trafficStaleAfter, () {
       _traffic = null;

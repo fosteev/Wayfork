@@ -184,3 +184,60 @@ abstract final class FailedText {
 
   static String _count(int n, String noun) => '$n $noun${n == 1 ? '' : 's'}';
 }
+
+/// Strings of the Connections view (F20).
+abstract final class ExitsText {
+  static const header = 'Connections by exit';
+  static const totalLabel = 'All exits';
+  static const blockedLabel = 'Blocked by your list';
+  static const notCountedAsFailures = 'not counted as failures';
+  static const problemsHint =
+      'Connections and the rate need log detail Normal — change it';
+  static const footerTitle = 'Connections';
+
+  /// `since 14:31 · click an exit to see what failed through it`.
+  static String hint({required DateTime? since}) {
+    const tail = 'click an exit to see what failed through it';
+    if (since == null) return tail;
+    return 'since ${FailedText.clock(since)} · $tail';
+  }
+
+  /// `using Home` under a group's name.
+  static String using(String memberName) => 'using $memberName';
+
+  /// `no answer · 12 min ago`; null when the exit has not failed (in the
+  /// chosen window).
+  static String? lastFailure(
+    ExitStats stats, {
+    required String? exitName,
+    required DateTime now,
+  }) {
+    final reasonValue = stats.lastFailure;
+    final at = stats.lastFailedAt;
+    if (reasonValue == null || at == null) return null;
+    return '${FailedText.reason(reasonValue, exitName: exitName)} · '
+        '${FailedText.lastSeen(at, now: now)}';
+  }
+
+  /// `0%` / `0.2%` / `100%`.
+  static String rate(double value) {
+    final percent = value * 100;
+    if (percent <= 0) return '0%';
+    if (percent >= 100) return '100%';
+    return '${percent.toStringAsFixed(1)}%';
+  }
+
+  /// Grey ≤ 1 %, amber ≤ 5 %, red above.
+  static ExitsRateClass rateClass(double value) {
+    if (value > 0.05) return ExitsRateClass.bad;
+    if (value > 0.01) return ExitsRateClass.warn;
+    return ExitsRateClass.ok;
+  }
+
+  /// The collapsed table when nothing has gone through any exit yet.
+  static String empty({required DateTime? since}) => since == null
+      ? 'No connections yet.'
+      : 'No connections since ${FailedText.clock(since)} yet.';
+}
+
+enum ExitsRateClass { ok, warn, bad }

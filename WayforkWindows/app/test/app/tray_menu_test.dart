@@ -29,6 +29,7 @@ void main() {
       '---',
       'reconnect',
       'logs',
+      'connections',
       'settings',
       '---',
       'quit',

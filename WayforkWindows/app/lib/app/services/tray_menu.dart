@@ -12,6 +12,7 @@ sealed class TrayCommand {
   const factory TrayCommand.reconnect([String? tunnelID]) =
       TrayCommandReconnect;
   const factory TrayCommand.showLogs() = TrayCommandShowLogs;
+  const factory TrayCommand.showConnections() = TrayCommandShowConnections;
   const factory TrayCommand.showSettings() = TrayCommandShowSettings;
   const factory TrayCommand.repair() = TrayCommandRepair;
   const factory TrayCommand.quit() = TrayCommandQuit;
@@ -84,6 +85,21 @@ final class TrayCommandShowLogs extends TrayCommand {
 
   @override
   String toString() => 'showLogs';
+}
+
+/// Logs on the Connections view (F20): the Windows twin of the popover
+/// footer's *Connections* item, since the flyout has no footer.
+final class TrayCommandShowConnections extends TrayCommand {
+  const TrayCommandShowConnections();
+
+  @override
+  bool operator ==(Object other) => other is TrayCommandShowConnections;
+
+  @override
+  int get hashCode => 8;
+
+  @override
+  String toString() => 'showConnections';
 }
 
 final class TrayCommandShowSettings extends TrayCommand {
@@ -236,6 +252,11 @@ abstract final class TrayMenu {
         key: 'logs',
         label: 'Logs',
         command: TrayCommand.showLogs(),
+      ),
+      const TrayMenuItem(
+        key: 'connections',
+        label: 'Connections',
+        command: TrayCommand.showConnections(),
       ),
       const TrayMenuItem(
         key: 'settings',

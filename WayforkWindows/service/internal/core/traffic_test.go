@@ -170,7 +170,7 @@ func TestAccumulatorWithoutAStartTimeReportsZeroRates(t *testing.T) {
 	if snapshot.Interval != 0 || !snapshot.Direct.IsIdle() || snapshot.Direct.DownTotal != 2 {
 		t.Errorf("snapshot = %+v", snapshot)
 	}
-	if got := mustMarshal(t, snapshot); got != `{"direct":{"connections":1,"downBytesPerSecond":0,"downTotal":2,"oneWayUDPFlows":0,"upBytesPerSecond":0,"upTotal":1},"failedHosts":[],"groups":{},"interval":0,"latency":{},"recentHosts":[],"sampledAt":"2025-08-25T16:40:00Z","tunnels":{}}` {
+	if got := mustMarshal(t, snapshot); got != `{"direct":{"connections":1,"downBytesPerSecond":0,"downTotal":2,"oneWayUDPFlows":0,"upBytesPerSecond":0,"upTotal":1},"exits":{},"failedHosts":[],"groups":{},"interval":0,"latency":{},"recentHosts":[],"sampledAt":"2025-08-25T16:40:00Z","tunnels":{}}` {
 		t.Errorf("snapshot wire = %s", got)
 	}
 }
