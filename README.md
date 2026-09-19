@@ -22,8 +22,13 @@ Windows**, one repository, one rule model, one export format.
 ## Features
 
 - **Tunnels** — OpenVPN profiles (inline certs, credentials asked once), WireGuard configs,
-  and VLESS / Shadowsocks / Trojan / VMess links (TCP, WebSocket, gRPC; TLS and REALITY).
-  Secrets go to the Keychain (macOS) or DPAPI (Windows), never to disk in the clear.
+  VLESS / Shadowsocks / Trojan / VMess links (TCP, WebSocket, gRPC; TLS and REALITY) and
+  subscription URLs. Secrets go to the Keychain (macOS) or DPAPI (Windows), never to disk
+  in the clear.
+- **Tunnel groups** — several tunnels behind one name, *Fastest* or *First live*; rules
+  and the default exit can point at a group, and the card shows which member is in use.
+- **Latency on every card** — measured through each tunnel every 10 s with a 2-minute
+  sparkline; a tunnel that stops answering reads *Not reachable*, with a Retry.
 - **Rules** — `domain → tunnel`, first match wins. Exact (`api.example.com`), suffix
   (`example.com` covers subdomains), wildcard (`*.cdn.example.com`).
 - **Application rules** — route an app, and every process inside it, through a tunnel or
@@ -35,9 +40,21 @@ Windows**, one repository, one rule model, one export format.
 - **Exceptions** — rules that target *Direct*. They win over everything, carving domains,
   apps or ranges out of the default tunnel. `.local`, `.lan`, `.internal`, `.home.arpa`
   are always direct.
+- **Recent** — the sites that went the default way in the last 5 minutes, with the app
+  that opened them; *Route via ▾* turns a row into a rule in one click.
+- **Local proxy port** — a `127.0.0.1:‹port›` SOCKS5/HTTP address per tunnel or group,
+  for `curl`, a browser profile or any app you want through one exit without a rule.
+- **Block ads and trackers** — one switch backed by a bundled, pinned block list compiled
+  into a sing-box rule-set; *Never block* exceptions and a *Blocked N today* counter.
 - **Live edits** — a rule change is a hot reload; a tunnel change reconnects that tunnel only.
 - **Status and traffic** — tray/menu bar icon (off · connecting · on · degraded · error),
   a card per tunnel with state, rule count and live down/up rate, plus a Direct row.
+- **Can't reach** — the Logs window lists the connections that could not be established:
+  site, app, tries, why (*no answer*, *refused*, *blocked by your list*, *‹tunnel› is
+  down*), via which exit; a click filters the log to that site.
+- **Connections by exit** — a second view of the Logs window: per tunnel, group and
+  *Not via any tunnel*, how many connections opened, reached and failed, with the fail
+  rate; an exit expands into its *Can't reach* rows.
 - **Logs and diagnostics** — app, sing-box and per-tunnel OpenVPN logs in one window;
   "Export Diagnostics" zips them with a sanitized config.
 - **Settings** — launch at login, connect on launch, auto-reconnect with backoff, Wayfork
@@ -58,7 +75,7 @@ Requires macOS 14 (Sonoma) or later, Apple silicon or Intel.
 
 1. Download `Wayfork-<version>.dmg`, verify with
    `shasum -a 256 -c Wayfork-<version>.dmg.sha256`, drag **Wayfork** to **Applications**.
-2. Clear the quarantine flag — the 0.2 builds are signed with an Apple *Development*
+2. Clear the quarantine flag — the builds are signed with an Apple *Development*
    certificate but **not notarized**, so Gatekeeper refuses a downloaded copy:
 
    ```sh
@@ -82,7 +99,7 @@ Requires Windows 10 21H2 or Windows 11, x64 or ARM64.
 1. Download `Wayfork-<version>.exe` — it carries both architectures and installs the right
    one. (`Wayfork-<version>-amd64.msi` / `-arm64.msi` are there for MSI-based deployment;
    `$env:PROCESSOR_ARCHITECTURE` says which.) Verify with `Get-FileHash`.
-2. Run it. The 0.2 builds are **unsigned** — no Authenticode certificate yet — so
+2. Run it. The builds are **unsigned** — no Authenticode certificate yet — so
    SmartScreen shows "Windows protected your PC": *More info* → *Run anyway*. The same
    warning appears on the first launch.
 3. The installer puts Wayfork in `%ProgramFiles%\Wayfork`, registers the **Wayfork** service
@@ -118,12 +135,22 @@ under `%LOCALAPPDATA%\Wayfork` are kept.
   than `0.0.0.0/0` is kept as written and flagged — the peer drops whatever falls outside.
 - **Links** — *+ Add › Add from link…* takes `vless://`, `ss://`, `trojan://` and
   `vmess://`; the scheme picks the parser and the sheet shows what it understood. REALITY
-  over TCP is supported, XHTTP is not (see the roadmap). Refused with a reason rather than
+  over TCP and gRPC is supported, XHTTP is not (see the roadmap). Refused with a reason rather than
   guessed: pre-AEAD Shadowsocks ciphers, SIP003 `plugin=`, VMess `alterId` above 0.
 - **Subscriptions** — the same sheet takes an `https://` subscription URL: *Fetch* loads
   it (plain link lines or base64 of them), lists every server with a checkbox and every
   line it could not use with the reason, and adds the checked ones. One-shot: the URL is
   not stored, logged or refreshed — it is a bearer token for every server on it.
+- **Groups** — *+ Add › New group…* puts several tunnels behind one name. *Fastest*
+  measures the members and switches to the quickest; *First live* uses the first member
+  that works and moves on when it fails. Rules and the default exit take a group like a
+  tunnel; the card shows the member in use and why the others are skipped.
+- **Local proxy** — every tunnel and group can expose `127.0.0.1:‹port›` (SOCKS5 and
+  HTTP on one port, from 1081 up) for an app you want through that exit without a rule:
+  `curl --proxy socks5h://127.0.0.1:1081 https://ifconfig.me`. Loopback only.
+- **Latency** — each connected tunnel is probed every 10 s; the number on the card is
+  colour-banded, the sparkline covers 2 minutes, and a tunnel that stops answering reads
+  *Not reachable* with a Retry.
 - *Route everything else through this tunnel* makes it the default exit.
 
 ## Rules
@@ -141,6 +168,10 @@ under `%LOCALAPPDATA%\Wayfork` are kept.
 | `203.0.113.7`, `10.8.0.0/24` | connections opened to that address / subnet |
 
 Rules are grouped by tunnel; the *Direct* group holds exceptions and always comes first.
+Above them, **Recent** lists the sites that went the default way in the last 5 minutes
+with the app that opened them — *Route via ▾* on a row writes the suffix rule for you.
+*Where does ‹site› go?* tests a name against the rules and, with the tunnel up, probes it
+through the exit it would take.
 On Windows, *+ › Application…* lists the applications that are running, so an app is picked
 by name; *Browse…* there points at an `.exe` that is not started.
 Inside a group, domain, application and IP rules are peers. A rule that can never fire —
@@ -158,11 +189,35 @@ Worth knowing:
 - Application rules see the process that opens the connection: an app talking through
   another local proxy is seen as that proxy.
 
+## Seeing what happens
+
+| macOS — Can't reach | macOS — Connections by exit | Windows — Connections by exit |
+|---|---|---|
+| ![macOS Logs › Can't reach](docs/screenshots/logs-cant-reach.png) | ![macOS Logs › Connections](docs/screenshots/logs-connections.png) | ![Windows Logs › Connections](docs/screenshots/windows/logs-connections.png) |
+
+- **Can't reach** — a pane above the log lines with every connection that could not be
+  established since Turn On: site (or `ip:port`), the app that opened it, tries, why
+  (*no answer* · *refused* · *blocked by your list* · *no such name* · *‹tunnel› is
+  down*), the exit, when last. Click a row to filter the log to that site; *Route via ▾*
+  fixes a site that only works through a tunnel. The popover shows a red line while
+  anything failed in the last 5 minutes.
+- **Connections** — the same window's second view: one row per exit with connections
+  opened, reached and failed since Turn On (or *Last 5 min*) and a fail-rate bar; an
+  exit expands into its *Can't reach* rows. ⇧⌘L from the popover, or *Details* on a
+  failing card. Counts are connections, not requests — one page load is dozens — and
+  *reached* means the connection opened, not that the site behaved.
+- Both read sing-box's own log, so they need log detail *Normal* (Settings › General);
+  at *Problems* the counts show `—`. What happens inside a connection (an HTTP 403, a
+  stalled download) is invisible here.
+- On Windows the same two live on the main window's *Logs* page; *Connections* is also in
+  the tray menu.
+
 ## How it works
 
 - [sing-box](https://github.com/SagerNet/sing-box) owns a TUN interface and the default
   route, answers DNS with fake IPs so every connection is routed by domain, and hosts the
-  VLESS outbounds.
+  VLESS / Shadowsocks / Trojan / VMess / WireGuard outbounds, the groups (`urltest` /
+  `selector`) and the local proxy inbounds.
 - Each OpenVPN profile runs as its own `openvpn --route-nopull` process on its own
   interface (`utun` on macOS, an `ovpn-dco` `Wayfork-N` adapter on Windows); sing-box
   reaches it through an interface-bound outbound.
@@ -198,12 +253,17 @@ Worth knowing:
   system-wide HTTP/SOCKS proxy bypasses the TUN too, for the apps that honour it.
 - **Rates show `—`** — the GUI has not heard from the privileged half for 3 s; if traffic is
   flowing, *Logs* will show `traffic: clash api unreachable`.
+- **Can't reach / Connections stay empty** — they need log detail *Normal* or above; at
+  *Problems* sing-box prints none of the lines they read. After an upgrade, *Reinstall
+  helper* once — the counters come from the privileged half.
+- **A site works only through a tunnel** — it shows up under *Can't reach* with the exit
+  it took; *Route via ▾* on the row writes the rule.
 - **Tunnel failed** — the card carries the reason (bad credentials, key passphrase, config
   error) and the pencil jumps to the field to fix.
 - **Bug report** — *Settings › General › Export Diagnostics* produces a zip with secrets
   stripped.
 
-## Limitations (0.2)
+## Limitations
 
 - **IPv4 only while On** — the TUN has no IPv6 address and DNS returns no AAAA records, so
   IPv6-only destinations are unreachable until you Turn Off. IPv6 rules come with IPv6 support.
@@ -217,7 +277,10 @@ Worth knowing:
 - **Application rules** only see traffic entering the TUN, and are keyed by path — a moved
   app needs a new rule. They do not cross platforms in an export.
 - **IP rules** are IPv4 and match the destination address only; no port or protocol conditions.
-- No rule lists, no subscription auto-refresh, no XHTTP yet.
+- Subscriptions are fetched once, not refreshed; no rule lists; no XHTTP (sing-box does
+  not implement it).
+- *Can't reach* and *Connections* count connections that failed to open; a request that
+  reached the server and failed there is invisible inside TLS.
 - Neither build is signed for its store: macOS is not notarized, Windows is not Authenticode-signed.
 
 ## Development
