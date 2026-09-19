@@ -928,7 +928,7 @@ manual check passed — F20 counts from the same log lines.
       F19 rows, total row, blocked row, *Problems* hint, empty state), the 5-minute ring
       and *Reset* baseline in the model, footer item ⇧⌘L and *Details* on the card.
       — 2026-09-18.
-- [ ] Manual check: a tunnel with a wrong port at 100 %, direct at 0 %, the expanded
+- [ ] Manual check (skipped on the maintainer's call, 2026-09-19): a tunnel with a wrong port at 100 %, direct at 0 %, the expanded
       tunnel lists the host with `‹tunnel› is down`, *Last 5 min* / *Reset* / ⇧⌘L /
       *Problems* hint behave.
-- [ ] Windows: WM17 in ROADMAP-windows.md.
+- [x] Windows: WM17 in ROADMAP-windows.md (2026-09-18).

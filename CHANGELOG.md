@@ -6,6 +6,17 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Connections by exit.** The Logs window (macOS) and the Logs page (Windows) get a
+  second view, *Connections*: one row per exit — every tunnel, every group, *Not via any
+  tunnel* and the block list — with how many connections went through it since Turn On,
+  how many were reached, how many failed and the fail rate; click an exit to see the
+  *Can't reach* rows behind it. *Since Turn On · Last 5 min*, *Reset*, *Copy*. Opened
+  from the popover footer (⇧⌘L) or *Details* on a failing tunnel card; on Windows from the
+  tray menu. Counts come from sing-box's own log lines, so they need log detail *Normal*;
+  they are connections, not requests, and say nothing about what happened inside one.
+
 ## [0.7.0] — 2026-09-16
 
 The F14–F19 wave on both platforms: friendlier screens, latency on every card, a Recent

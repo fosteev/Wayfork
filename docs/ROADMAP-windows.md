@@ -665,4 +665,4 @@ keys and optionality as the Swift side; Last 5 min and Reset are app-side there 
 - [x] App (Flutter): `ExitStats` decoding, the 5-minute ring and baseline, the segment
       and `ExitsTable` on the Logs page per W17, the flyout entry; `logs_page_test.dart`.
       — 2026-09-18: tray `Connections` entry stands in for the flyout footer item.
-- [ ] PC run: same check as M16.
+- [ ] PC run (skipped on the maintainer's call, 2026-09-19): same check as M16.

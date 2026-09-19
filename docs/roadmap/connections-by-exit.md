@@ -1,9 +1,9 @@
 # Connections by exit — F20
 
-> Status: approved · created 2026-09-18 · § Feature approved 2026-09-18 (ROADMAP.md § F20,
+> Status: done (manual checks waived) · created 2026-09-18 · § Feature approved 2026-09-18 (ROADMAP.md § F20,
 > M16 / WM17) · stage 2 done 2026-09-18 · stage 3 (M16, macOS) and stage 4 (WM17,
-> Windows) done 2026-09-18 · stage 5 owed: the manual walks (macOS, PC), F19 live check,
-> CHANGELOG, release. The executing session ticks the checkboxes below as it goes; statuses live
+> Windows) done 2026-09-18 · stage 5 closed 2026-09-19 without the manual walks (maintainer's
+> call); they stay as open boxes in M15 / M16 / WM17. Release on request. The executing session ticks the checkboxes below as it goes; statuses live
 > here and in the milestone skeletons ROADMAP.md § M16 / ROADMAP-windows.md § WM17 only.
 
 ## Goal
@@ -256,14 +256,16 @@ Everything only the maintainer can see, batched with the F15–F19 checks that a
 already owed.
 
 - [ ] F19 live check first (ROADMAP.md § M15 box): the line shapes match the pinned
-      sing-box. If they do not, F19 is fixed before F20 is judged.
-- [ ] macOS: with one tunnel deliberately down (wrong port), `curl` through it five times
+      sing-box. If they do not, F19 is fixed before F20 is judged. — 2026-09-19: waived by
+      the maintainer with the rest of the manual walks; stays open in ROADMAP.md § M15.
+- [ ] macOS (waived 2026-09-19, open in ROADMAP.md § M16): with one tunnel deliberately down (wrong port), `curl` through it five times
       and through direct once — the table shows the tunnel at 100 %, direct at 0 %, the
       expanded tunnel lists the host with `‹tunnel› is down`, *Last 5 min* and *Reset*
       behave, *Details* appears on the card, ⇧⌘L opens the view, *Problems* shows the hint.
-- [ ] Windows PC run (`ssh wf-pc`): the same walk on the Logs page.
-- [ ] CHANGELOG entry, README screenshot if the Logs window is pictured, milestone
-      boxes ticked, banner here → *done*.
+- [ ] Windows PC run (`ssh wf-pc`): the same walk on the Logs page. — waived 2026-09-19,
+      open in ROADMAP-windows.md § WM17.
+- [x] CHANGELOG entry (Unreleased), milestone boxes ticked, banner here → *done*. —
+      2026-09-19; the README does not picture the Logs window, no screenshot.
 
 **Done when:** the maintainer says so; release per `scripts/release.sh` on request.
 
