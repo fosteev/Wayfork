@@ -153,26 +153,33 @@ struct PopoverView: View {
     }
 }
 
-/// A scroll view that takes its content's height up to `maxHeight` and scrolls beyond
-/// it — a plain `ScrollView` would claim `maxHeight` even for a short list.
+/// The content at its natural height while it fits `maxHeight`; a scroll view of exactly
+/// `maxHeight` once it does not. A plain `ScrollView` cannot do this in the menu bar
+/// window: the window sizes itself to the content's ideal height, and a scroll view's
+/// ideal height is nothing.
 private struct SizedScrollView<Content: View>: View {
     let maxHeight: CGFloat
     @ViewBuilder let content: Content
     @State private var contentHeight: CGFloat = 0
 
     var body: some View {
-        ScrollView(.vertical) {
-            content
-                .background(
-                    GeometryReader { proxy in
-                        Color.clear.preference(
-                            key: ContentHeightKey.self, value: proxy.size.height)
-                    }
-                )
+        Group {
+            if contentHeight > maxHeight {
+                ScrollView(.vertical) { measured }
+                    .frame(height: maxHeight)
+            } else {
+                measured
+            }
         }
-        .scrollIndicators(contentHeight > maxHeight ? .automatic : .hidden)
         .onPreferenceChange(ContentHeightKey.self) { contentHeight = $0 }
-        .frame(height: min(contentHeight, maxHeight))
+    }
+
+    private var measured: some View {
+        content.background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: ContentHeightKey.self, value: proxy.size.height)
+            }
+        )
     }
 }
 
