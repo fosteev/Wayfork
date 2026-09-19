@@ -589,7 +589,7 @@ strings and states, Windows chrome). Deltas, if any, go to
       (2026-09-16: on the Dashboard page — there is no flyout window; 62810cc).
 - [x] Tunnels, Rules, General pages per W11, W12, W14 (existing rows and forms only)
       (2026-09-16: `StatusText` ported to the variant C wording, the pages reworded).
-- [ ] README Windows screenshots re-rendered from W9, W11, W12.
+- [x] README Windows screenshots re-rendered from W9, W11, W12 (+ W17) — 2026-09-19, `scripts/render-screenshots.mjs`.
 - [ ] PC run (`ssh wf-pc`): walk the flyout and the three pages against the boards.
 
 ### WM12 — Recent domains → rule (F15)

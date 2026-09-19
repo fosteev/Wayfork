@@ -767,7 +767,7 @@ Boards C1, C2, C3 (light), C4 (without the Recent strip and the group section), 
       "+ Add site", shadowed chip as a sentence, empty state per group (2026-09-15).
 - [x] Settings › General: rows reworded per C6, "Helper up to date", Backup… menu
       (2026-09-15).
-- [ ] README screenshots re-rendered from variant C — deferred to the ship step of
+- [x] README screenshots re-rendered from variant C (2026-09-19, `scripts/render-screenshots.mjs`) — was deferred to the ship step of
       roadmap/next-features.md (stage 6): the boards show F14–F18, which the README must
       not promise before they ship.
 - [ ] Manual check: the maintainer walks the popover and the three Settings pages against
