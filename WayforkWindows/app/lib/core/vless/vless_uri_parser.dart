@@ -111,8 +111,11 @@ abstract final class VLESSURIParser {
       if (publicKey == null || publicKey.isEmpty) {
         _invalid('REALITY requires pbk');
       }
-      if (transport is! ProxyTransportTCP) {
-        _unsupported('REALITY over ws/grpc is not supported');
+      // REALITY rides on TCP and gRPC (Xray serves both); a WebSocket server
+      // cannot offer it, so the link is refused rather than started into a
+      // dead tunnel.
+      if (transport is ProxyTransportWS) {
+        _unsupported('REALITY over ws is not supported');
       }
     }
 

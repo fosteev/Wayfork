@@ -15,20 +15,26 @@ struct PopoverView: View {
             } else if enabledTunnels.isEmpty {
                 allDisabledState
             } else {
-                Text("Tunnels")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 2)
-                ForEach(enabledTunnels) { tunnel in
-                    TunnelCardView(tunnel: tunnel)
-                }
-                ForEach(enabledGroups) { group in
-                    GroupCardView(group: group)
-                }
-                if model.globalState.isRunning {
-                    DirectRowView()
-                    Divider()
-                    RecentSectionView()
+                // Many tunnels plus Recent outgrow the screen; the list scrolls so the
+                // quick add and the footer stay in reach.
+                SizedScrollView(maxHeight: listMaxHeight) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Tunnels")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 2)
+                        ForEach(enabledTunnels) { tunnel in
+                            TunnelCardView(tunnel: tunnel)
+                        }
+                        ForEach(enabledGroups) { group in
+                            GroupCardView(group: group)
+                        }
+                        if model.globalState.isRunning {
+                            DirectRowView()
+                            Divider()
+                            RecentSectionView()
+                        }
+                    }
                 }
                 Divider()
                 QuickAddView()
@@ -38,6 +44,13 @@ struct PopoverView: View {
         }
         .padding(12)
         .frame(width: 360)
+    }
+
+    /// The list's ceiling: the screen minus the menu bar, the header, the quick add and
+    /// the footer (about 220 pt of chrome), never below 240 pt.
+    private var listMaxHeight: CGFloat {
+        let screen = NSScreen.main?.visibleFrame.height ?? 800
+        return max(240, screen - 220)
     }
 
     private var header: some View {
@@ -137,6 +150,36 @@ struct PopoverView: View {
                 .keyboardShortcut("q", modifiers: .command)
         }
         .font(.system(size: 12))
+    }
+}
+
+/// A scroll view that takes its content's height up to `maxHeight` and scrolls beyond
+/// it — a plain `ScrollView` would claim `maxHeight` even for a short list.
+private struct SizedScrollView<Content: View>: View {
+    let maxHeight: CGFloat
+    @ViewBuilder let content: Content
+    @State private var contentHeight: CGFloat = 0
+
+    var body: some View {
+        ScrollView(.vertical) {
+            content
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: ContentHeightKey.self, value: proxy.size.height)
+                    }
+                )
+        }
+        .scrollIndicators(contentHeight > maxHeight ? .automatic : .hidden)
+        .onPreferenceChange(ContentHeightKey.self) { contentHeight = $0 }
+        .frame(height: min(contentHeight, maxHeight))
+    }
+}
+
+private struct ContentHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 

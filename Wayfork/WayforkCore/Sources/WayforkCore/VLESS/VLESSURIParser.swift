@@ -83,8 +83,10 @@ public enum VLESSURIParser {
             guard let publicKey = query["pbk"], !publicKey.isEmpty else {
                 throw VLESSImportError.invalid("REALITY requires pbk")
             }
-            if transport != .tcp {
-                throw VLESSImportError.unsupported("REALITY over ws/grpc is not supported")
+            // REALITY rides on TCP and gRPC (Xray serves both); a WebSocket server cannot
+            // offer it, so the link is refused rather than started into a dead tunnel.
+            if case .ws = transport {
+                throw VLESSImportError.unsupported("REALITY over ws is not supported")
             }
         }
 

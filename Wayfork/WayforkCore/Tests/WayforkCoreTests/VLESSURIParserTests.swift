@@ -74,9 +74,9 @@ func rejectsUnsupportedTransports(_ transport: String) {
     #expect(throws: VLESSImportError.invalid("REALITY requires pbk")) {
         try VLESSURIParser.parse("vless://\(vlessUUID)@example.com:443?security=reality")
     }
-    #expect(throws: VLESSImportError.unsupported("REALITY over ws/grpc is not supported")) {
+    #expect(throws: VLESSImportError.unsupported("REALITY over ws is not supported")) {
         try VLESSURIParser.parse(
-            "vless://\(vlessUUID)@example.com:443?security=reality&pbk=public-key&type=grpc")
+            "vless://\(vlessUUID)@example.com:443?security=reality&pbk=public-key&type=ws")
     }
     #expect(
         throws: VLESSImportError.unsupported(

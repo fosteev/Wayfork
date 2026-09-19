@@ -120,6 +120,32 @@
       },
       "name" : "ipv6-host",
       "uri" : "vless://00000000-0000-4000-8000-000000000001@[2001:db8::1]:443?security=tls#IPv6"
+    },
+    {
+      "expected" : {
+        "meta" : {
+          "allowInsecure" : false,
+          "alpn" : [
+
+          ],
+          "fingerprint" : "chrome",
+          "port" : 443,
+          "realityPublicKey" : "public-key",
+          "realityShortID" : "short-id",
+          "security" : "reality",
+          "server" : "example.com",
+          "sni" : "www.example.com",
+          "transport" : {
+            "grpc" : {
+              "serviceName" : "wayfork"
+            }
+          }
+        },
+        "name" : "Reality gRPC",
+        "uuid" : "00000000-0000-4000-8000-000000000001"
+      },
+      "name" : "reality-grpc",
+      "uri" : "vless://00000000-0000-4000-8000-000000000001@example.com:443?encryption=none&security=reality&sni=www.example.com&fp=chrome&pbk=public-key&sid=short-id&type=grpc&serviceName=wayfork#Reality%20gRPC"
     }
   ],
   "rejected" : [

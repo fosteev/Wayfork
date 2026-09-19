@@ -120,9 +120,9 @@ void main() {
     );
     _expectError(
       'vless://$vlessUUID@example.com:443?security=reality&pbk=public-key&'
-          'type=grpc',
+          'type=ws',
       VLESSImportError.unsupported,
-      'REALITY over ws/grpc is not supported',
+      'REALITY over ws is not supported',
     );
     _expectError(
       'vless://$vlessUUID@example.com:443?headerType=http',

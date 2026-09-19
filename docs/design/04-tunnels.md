@@ -200,7 +200,9 @@ reconstructs the full URL from meta + Keychain.
 ```
 
 Validation at import: `flow` requires `security=tls|reality` and `type=tcp`; `reality`
-requires `pbk`; `ws`/`grpc` with `reality` is rejected (sing-box does not support it).
+requires `pbk`; `ws` with `reality` is rejected (no Xray server offers it — a tunnel that
+can never handshake is refused at import); `grpc` with `reality` is accepted (2026-09-19,
+checked against the pinned sing-box with `sing-box check`).
 
 No process, no routes, no DNS entry: the tunnel is "ready" whenever sing-box runs.
 Reachability is only observed per connection until L4 adds health checks.
@@ -524,10 +526,10 @@ written, because several of them contradict what the plan assumed.
   the generator by accident.
 - **REALITY requires uTLS** (`uTLS is required by reality client`) — `fp` defaults to
   `chrome` wherever REALITY is accepted.
-- **REALITY is accepted on `trojan` and `vmess`, and over `ws`/`grpc`.** The last part
-  contradicts the VLESS note above ("`ws`/`grpc` with `reality` is rejected"), which is
-  older than 1.13; the import rule stays as it is for now — relaxing it is an F1 change
-  with its own live check, not something to slip in with F13 *(open)*.
+- **REALITY is accepted on `trojan` and `vmess`, and over `ws`/`grpc`.** The VLESS import
+  rejected both since M1; on 2026-09-19 `grpc` was allowed (a maintainer's own link needed
+  it), `ws` stays refused because no Xray server serves REALITY over WebSocket, so
+  accepting the link would only produce a tunnel that never handshakes.
 - **WireGuard endpoint validation is thin**: a missing `private_key` and a peer without
   `allowed_ips` are refused, but a missing `address`, a peer with no port and even a peer
   list that is entirely absent all start "successfully" into a tunnel that can never carry
