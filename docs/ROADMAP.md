@@ -908,6 +908,10 @@ pane and click-to-filter), 02-ux.md (§ Variant C › Can't reach: wording), boa
 - [ ] Manual check: a game or `curl` against a dead host shows up with the app and
       `no answer`; a listed ad host as `blocked by your list`; clicking the row shows its
       lines; the popover line appears within a second and goes after 5 minutes.
+      (2026-09-19: the live check found the tracker's line shapes wrong for sing-box
+      1.13.19 — no ANSI stripping, no `router: match` line, `ERROR`-only failures assumed;
+      fixed per docs/roadmap/failed-connections-live-log.md against a recorded fixture.
+      The parser half is done; the visual walk above is still owed to the maintainer.)
 - [ ] Windows: WM16 in ROADMAP-windows.md.
 
 ### M16 — Connections by exit (F20)
@@ -931,4 +935,7 @@ manual check passed — F20 counts from the same log lines.
 - [ ] Manual check (skipped on the maintainer's call, 2026-09-19): a tunnel with a wrong port at 100 %, direct at 0 %, the expanded
       tunnel lists the host with `‹tunnel› is down`, *Last 5 min* / *Reset* / ⇧⌘L /
       *Problems* hint behave.
+      (2026-09-19: opened/failed now count from the actual 1.13.19 line shapes — see M15's
+      note and docs/roadmap/failed-connections-live-log.md; the parser half is done, the
+      visual walk above is still owed to the maintainer.)
 - [x] Windows: WM17 in ROADMAP-windows.md (2026-09-18).

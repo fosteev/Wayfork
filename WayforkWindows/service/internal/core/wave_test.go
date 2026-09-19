@@ -149,77 +149,61 @@ func TestBlockCounterAndLines(t *testing.T) {
 	}
 }
 
-func TestFailedConnectionsJoin(t *testing.T) {
+// TestFailedConnectionsReadsTheSingBoxLiveLogFixture runs the whole recorded 1.13.19 log
+// (fixtures/logs/sing-box-1.13.19.log, the F19 live check of 2026-09-19 — the contract:
+// ANSI-coloured ids, no `router: match` line, an info-level failure line naming its own
+// outbound) through SingBoxLogLevel/SingBoxLogMessage exactly as the engine's relay does,
+// then FailedConnections.Ingest.
+func TestFailedConnectionsReadsTheSingBoxLiveLogFixture(t *testing.T) {
 	tracker := NewFailedConnections()
 	t0 := time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
-	lines := []struct {
-		level LogLevel
-		line  string
-	}{
-		{LogLevelInfo, "[3921 0ms] inbound/tun[tun-in]: inbound connection to 203.0.113.9:443"},
-		{LogLevelInfo, "[3921 1ms] router: sniffed protocol: tls, domain: cdn.gamepatch.example.net"},
-		{LogLevelInfo, `[3921 1ms] router: found process path: C:\Program Files\Game\Game.exe`},
-		{LogLevelInfo, "[3921 2ms] router: match[5] rule_set=rules-t-aaa => t-aaa"},
-		{LogLevelError, "[3921 5004ms] inbound/tun[tun-in]: open connection to cdn.gamepatch.example.net:443: dial tcp 203.0.113.9:443: i/o timeout"},
-		{LogLevelInfo, "[3930 0ms] inbound/tun[tun-in]: inbound connection to cdn.gamepatch.example.net:443"},
-		{LogLevelInfo, `[3930 1ms] router: found process path: C:\Program Files\Game\Game.exe`},
-		{LogLevelInfo, "[3930 2ms] router: match[5] rule_set=rules-t-aaa => t-aaa"},
-		{LogLevelError, "[3930 5002ms] inbound/tun[tun-in]: open connection to cdn.gamepatch.example.net:443: dial tcp 203.0.113.9:443: i/o timeout"},
-		// Problems level: only the error line — host from it, no app.
-		{LogLevelError, "ERROR [40 30ms] inbound/tun[tun-in]: open connection to matchmaking.example.net:5555: dial tcp 198.51.100.2:5555: connectex: connection refused"},
-		{LogLevelInfo, "[41 0ms] inbound/tun[tun-in]: inbound connection to api.example.org:443"},
-		{LogLevelInfo, "[41 1ms] router: match[2] rule_set=rules-t-bbb => t-bbb"},
-		{LogLevelError, "[41 3ms] inbound/tun[tun-in]: open connection to api.example.org:443: dial tcp 198.51.100.5:443: network is unreachable"},
-		{LogLevelInfo, "[43 0ms] inbound/tun[tun-in]: inbound connection to telemetry.example.com:443"},
-		{LogLevelInfo, "[43 1ms] router: match[3] logical(and)[rule_set=block-ads] => reject"},
-		{LogLevelInfo, "[44 0ms] dns: exchange ads.example.net. IN A"},
-		{LogLevelInfo, "[44 0ms] dns: match[4] rule_set=block-ads => predefined"},
-		{LogLevelError, "[45 12ms] inbound/tun[tun-in]: open connection to nope.example.invalid:443: lookup nope.example.invalid: no such host"},
-		{LogLevelInfo, "[47 0ms] inbound/tun[tun-in]: inbound packet connection to [2001:db8::1]:53"},
-		{LogLevelError, "[47 9ms] inbound/tun[tun-in]: open packet connection to [2001:db8::1]:53: dial udp: i/o timeout"},
-		{LogLevelInfo, "[48 0ms] inbound/tun[tun-in]: inbound connection to ok.example.com:443"},
-		{LogLevelInfo, "sing-box started (0.02s)"},
-	}
-	for i, entry := range lines {
-		tracker.Ingest(entry.line, entry.level, t0.Add(time.Duration(i)*time.Second))
+	for i, raw := range readFixtureLines(t, "logs", "sing-box-1.13.19.log") {
+		level := SingBoxLogLevel(raw)
+		message := SingBoxLogMessage(raw)
+		if strings.ContainsRune(message, '\x1b') {
+			t.Fatalf("escape left in: %s", message)
+		}
+		if !IsInterestingLogLine(message) {
+			continue
+		}
+		tracker.Ingest(message, level, t0.Add(time.Duration(i)*time.Second))
 	}
 	rows := map[string]FailedHost{}
 	for _, row := range tracker.Snapshot() {
 		rows[row.Host] = row
 	}
-	if len(rows) != 7 {
+	if len(rows) != 2 {
 		t.Fatalf("rows = %d: %+v", len(rows), rows)
 	}
-	game := rows["cdn.gamepatch.example.net"]
-	if game.Count != 2 || game.Exit != "aaa" || game.Reason.Kind != FailureNoAnswer || game.ProcessPath != `C:\Program Files\Game\Game.exe` {
+	chat := rows["chat.example.net"]
+	if chat.Count != 1 || chat.Exit != "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" ||
+		chat.Reason.Kind != FailureNoAnswer || !strings.HasSuffix(chat.ProcessPath, "Messenger") {
+		t.Fatalf("chat row = %+v", chat)
+	}
+	// stripPort drops the port from every host, IP literal or not (pre-existing), so the
+	// game server's row is keyed by the bare address.
+	game := rows["203.0.113.40"]
+	if game.Count != 1 || game.Exit != "direct" || game.Reason.Kind != FailureRefused ||
+		!strings.HasSuffix(game.ProcessPath, "Game") {
 		t.Fatalf("game row = %+v", game)
 	}
-	if rows["matchmaking.example.net"].Reason.Kind != FailureRefused || rows["matchmaking.example.net"].ProcessPath != "" {
-		t.Fatalf("refused row = %+v", rows["matchmaking.example.net"])
+	// F20: the tunnel opens 3 times (Messenger's TCP failure, the cli's TCP success dialled
+	// twice but counted once, the browser's UDP flow) and fails once; direct opens twice
+	// (the browser's TCP success, the game's TCP failure) and fails once.
+	exits := tracker.Exits()
+	if len(exits) != 2 {
+		t.Fatalf("exits = %+v", exits)
 	}
-	if rows["api.example.org"].Reason.Kind != FailureTunnelDown || rows["api.example.org"].Exit != "bbb" {
-		t.Fatalf("tunnel-down row = %+v", rows["api.example.org"])
+	if got := exits["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]; got.Opened == nil || *got.Opened != 3 ||
+		got.Failed != 1 || got.LastFailure == nil || got.LastFailure.Kind != FailureNoAnswer {
+		t.Fatalf("tunnel exit = %+v", got)
 	}
-	if rows["telemetry.example.com"].Reason.Kind != FailureBlocked || rows["telemetry.example.com"].Exit != "" {
-		t.Fatalf("blocked row = %+v", rows["telemetry.example.com"])
+	if got := exits["direct"]; got.Opened == nil || *got.Opened != 2 || got.Failed != 1 ||
+		got.Blocked != 0 || got.LastFailure == nil || got.LastFailure.Kind != FailureRefused {
+		t.Fatalf("direct exit = %+v", got)
 	}
-	if rows["ads.example.net."].Reason.Kind != FailureBlocked {
-		t.Fatalf("blocked lookup row = %+v", rows["ads.example.net."])
-	}
-	if rows["nope.example.invalid"].Reason.Kind != FailureNoSuchName {
-		t.Fatalf("no-such-name row = %+v", rows["nope.example.invalid"])
-	}
-	if rows["2001:db8::1"].Reason.Kind != FailureNoAnswer {
-		t.Fatalf("ipv6 row = %+v", rows["2001:db8::1"])
-	}
-	if _, ok := rows["ok.example.com"]; ok {
-		t.Fatal("a connection that did not fail was listed")
-	}
-	if tracker.Snapshot()[0].Host != "2001:db8::1" {
-		t.Fatalf("newest first: %s", tracker.Snapshot()[0].Host)
-	}
-	data, _ := json.Marshal(rows["api.example.org"].Reason)
-	if string(data) != `{"tunnelDown":{}}` {
+	data, _ := json.Marshal(chat.Reason)
+	if string(data) != `{"noAnswer":{}}` {
 		t.Fatalf("reason wire = %s", data)
 	}
 	data, _ = json.Marshal(FailureReason{Kind: FailureOther, Other: "boom"})
@@ -233,22 +217,8 @@ func TestFailedConnectionsJoin(t *testing.T) {
 	if !IsInterestingLogLine("[1 0ms] router: found process path: x") || IsInterestingLogLine("sing-box started") {
 		t.Fatal("pre-filter is wrong")
 	}
-	// F20: opened once per id at the match line, failed once per ERROR line, blocked
-	// always under direct and never counted as a failure.
-	exits := tracker.Exits()
-	if len(exits) != 3 {
-		t.Fatalf("exits = %+v", exits)
-	}
-	if got := exits["aaa"]; got.Opened == nil || *got.Opened != 2 || got.Failed != 2 || got.Blocked != 0 || got.LastFailure == nil || got.LastFailure.Kind != FailureNoAnswer {
-		t.Fatalf("aaa exit = %+v", got)
-	}
-	if got := exits["bbb"]; got.Opened == nil || *got.Opened != 1 || got.Failed != 1 || got.LastFailure == nil || got.LastFailure.Kind != FailureTunnelDown {
-		t.Fatalf("bbb exit = %+v", got)
-	}
-	// direct never saw its own match line here (id 40/45/47 fall back to it), but a
-	// match line was seen overall (aaa/bbb), so its opened is 0, not nil.
-	if got := exits["direct"]; got.Opened == nil || *got.Opened != 0 || got.Failed != 3 || got.Blocked != 2 {
-		t.Fatalf("direct exit = %+v", got)
+	if IsInterestingLogLine("[1 0ms] router: no match, using direct") {
+		t.Fatal("a bare 'using' must no longer mean anything")
 	}
 	tracker.Clear()
 	if len(tracker.Snapshot()) != 0 {
@@ -259,16 +229,53 @@ func TestFailedConnectionsJoin(t *testing.T) {
 	}
 }
 
-func TestFailedConnectionsExitsGroupTagMapsToGroupID(t *testing.T) {
+// TestFailedConnectionsBlockListShapeIsUnverified: not seen in the live log (roadmap
+// risk); IsBlockedLine reads the same shape. Kept exactly as it was pending a live line
+// with a block-list hit.
+func TestFailedConnectionsBlockListShapeIsUnverified(t *testing.T) {
 	tracker := NewFailedConnections()
 	t0 := time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
 	lines := []struct {
 		level LogLevel
 		line  string
 	}{
-		{LogLevelInfo, "[80 0ms] inbound/tun[tun-in]: inbound connection to streaming.example.com:443"},
-		{LogLevelInfo, "[80 1ms] router: match[1] rule_set=rules-g-ccc => g-ccc"},
-		{LogLevelError, "[80 3ms] inbound/tun[tun-in]: open connection to streaming.example.com:443: dial tcp 203.0.113.5:443: i/o timeout"},
+		{LogLevelInfo, "[43 0ms] inbound/tun[tun-in]: inbound connection to telemetry.example.com:443"},
+		{LogLevelInfo, `[43 1ms] router: found process path: C:\Program Files\Game\Game.exe`},
+		{LogLevelInfo, "[43 1ms] router: match[3] logical(and)[rule_set=block-ads] => reject"},
+		{LogLevelInfo, "[44 0ms] dns: exchange ads.example.net. IN A"},
+		{LogLevelInfo, "[44 0ms] dns: match[4] rule_set=block-ads => predefined"},
+	}
+	for i, entry := range lines {
+		tracker.Ingest(entry.line, entry.level, t0.Add(time.Duration(i)*time.Second))
+	}
+	rows := map[string]FailedHost{}
+	for _, row := range tracker.Snapshot() {
+		rows[row.Host] = row
+	}
+	if rows["telemetry.example.com"].Reason.Kind != FailureBlocked || rows["telemetry.example.com"].Exit != "" {
+		t.Fatalf("blocked row = %+v", rows["telemetry.example.com"])
+	}
+	if rows["ads.example.net."].Reason.Kind != FailureBlocked {
+		t.Fatalf("blocked lookup row = %+v", rows["ads.example.net."])
+	}
+	if got := tracker.Exits()["direct"]; got.Blocked != 2 {
+		t.Fatalf("direct exit = %+v", got)
+	}
+}
+
+func TestFailedConnectionsExitsGroupTagMapsToGroupID(t *testing.T) {
+	// Not seen in the live log (roadmap risk): whether a group's outbound line names the
+	// group or the member it picked. Kept as the group's own tag until a live log with a
+	// group is recorded.
+	tracker := NewFailedConnections()
+	t0 := time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
+	lines := []struct {
+		level LogLevel
+		line  string
+	}{
+		{LogLevelInfo, "[80 0ms] inbound/tun[tun-in]: inbound connection to 198.18.0.9:443"},
+		{LogLevelInfo, "[80 1ms] outbound/urltest[g-ccc]: outbound connection to streaming.example.com:443"},
+		{LogLevelInfo, "[80 3ms] connection: open connection to streaming.example.com:443 using outbound/urltest[g-ccc]: dial tcp 203.0.113.5:443: i/o timeout"},
 	}
 	for i, entry := range lines {
 		tracker.Ingest(entry.line, entry.level, t0.Add(time.Duration(i)*time.Second))
@@ -281,16 +288,16 @@ func TestFailedConnectionsExitsGroupTagMapsToGroupID(t *testing.T) {
 }
 
 func TestFailedConnectionsExitsNilOpenedUnderProblemsOnly(t *testing.T) {
-	// Log detail Problems: only ERROR lines exist, no match line is ever seen — opened
-	// stays nil for every exit and every failure is attributed to direct.
+	// Log detail Problems: only the failure lines exist, no outbound dial line is ever
+	// seen — opened stays nil for every exit and every failure is attributed to direct.
 	tracker := NewFailedConnections()
 	t0 := time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
 	lines := []struct {
 		level LogLevel
 		line  string
 	}{
-		{LogLevelError, "ERROR [70 30ms] inbound/tun[tun-in]: open connection to a.example.net:443: dial tcp 198.51.100.2:443: connect: connection refused"},
-		{LogLevelError, "ERROR [71 30ms] inbound/tun[tun-in]: open connection to b.example.net:443: dial tcp 198.51.100.3:443: connect: connection refused"},
+		{LogLevelInfo, "[70 30ms] connection: open connection to a.example.net:443 using outbound/direct[direct]: dial tcp 198.51.100.2:443: connect: connection refused"},
+		{LogLevelInfo, "[71 30ms] connection: open connection to b.example.net:443 using outbound/direct[direct]: dial tcp 198.51.100.3:443: connect: connection refused"},
 	}
 	for i, entry := range lines {
 		tracker.Ingest(entry.line, entry.level, t0.Add(time.Duration(i)*time.Second))

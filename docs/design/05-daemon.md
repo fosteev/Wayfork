@@ -388,16 +388,24 @@ failure is the ordinary `singbox.startFailed`.
 `FailedConnections` (`WayforkDaemonCore`) is fed every sing-box log line the engine relays
 and keeps, per `(host, processPath)`, how many connections could not be established, why,
 through which exit and when last. sing-box prints one connection's story under one id
-(`[3921 5004ms]`), so the tracker joins by id with a small map (last 2 000 ids):
+(`[3921 5004ms]`, ANSI-coloured — `\e[38;5;147m3216874115\e[0m`; the relay is the one
+place that strips the escapes, see 06-logging.md), so the tracker joins by id with a small
+map (last 2 000 ids). This table is the shape sing-box 1.13.19 actually prints (the F19
+live check of 2026-09-19, recorded in `fixtures/logs/sing-box-1.13.19.log`):
 
 | Line (message after the level) | Kept |
 |---|---|
-| `[id …] inbound/tun[tun-in]: inbound connection to host:443` (`inbound packet connection to` for UDP) | host |
-| `[id …] router: sniffed protocol: tls, domain: host` | host (replaces a bare address) |
-| `[id …] router: found process path: /Applications/Game.app/…` | process |
-| `[id …] router: match[N] rule => outbound` / `router: no match, using outbound` | exit (`t-`/`g-` tag or `direct`); `=> reject` with `rule_set=block-ads` in the rule = **blocked** |
-| `ERROR [id …] inbound/tun[tun-in]: open connection to host:443: dial tcp …: <error>` | the failure; host from the line when no `info` line was seen (log detail *Problems*) |
-| `[id …] dns: exchange host IN A` + `dns: match[N] rule_set=block-ads => predefined` | a blocked lookup (no process — the query comes from the system resolver) |
+| `[id …] inbound/tun[tun-in]: inbound connection to host:443` (`inbound packet connection to` for UDP) | host (a fake-ip here is replaced once the outbound line below is seen) |
+| `[id …] router: found process path: /Applications/Game.app/…, user: name` | process (the `, user: …` suffix is cut) |
+| `[id …] outbound/<type>[<tag>]: outbound connection to host:443` (`outbound packet connection to` for UDP) | exit (`t-`/`g-` tag or `direct`, from the tag) and host (replaces the fake-ip — sing-box resolves it back before dialling); the line repeats while sing-box dials, counted once |
+| `[id …] connection: open connection to host:443 using outbound/<type>[<tag>]: dial tcp …: <error>` — an **info**-level line | the failure; host and exit come from this line itself, so it is recorded even when its prelude was not seen (log detail *Problems*) |
+| *(verify, not seen live)* `[id …] router: match[N] rule_set=block-ads => reject` / `dns: match[N] rule_set=block-ads => predefined` | **blocked** — `BlockCounter` reads the same shape |
+
+There is no `router: match[N] rule => outbound` / `no match, using outbound` line and no
+`sniffed protocol …, domain:` line at `info`; DNS lookups (`dns: exchanged A name. ttl IN A
+ip` / `dns: cached A …`) carry their own ids and are never connections. A group's outbound
+line naming the group itself vs. the member it picked is unverified (kept as the group's
+own tag until a live log with a group is recorded).
 
 Reason classes from the error text: `i/o timeout` → *no answer*; `connection refused` →
 *refused*; `connection reset` → *reset*; `no such host` / `NXDOMAIN` / `lookup … failed`
@@ -411,15 +419,16 @@ rows of the last 5 minutes. Only `ERROR` lines and the `reject` match count: a c
 the app closed itself is not a failure, and an HTTP status is invisible inside TLS.
 
 **Counters by exit (F20)**: `FailedConnections` also keeps, per exit, an **opened** and a
-**failed** count next to the failure rows above. Opened increments once per connection id at
-the `match[N] rule => outbound` / `no match, using outbound` line — the same line the join
-already reads for the exit — under the assumption that sing-box prints it for every routed
-connection at `info` (verify with the F19 live check). Failed increments at the `ERROR …
-open connection to …` line, attributed to the exit the tracker had for that id (`direct`
-when none). `=> reject` on the block list increments a separate **blocked** count and is
-excluded from opened, failed and any total. At log detail *Problems* the match lines are
-absent, so `opened` stays `nil` on the wire and only `failed` is meaningful — the same
-"needs log detail Normal" case as the *Via* column. The counters ride in
+**failed** count next to the failure rows above. Opened increments once per connection id
+at the first `outbound/<type>[<tag>]: outbound connection to …` dial line — the same line
+the join already reads for the exit — repeats for the same id while sing-box dials do not
+count again. Failed increments at the `connection: open connection to … using
+outbound/<type>[<tag>]: …` line, attributed to the exit named on that same line (`direct`
+for the `direct` outbound). `=> reject` / `=> predefined` on the block list increments a
+separate **blocked** count and is excluded from opened, failed and any total. At log
+detail *Problems* the outbound dial lines are absent, so `opened` stays `nil` on the wire
+and only `failed` is meaningful — the same "needs log detail Normal" case as the *Via*
+column. The counters ride in
 `TrafficSnapshot.exits: [String: ExitStats]`, keyed by exit id (`direct`, a tunnel id, a
 group id) — `ExitStats { opened: Int?, failed: Int, blocked: Int, lastFailure:
 FailureReason?, lastFailedAt: Date? }`, optional on the wire like `failedHosts`; `blocked`

@@ -15,6 +15,12 @@ Levels: `error`, `warning`, `info`, `debug`. `settings.logLevel` sets the minimu
 that is *stored and shown*; it is also passed down: sing-box `log.level`, openvpn `--verb`
 (3 for info, 4 for debug, 1 otherwise).
 
+sing-box's own stdout is ANSI-coloured (the connection id, e.g.
+`\e[38;5;147m3216874115\e[0m`); the relay is the one place that strips the escapes —
+`SingBoxLog.message(of:)`/`.level(of:)` on macOS, `SingBoxLogMessage`/`SingBoxLogLevel` on
+Windows — so every consumer (this window, `runtime.log`, `FailedConnections`,
+`BlockCounter`) sees plain text.
+
 ## Storage (app side)
 
 `~/Library/Logs/Wayfork/`:

@@ -266,6 +266,25 @@ private func validationError(_ plan: RuntimePlan, blockListPath: String? = nil) 
     #expect(SingBoxLog.message(of: "plain text") == "plain text")
 }
 
+@Test func singBoxLogStripsAnsiFromTheFixtureLines() throws {
+    // sing-box 1.13.19 wraps the connection id in an ANSI colour + reset
+    // (`\e[38;5;147m3216874115\e[0m`); the relay is the one place that strips it (F19
+    // live check, 2026-09-19).
+    let raw = try Fixtures.lines("logs/sing-box-1.13.19.log")
+    #expect(raw.contains { $0.contains("\u{1B}[") })
+    for line in raw {
+        let level = SingBoxLog.level(of: line)
+        let message = SingBoxLog.message(of: line)
+        #expect(!message.contains("\u{1B}"), "escape left in: \(message)")
+        #expect(level == .info)
+    }
+    let messengerLine = raw.first { $0.contains("outbound connection to chat.example.net") }
+    #expect(
+        SingBoxLog.message(of: try #require(messengerLine))
+            == "[3216874115 2ms] outbound/vless[t-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa]: outbound connection to chat.example.net:5222"
+    )
+}
+
 @Test func runLayoutNames() {
     #expect(RunLayout.openVPNConfig(idA) == "t-\(idA).ovpn")
     #expect(RunLayout.ruleSet(idA) == "rules-t-\(idA).json")

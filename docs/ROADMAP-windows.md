@@ -653,6 +653,9 @@ strings and states, Windows chrome). Deltas, if any, go to
 - [x] App (Flutter): the pane on the Logs page per W16, click → filter, the flyout line
       (2026-09-16: `FailedPane` on Logs, the line on the Dashboard header).
 - [ ] PC run: same check as M15.
+      (2026-09-19: the parser half fixed in step with the macOS side — same wrong line
+      shapes, same fix; see ROADMAP.md § M15 and
+      docs/roadmap/failed-connections-live-log.md. The PC run above is still owed.)
 
 ### WM17 — Connections by exit (F20)
 
@@ -666,3 +669,6 @@ keys and optionality as the Swift side; Last 5 min and Reset are app-side there 
       and `ExitsTable` on the Logs page per W17, the flyout entry; `logs_page_test.dart`.
       — 2026-09-18: tray `Connections` entry stands in for the flyout footer item.
 - [ ] PC run (skipped on the maintainer's call, 2026-09-19): same check as M16.
+      (2026-09-19: opened/failed now count from the actual 1.13.19 line shapes, mirroring
+      the macOS fix; see docs/roadmap/failed-connections-live-log.md. The PC run above is
+      still owed.)

@@ -15,4 +15,10 @@ enum Fixtures {
     static func data(_ relativePath: String) throws -> Data {
         try Data(contentsOf: url(relativePath))
     }
+
+    /// Non-empty lines of a text fixture, in order (e.g. a recorded sing-box log).
+    static func lines(_ relativePath: String) throws -> [String] {
+        let text = try String(contentsOf: url(relativePath), encoding: .utf8)
+        return text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+    }
 }

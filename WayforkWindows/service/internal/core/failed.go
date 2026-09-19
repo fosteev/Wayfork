@@ -54,11 +54,11 @@ func IsInterestingLogLine(message string) bool {
 		return false
 	}
 	return strings.Contains(message, "connection to ") || strings.Contains(message, "found process path") ||
-		strings.Contains(message, " => ") || strings.Contains(message, "sniffed") ||
-		strings.Contains(message, "dns: exchange ") || strings.Contains(message, "using ")
+		strings.Contains(message, " => ") || strings.Contains(message, "dns: exchange ")
 }
 
-// Ingest feeds one line (the message after the timestamp, with or without the level).
+// Ingest feeds one line (the message after the timestamp, with or without the level; ANSI
+// escapes must already be stripped by the relay).
 func (f *FailedConnections) Ingest(line string, level LogLevel, now time.Time) {
 	id, rest, ok := splitConnectionLine(line)
 	if !ok {
@@ -68,45 +68,43 @@ func (f *FailedConnections) Ingest(line string, level LogLevel, now time.Time) {
 		f.remember(id).host = stripPort(host)
 	} else if host, ok := valueAfter(rest, "inbound packet connection to "); ok {
 		f.remember(id).host = stripPort(host)
-	} else if domain, ok := valueAfter(rest, "domain: "); ok && strings.Contains(rest, "sniffed") {
-		f.remember(id).host = domain
 	} else if path, ok := valueAfter(rest, "found process path: "); ok {
-		f.remember(id).processPath = path
+		f.remember(id).processPath = stripUserSuffix(path)
 	} else if name, ok := valueAfter(rest, "dns: exchange "); ok {
+		// Not seen in the 1.13.19 live log — kept as it was, marked verify.
 		f.remember(id).host = strings.Fields(name)[0]
-	} else if target, ok := valueAfterEither(rest, " => ", "using "); ok {
-		blockList := strings.Contains(rest, "rule_set="+BlockListRuleSetTag)
-		switch {
-		case (target == "reject" || target == "predefined") && blockList:
+	} else if target, ok := valueAfter(rest, " => "); ok {
+		// The block-list reject/predefined match — not seen in the 1.13.19 live log, kept
+		// as it was (verify); IsBlockedLine reads the same shape.
+		if (target == "reject" || target == "predefined") && strings.Contains(rest, "rule_set="+BlockListRuleSetTag) {
 			f.sawMatchLine = true
 			f.record(id, FailureReason{Kind: FailureBlocked}, "", true, now)
-		case strings.Contains(rest, "router:"):
-			f.sawMatchLine = true
-			pending := f.remember(id)
-			exit := exitIDForTarget(target)
-			// Opened counts once per connection id, at the first match/`using` line.
-			if !pending.hasExit {
-				f.openedCounts[exit]++
-			}
-			pending.exit, pending.hasExit = exit, true
 		}
-	} else if level == LogLevelError {
-		failure, ok := valueAfter(rest, "open connection to ")
-		if !ok {
-			failure, ok = valueAfter(rest, "open packet connection to ")
-		}
-		if !ok {
-			return
-		}
-		hostPort, errText := failure, ""
-		if cut := strings.Index(failure, ": "); cut >= 0 {
-			hostPort, errText = failure[:cut], failure[cut+2:]
-		}
+	} else if tag, host, ok := openedOutbound(rest); ok {
+		// `outbound/<type>[<tag>]: outbound connection to <host>:<port>` — the exit for
+		// this id, at the first dial; the line repeats while sing-box connects. The host
+		// here replaces any fake-ip the inbound line gave (sing-box resolves it back
+		// before dialling), so no fake-ip map is needed.
+		f.sawMatchLine = true
 		pending := f.remember(id)
-		if pending.host == "" {
-			pending.host = stripPort(hostPort)
+		exit := exitIDForTarget(tag)
+		// Opened counts once per connection id, at the first outbound dial line.
+		if !pending.hasExit {
+			f.openedCounts[exit]++
 		}
-		f.record(id, classifyFailure(errText, pending), "", false, now)
+		pending.exit, pending.hasExit = exit, true
+		pending.host = stripPort(host)
+	} else if strings.HasPrefix(rest, "connection:") {
+		if hostPort, tag, errText, ok := failedConnection(rest); ok {
+			// `connection: open connection to <host> using outbound/<type>[<tag>]:
+			// <error>` — an info-level line; host and exit come from the line itself, so
+			// a failure is recorded even when its prelude was not seen (log detail
+			// Problems).
+			exit := exitIDForTarget(tag)
+			pending := f.remember(id)
+			pending.host = stripPort(hostPort)
+			f.record(id, classifyFailure(errText, exit), exit, true, now)
+		}
 	}
 }
 
@@ -253,11 +251,82 @@ func valueAfter(text, marker string) (string, bool) {
 	return value, value != ""
 }
 
-func valueAfterEither(text, first, second string) (string, bool) {
-	if value, ok := valueAfter(text, first); ok {
-		return value, true
+// openedOutbound reads `outbound/<type>[<tag>]: outbound connection to <host>:<port>` (or
+// `outbound packet connection to` for UDP) → (tag, hostPort, true); false for any other line.
+func openedOutbound(rest string) (string, string, bool) {
+	if !strings.HasPrefix(rest, "outbound/") {
+		return "", "", false
 	}
-	return valueAfter(text, second)
+	tag, ok := outboundTag(rest)
+	if !ok {
+		return "", "", false
+	}
+	host, ok := valueAfter(rest, "outbound connection to ")
+	if !ok {
+		host, ok = valueAfter(rest, "outbound packet connection to ")
+	}
+	if !ok {
+		return "", "", false
+	}
+	return tag, host, true
+}
+
+// failedConnection reads `connection: open connection to <host> using
+// outbound/<type>[<tag>]: <error>` (or `open packet connection to` for UDP) → its pieces;
+// false for any other line.
+func failedConnection(rest string) (hostPort, tag, errText string, ok bool) {
+	failure, ok := valueAfter(rest, "open connection to ")
+	if !ok {
+		failure, ok = valueAfter(rest, "open packet connection to ")
+	}
+	if !ok {
+		return "", "", "", false
+	}
+	cut := strings.Index(failure, " using outbound/")
+	if cut < 0 {
+		return "", "", "", false
+	}
+	hostPort = failure[:cut]
+	afterSlash := failure[cut+len(" using outbound/"):]
+	tag, ok = outboundTag("outbound/" + afterSlash)
+	if !ok {
+		return "", "", "", false
+	}
+	close := strings.Index(afterSlash, "]")
+	colon := strings.Index(afterSlash[close:], ": ")
+	if colon < 0 {
+		return "", "", "", false
+	}
+	errText = afterSlash[close+colon+2:]
+	return hostPort, tag, errText, true
+}
+
+// outboundTag reads the tag inside a leading `outbound/<type>[<tag>]:`; false for any
+// other text.
+func outboundTag(text string) (string, bool) {
+	slash := strings.Index(text, "outbound/")
+	if slash < 0 {
+		return "", false
+	}
+	rest := text[slash:]
+	open := strings.Index(rest, "[")
+	if open < 0 {
+		return "", false
+	}
+	close := strings.Index(rest[open:], "]")
+	if close < 0 {
+		return "", false
+	}
+	return rest[open+1 : open+close], true
+}
+
+// stripUserSuffix reads `router: found process path: <path>, user: <name>` → `<path>`; the
+// suffix sing-box appends.
+func stripUserSuffix(path string) string {
+	if cut := strings.Index(path, ", user: "); cut >= 0 {
+		return path[:cut]
+	}
+	return path
 }
 
 // stripPort turns `host:443` into `host`; an IPv6 literal keeps its brackets' contents.
@@ -285,7 +354,7 @@ func exitIDForTarget(target string) string {
 	return target
 }
 
-func classifyFailure(errText string, pending *failedPending) FailureReason {
+func classifyFailure(errText, exit string) FailureReason {
 	text := strings.ToLower(errText)
 	switch {
 	case strings.Contains(text, "timeout"):
@@ -297,7 +366,7 @@ func classifyFailure(errText string, pending *failedPending) FailureReason {
 	case strings.Contains(text, "no such host") || strings.Contains(text, "nxdomain") || strings.Contains(text, "lookup"):
 		return FailureReason{Kind: FailureNoSuchName}
 	case strings.Contains(text, "network is unreachable") || strings.Contains(text, "no route to host"):
-		if pending.hasExit && pending.exit != "direct" {
+		if exit != "" && exit != "direct" {
 			return FailureReason{Kind: FailureTunnelDown}
 		}
 		return FailureReason{Kind: FailureOther, Other: errText}

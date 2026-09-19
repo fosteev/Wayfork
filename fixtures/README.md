@@ -15,6 +15,7 @@ reviewed change to the product.
 | `links/subscription.json` | F13 stage 7: subscription bodies (plain, base64, comments, non-lists) with the links every client extracts, the lines it skips and why, or the error | `SubscriptionDecoderTests`, Dart decoder tests |
 | `wireguard/*.conf`, `*.expected.json` | F13: WireGuard profile importer samples — placeholder keys only, one per shape (full tunnel, split `AllowedIPs`, preshared key, multiple peers, the invalid ones) | `WireGuardConfParserTests`, Dart parser tests |
 | `clash/connections.json` | A `GET /connections` sample from sing-box's Clash API | `TrafficTests`, `RuleSetSelectorsTests`, Go traffic tests |
+| `logs/sing-box-1.13.19.log` | Raw stdout lines of the pinned sing-box at `log.level: info` (timestamped, connection ids ANSI-coloured as printed), anonymised from a live run on 2026-09-19: a direct TCP connection, a tunnel TCP connection that times out, one that succeeds with the repeated outbound line, a UDP flow, a refused direct connection, DNS lines. The shapes F19/F20 parse | `FailedConnectionsTests`, `SingBoxLogTests`, Go `failed` tests |
 
 Regenerating the recorded results after an intentional change:
 

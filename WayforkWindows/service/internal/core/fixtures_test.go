@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -38,6 +39,20 @@ func readFixture(t *testing.T, parts ...string) string {
 		t.Fatalf("reading fixture %s: %v", path, err)
 	}
 	return string(data)
+}
+
+// readFixtureLines returns a text fixture's non-empty lines, in order (e.g. a recorded
+// sing-box log).
+func readFixtureLines(t *testing.T, parts ...string) []string {
+	t.Helper()
+	text := readFixture(t, parts...)
+	var lines []string
+	for _, line := range strings.Split(text, "\n") {
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
 }
 
 func testRuntime(id, adapter, config string) OpenVPNRuntime {

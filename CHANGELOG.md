@@ -17,6 +17,16 @@ All notable changes to Wayfork are recorded here. The format follows
   tray menu. Counts come from sing-box's own log lines, so they need log detail *Normal*;
   they are connections, not requests, and say nothing about what happened inside one.
 
+### Fixed
+
+- ***Can't reach* and *Connections* were empty**: the tracker did not read sing-box 1.13's
+  log (coloured ids, no match line, info-level failures). Both platforms.
+- **VLESS links with REALITY over gRPC import.** They were refused as unsupported since
+  the first release although sing-box handles them; REALITY over WebSocket stays refused
+  (no server offers it). Both platforms.
+- **The popover no longer runs off the screen** with many tunnels: the tunnel and Recent
+  lists scroll, the quick add and the footer stay in reach (macOS).
+
 ## [0.7.0] — 2026-09-16
 
 The F14–F19 wave on both platforms: friendlier screens, latency on every card, a Recent
