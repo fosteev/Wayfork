@@ -6,6 +6,12 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-09-19
+
+*Connections by exit* on both platforms, and the *Can't reach* pane made to work on the
+real sing-box log. A pre-release like 0.7.0: covered by the test suites and a replay of a
+live log; the visual walks are still owed.
+
 ### Added
 
 - **Connections by exit.** The Logs window (macOS) and the Logs page (Windows) get a
