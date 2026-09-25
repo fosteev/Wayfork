@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Builds a distributable Wayfork: Xcode archive, Developer ID signing with hardened runtime
-# and secure timestamps (app, daemon, bundled sing-box/openvpn), notarization through
+# and secure timestamps (app, daemon, bundled sing-box/openvpn/wayforkctl), notarization through
 # notarytool, stapling, and a signed + notarized DMG with a SHA-256 next to it.
 #
 # Usage: scripts/release.sh [--identity "<Developer ID Application: …>"]
@@ -159,13 +159,22 @@ ARCHIVED_APP="$ARCHIVE/Products/Applications/Wayfork.app"
 rm -rf "$APP"
 ditto "$ARCHIVED_APP" "$APP"
 
+# wayforkctl (F21, docs/design/09-wayforkctl.md) comes from the WayforkCore package, not the
+# Xcode build: universal, next to the other bundled binaries, signed below like them.
+log "Building wayforkctl"
+CTL_BUILD=(swift build -c release --package-path "$ROOT/macos/WayforkCore"
+    --arch arm64 --arch x86_64 --scratch-path "$OUT/wayforkctl-build")
+"${CTL_BUILD[@]}" --product wayforkctl >/dev/null
+cp -f "$("${CTL_BUILD[@]}" --show-bin-path)/wayforkctl" "$APP/$BIN_REL/wayforkctl"
+chmod 755 "$APP/$BIN_REL/wayforkctl"
+
 # ---------------------------------------------------------------------------------------------
 # Sign inside out. The build phase signs the bundled binaries without a timestamp and the
 # app's seal covers them, so everything from the leaves up is signed again here: hardened
 # runtime, secure timestamp, identifiers kept.
 
 log "Signing"
-for bin in sing-box openvpn; do
+for bin in sing-box openvpn wayforkctl; do
     [[ -x "$APP/$BIN_REL/$bin" ]] || die "$bin is not in the bundle"
     codesign --force --sign "$IDENTITY" --options runtime --timestamp \
         --identifier "com.wayfork.bin.$bin" "$APP/$BIN_REL/$bin"
@@ -177,7 +186,8 @@ codesign --force --sign "$IDENTITY" --options runtime --timestamp \
 
 log "Verifying"
 codesign --verify --deep --strict --verbose=1 "$APP"
-for path in "$APP" "$APP/$DAEMON_REL" "$APP/$BIN_REL/sing-box" "$APP/$BIN_REL/openvpn"; do
+for path in "$APP" "$APP/$DAEMON_REL" "$APP/$BIN_REL/sing-box" "$APP/$BIN_REL/openvpn" \
+    "$APP/$BIN_REL/wayforkctl"; do
     codesign --verify --strict "$path"
     # Capture first: `grep -q` closing the pipe early would fail the pipeline under pipefail.
     INFO="$(codesign -dvv "$path" 2>&1)"

@@ -119,7 +119,7 @@ extension AppModel {
         return message
     }
 
-    private func translateFakeIP(_ input: inout String, match: inout RuleMatch?) -> String? {
+    func translateFakeIP(_ input: inout String, match: inout RuleMatch?) -> String? {
         switch FakeIP.translate(input, index: fakeIPs) {
         case nil:
             return nil
@@ -143,15 +143,5 @@ extension AppModel {
         case .tunnel(let id): tunnelName(id)
         case .group(let id): store.group(id: id)?.name ?? "Group"
         }
-    }
-}
-
-extension Store {
-    /// Index right after the last rule of `target`'s group (or `rules.endIndex`).
-    fileprivate func endIndexOfGroup(_ target: RuleTarget) -> Int {
-        guard let last = rules.lastIndex(where: { $0.target == target }) else {
-            return rules.endIndex
-        }
-        return last + 1
     }
 }

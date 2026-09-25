@@ -55,6 +55,20 @@ Go service (`internal/core` is the pure, everywhere-tested half; Win32 stays beh
 - `scripts/` — build/packaging helpers (fetching pinned binaries, signing, etc.).
 - `examples/` — config templates with placeholders.
 
+## Diagnostics — use `wayforkctl`, not the GUI or raw log files
+- Build: `swift build -c release --package-path macos/WayforkCore --product wayforkctl`
+  → `macos/WayforkCore/.build/release/wayforkctl` (or the one in the installed
+  `Wayfork.app/Contents/Resources/bin/`). Windows: `wayforkctl.exe` on `ssh wf-win`.
+- Read first, narrowly: `wayforkctl logs --source sing-box --level warning --since 10m`,
+  `--grep <host>`, `wayforkctl failed`, `wayforkctl status`, `wayforkctl rules`.
+- Changes (`rules add <pattern> --via <exit>`, `rules remove`, `log-level`) are undone
+  after 60 s unless you run `wayforkctl confirm`. Confirm only after checking that the fix
+  works and that your own tool calls still go through. Never pass `--confirm-within 0`.
+- Never quit, restart, reinstall or turn off Wayfork from a session: this Mac's editor and
+  terminal traffic runs through it. Exit code 3 means the app is not running; say so, do
+  not start it.
+- Design: `docs/design/09-wayforkctl.md`.
+
 ## Docs
 - Follow `docs/ROADMAP.md` phases strictly in order: Features → Design → Implementation;
   `docs/ROADMAP-windows.md` the same way for the Windows client.

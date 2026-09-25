@@ -212,6 +212,26 @@ Worth knowing:
 - On Windows the same two live on the main window's *Logs* page; *Connections* is also in
   the tray menu.
 
+### From the command line (scripts, coding assistants)
+
+`wayforkctl` ships inside the app (`Wayfork.app/Contents/Resources/bin/wayforkctl`); link
+it into your `PATH`:
+
+```sh
+ln -s /Applications/Wayfork.app/Contents/Resources/bin/wayforkctl /usr/local/bin/wayforkctl
+wayforkctl logs --source sing-box --level warning --since 10m   # filtered, works with the app quit
+wayforkctl failed                                               # Can't reach rows, per-exit counters
+wayforkctl rules add example.com --via Work                     # undone in 60 s …
+wayforkctl confirm                                              # … unless confirmed
+```
+
+Changes go through the running app, never around it, and are undone by themselves unless
+`wayforkctl confirm` follows within `--confirm-within` seconds (default 60). A coding
+assistant whose own traffic runs through Wayfork cannot lock itself out. Server addresses
+in `logs` are replaced by `server-N` unless `--raw`; no command prints credentials.
+`wayforkctl help` lists everything. On Windows `wayforkctl logs` takes the same filters;
+rule changes from the command line are macOS-only for now.
+
 ## How it works
 
 - [sing-box](https://github.com/SagerNet/sing-box) owns a TUN interface and the default

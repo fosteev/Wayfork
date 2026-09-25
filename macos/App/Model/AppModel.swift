@@ -74,7 +74,7 @@ final class AppModel {
     private let repository: StoreRepository
     private let client = DaemonClient()
     private let helper = HelperInstaller()
-    private let notifier = Notifier()
+    let notifier = Notifier()
 
     private var applyTask: Task<Void, Never>?
     /// H2: re-applies with backoff while the routing engine is down.
@@ -94,6 +94,13 @@ final class AppModel {
     /// F20: when `exitsBaseline` was taken.
     var exitsResetAt: Date?
     private(set) var lastPlan: RuntimePlan?
+    /// F21: why the last apply did not go through; nil after a successful one.
+    private(set) var lastApplyError: String?
+    /// F21: the control socket (docs/design/09-wayforkctl.md); nil until bootstrap.
+    var controlServer: ControlServer?
+    /// F21: the command-line change waiting for `confirm`.
+    var controlPending: PendingControlChange?
+    var controlDeadlineTask: Task<Void, Never>?
     private var bootstrapped = false
     /// Re-applies when the system resolvers or the default gateway change: the resolvers are
     /// routed into the TUN (docs/design/03-routing.md, "Notes on specific choices").
@@ -310,6 +317,8 @@ final class AppModel {
         } catch {
             logs.app(.error, "cannot load store: \(error)")
         }
+        revertLeftoverControlChange()
+        startControlServer()
         try? secrets.removeOrphans(keeping: store)
         seedFromDirectory()
         recomputeMissingSecrets()
@@ -412,6 +421,7 @@ final class AppModel {
 
     /// Quit: stop everything, flush the store.
     func shutdown() async {
+        stopControlServer()
         if desiredOn || status?.engine.isRunning == true {
             await turnOff()
         }
@@ -792,6 +802,15 @@ final class AppModel {
         }
     }
 
+    /// F21: waits for the apply the last store change scheduled; nil when it went
+    /// through, the reason otherwise.
+    func settleApply() async -> String? {
+        guard desiredOn else { return "Wayfork is off; stored only" }
+        await applyTask?.value
+        guard client.isConnected else { return "helper not connected" }
+        return lastApplyError
+    }
+
     /// Store → plan → `apply` (docs/design/00-architecture.md, "Runtime plan").
     func applyNow() async {
         guard desiredOn, client.isConnected else { return }
@@ -799,6 +818,7 @@ final class AppModel {
         do {
             planSecrets = try PlanSecrets.load(for: store, from: secrets)
         } catch {
+            lastApplyError = "cannot read secrets: \(error)"
             logs.app(.error, "cannot read secrets: \(error)")
             Alerts.show(title: "Keychain error", message: "Cannot read tunnel secrets: \(error)")
             return
@@ -840,10 +860,12 @@ final class AppModel {
         )
         do {
             let reply = try await client.apply(result.plan)
+            lastApplyError = reply.ok ? nil : reply.error.map { "\($0)" } ?? "apply failed"
             if !reply.ok, let error = reply.error {
                 handleApplyError(error)
             }
         } catch {
+            lastApplyError = error.localizedDescription
             logs.app(.error, "apply failed: \(error.localizedDescription)")
             reportHelperError(error)
         }

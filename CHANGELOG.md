@@ -8,6 +8,16 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ### Added
 
+- **`wayforkctl` for scripts and coding assistants (F21).** macOS: `logs` reads the app's
+  log files with `--source/--level/--grep/--since/--tail/--json` filters and server
+  addresses redacted, and works with the app quit. `status`, `failed` and `rules` read
+  the running app. `rules add|remove` and `log-level` change it through its control
+  socket (`~/Library/Application Support/Wayfork/control.sock`, owner only), and every
+  change is undone unless `wayforkctl confirm` follows within `--confirm-within` seconds
+  (default 60), also across an app crash. `reconnect` restarts one tunnel. Release
+  builds ship the binary in `Contents/Resources/bin`. Windows: `wayforkctl logs` with the
+  same filters.
+
 - **`wayforkctl connections` and `explain` (Windows).** Read-only diagnostics on the
   service pipe: `connections` lists every connection sing-box's Clash API currently
   reports — exit, matched rule, upload/download, and a one-way-UDP flag per connection —
