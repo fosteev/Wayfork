@@ -6,6 +6,12 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-09-25
+
+`wayforkctl` for scripts and coding assistants (F21) and the Windows fixes from the Discord
+voice session (issues #1, #2). A pre-release like 0.8.0: covered by the test suites only;
+the live check of the macOS control socket and the Windows PC run are still owed.
+
 ### Added
 
 - **`wayforkctl` for scripts and coding assistants (F21).** macOS: `logs` reads the app's
