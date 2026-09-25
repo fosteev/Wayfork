@@ -687,3 +687,15 @@ Windows only; the macOS client keeps stable `.app` paths.
       (stage 7).
       (2026-09-25: deferred on the maintainer's call to after the next release; #1 and #2
       closed with a564d8d and 44cd952. The PC run above is still owed.)
+
+### WM19 — `wayforkctl logs` (F21)
+
+[ROADMAP.md](ROADMAP.md) § F21; design in
+[design/09-wayforkctl.md](design/09-wayforkctl.md) § Commands (Windows); stages in
+[roadmap/wayforkctl-agent.md](roadmap/wayforkctl-agent.md). Rule changes from the command
+line on Windows (a control channel into the Flutter app) are not part of this milestone.
+
+- [x] Service (Go): `wayforkctl logs` with `--source/--level/--grep/--since/--tail/--json`
+      on top of `collectDiagnostics`, the filter a pure function in `internal/core`; tests.
+      — 2026-09-25.
+- [ ] VM run: `wayforkctl logs --source sing-box --level warning --since 10m` on `wf-win`.

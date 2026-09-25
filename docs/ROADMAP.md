@@ -287,6 +287,23 @@ Feature text, stages and working order for F15–F18 and the friendlier UI pass:
   [roadmap/connections-by-exit.md](roadmap/connections-by-exit.md); boards
   `prototype/variant-c.html` C9, `prototype/windows.html` W17.
 
+**F21. wayforkctl for scripts and coding assistants** *(added 2026-09-25; approved
+2026-09-25)*
+- The user's scenario: a coding assistant working on this Mac is asked "why doesn't
+  this site open" or "send example.com through Work". It reads the logs filtered by
+  source, level, text and time instead of whole files, and changes rules without the GUI.
+- Changes go through the running app (the same path as the popover), never around it,
+  and are **undone automatically unless confirmed** within a minute. An assistant whose
+  own traffic goes through Wayfork cannot lock itself out.
+- Read: `logs` (works with the app quit, server addresses redacted), `status`, `failed`,
+  `rules`. Change: `rules add|remove`, `log-level`, then `confirm` / `revert`;
+  `reconnect`. No tunnels, no credentials, nothing needing admin rights.
+- The repository's `CLAUDE.md` and `wayforkctl help` tell an assistant the tool exists
+  and how to use it safely. Release builds ship the binary inside the app bundle.
+- Windows: `wayforkctl logs` with the same filters; rule changes on Windows are later.
+- Design: [design/09-wayforkctl.md](design/09-wayforkctl.md); stages:
+  [roadmap/wayforkctl-agent.md](roadmap/wayforkctl-agent.md).
+
 ### Later
 
 The F15–F18 wave (recent domains → rule, tunnel groups, local proxy ports, block lists) was
@@ -939,3 +956,20 @@ manual check passed — F20 counts from the same log lines.
       note and docs/roadmap/failed-connections-live-log.md; the parser half is done, the
       visual walk above is still owed to the maintainer.)
 - [x] Windows: WM17 in ROADMAP-windows.md (2026-09-18).
+
+### M17 — wayforkctl for scripts and assistants (F21)
+
+Phase 1 above, § F21. Design in [design/09-wayforkctl.md](design/09-wayforkctl.md); stages
+and statuses in [roadmap/wayforkctl-agent.md](roadmap/wayforkctl-agent.md).
+
+- [x] `WayforkCore`: `LogQuery`, control protocol types, `StoreEdit` with inverses,
+      `ControlServer`; tests. — 2026-09-25.
+- [x] `wayforkctl`: `logs`, `status`, `failed`, `rules [add|remove]`, `log-level`,
+      `confirm`, `revert`, `reconnect`, `help`. — 2026-09-25.
+- [x] App: control socket, `AppModel+Control`, dead-man timer, `control-pending.json`
+      revert at launch. — 2026-09-25.
+- [x] Release: universal signed `Contents/Resources/bin/wayforkctl`. — 2026-09-25.
+- [x] `CLAUDE.md` *Diagnostics* section, README, CHANGELOG. — 2026-09-25.
+- [ ] Manual check with the installed app: `rules add … --via …` reverts after the
+      deadline, `confirm` keeps it, `revert` undoes it, `logs --grep` finds the host.
+- [x] Windows: WM19 in ROADMAP-windows.md (2026-09-25).
