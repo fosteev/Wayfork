@@ -188,6 +188,6 @@ hop onto it. No shared mutable state elsewhere.
 ## Versions and pinning
 
 `scripts/versions.env` pins `SING_BOX_VERSION` and `OPENVPN_VERSION`; `scripts/fetch-bins.sh`
-downloads/builds them into `Wayfork/Resources/bin/` (git-ignored). The generated config
+downloads/builds them into `macos/Resources/bin/` (git-ignored). The generated config
 targets sing-box's current schema (`route.rules[].action`, typed `dns.servers`); bumping
 sing-box requires a config-generator review.

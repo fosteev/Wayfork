@@ -1,12 +1,12 @@
 # Fetches the pinned block list (scripts/versions.env, BLOCKLIST_*), converts it to
 # sing-box's source rule-set format and compiles it with the fetched sing-box.exe into
-# WayforkWindows\rulesets\block-ads.srs next to a block-ads.json sidecar (F18; the Windows
+# windows\rulesets\block-ads.srs next to a block-ads.json sidecar (F18; the Windows
 # twin of scripts/fetch-blocklist.sh). Both files are git-ignored and staged into the MSI
 # payload by scripts/release-windows.ps1.
 #
 # Usage: scripts\fetch-win-blocklist.ps1 -Arch amd64|arm64
 #
-#   -Arch   which fetched sing-box.exe compiles the list (WayforkWindows\bin\<arch>);
+#   -Arch   which fetched sing-box.exe compiles the list (windows\bin\<arch>);
 #           the .srs itself is architecture-independent.
 #
 # Requirements: scripts\fetch-win-bins.ps1 has run for that architecture, curl.exe.
@@ -54,14 +54,14 @@ foreach ($key in @('BLOCKLIST_NAME', 'BLOCKLIST_HOMEPAGE', 'BLOCKLIST_COMMIT', '
 # emulation, on ARM64 Windows), else the one of -Arch. An arm64 sing-box.exe on an x64 runner
 # does not run at all.
 $candidates = @(
-    (Join-Path $root 'WayforkWindows\bin\amd64\sing-box.exe'),
-    (Join-Path $root "WayforkWindows\bin\$Arch\sing-box.exe")
+    (Join-Path $root 'windows\bin\amd64\sing-box.exe'),
+    (Join-Path $root "windows\bin\$Arch\sing-box.exe")
 )
 $singBox = $candidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
 if (-not $singBox) {
-    Fail "no fetched sing-box.exe under WayforkWindows\bin; run scripts\fetch-win-bins.ps1 -Arch $Arch first"
+    Fail "no fetched sing-box.exe under windows\bin; run scripts\fetch-win-bins.ps1 -Arch $Arch first"
 }
-$outDir = Join-Path $root 'WayforkWindows\rulesets'
+$outDir = Join-Path $root 'windows\rulesets'
 $buildDir = Join-Path $root 'build\blocklist'
 [void](New-Item -ItemType Directory -Path $outDir, $buildDir -Force)
 

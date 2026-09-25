@@ -36,7 +36,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROJECT="$ROOT/Wayfork/Wayfork.xcodeproj"
+PROJECT="$ROOT/macos/Wayfork.xcodeproj"
 OUT="$ROOT/build/release"
 DERIVED="$ROOT/build/DerivedData"
 ARCHIVE="$OUT/Wayfork.xcarchive"
@@ -71,15 +71,15 @@ done
 
 command -v xcodebuild >/dev/null || die "xcodebuild not found (install Xcode)"
 for bin in sing-box openvpn; do
-    [[ -x "$ROOT/Wayfork/Resources/bin/$bin" ]] \
-        || die "bundled binary missing: Wayfork/Resources/bin/$bin (run scripts/fetch-bins.sh)"
-    lipo -info "$ROOT/Wayfork/Resources/bin/$bin" | grep -q "arm64" \
-        || warn "Wayfork/Resources/bin/$bin has no arm64 slice"
-    lipo -info "$ROOT/Wayfork/Resources/bin/$bin" | grep -q "x86_64" \
-        || warn "Wayfork/Resources/bin/$bin has no x86_64 slice (Intel Macs will not work)"
+    [[ -x "$ROOT/macos/Resources/bin/$bin" ]] \
+        || die "bundled binary missing: macos/Resources/bin/$bin (run scripts/fetch-bins.sh)"
+    lipo -info "$ROOT/macos/Resources/bin/$bin" | grep -q "arm64" \
+        || warn "macos/Resources/bin/$bin has no arm64 slice"
+    lipo -info "$ROOT/macos/Resources/bin/$bin" | grep -q "x86_64" \
+        || warn "macos/Resources/bin/$bin has no x86_64 slice (Intel Macs will not work)"
 done
-[[ -f "$ROOT/Wayfork/Resources/rulesets/block-ads.srs" ]] \
-    || die "block list missing: Wayfork/Resources/rulesets/block-ads.srs (run scripts/fetch-blocklist.sh)"
+[[ -f "$ROOT/macos/Resources/rulesets/block-ads.srs" ]] \
+    || die "block list missing: macos/Resources/rulesets/block-ads.srs (run scripts/fetch-blocklist.sh)"
 
 if [[ -z "$IDENTITY" ]]; then
     IDENTITY="$(security find-identity -v -p codesigning \

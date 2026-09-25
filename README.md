@@ -225,7 +225,7 @@ Worth knowing:
   on macOS, a LocalSystem service on Windows. It spawns the bundled binaries, adds routes,
   samples traffic counters and streams logs to the unprivileged GUI.
 - Everything is bundled — `sing-box` and `openvpn`, pinned in `scripts/versions.env` and
-  `WayforkWindows/versions.env`. No kernel extension and no Network Extension on macOS; on
+  `windows/versions.env`. No kernel extension and no Network Extension on macOS; on
   Windows the only driver installed is OpenVPN's WHQL-signed `ovpn-dco` (sing-box's TUN
   rides the wintun sing-tun already embeds).
 
@@ -291,30 +291,30 @@ Worth knowing:
 scripts/fetch-bins.sh                 # pinned sing-box, static universal openvpn
 scripts/fetch-blocklist.sh            # pinned ads & trackers list, compiled with sing-box
 scripts/dev-sign.sh                   # build signed with your Apple Development identity
-swift test --package-path Wayfork/WayforkCore
+swift test --package-path macos/WayforkCore
 scripts/format.sh --lint              # swift-format check (drop --lint to fix)
 ```
 
-`Wayfork/Wayfork.xcodeproj` holds the `Wayfork` and `WayforkDaemon` targets;
-`Wayfork/WayforkCore` is a local Swift package shared by both. Plain `xcodebuild` and
+`macos/Wayfork.xcodeproj` holds the `Wayfork` and `WayforkDaemon` targets;
+`macos/WayforkCore` is a local Swift package shared by both. Plain `xcodebuild` and
 Xcode's Run produce ad-hoc signed builds — fine for UI work, but they cannot register the
 privileged helper; use `scripts/dev-sign.sh` and copy the app to `/Applications`. The script
 needs an *Apple Development* identity: sign in to Xcode with any Apple ID (*Settings ›
 Accounts*, no paid membership) and it creates one for your personal team. Builds made this
 way are trusted on your own Mac, no quarantine step needed.
 
-### Windows — toolchains pinned in `WayforkWindows/versions.env`
+### Windows — toolchains pinned in `windows/versions.env`
 
 ```powershell
 scripts\fetch-win-bins.ps1 -Arch amd64   # pinned sing-box, OpenVPN, the ovpn-dco package
-cd WayforkWindows\app;     flutter test; dart analyze --fatal-infos
-cd WayforkWindows\service; go test ./...; go vet ./...
+cd windows\app;     flutter test; dart analyze --fatal-infos
+cd windows\service; go test ./...; go vet ./...
 scripts\release-windows.ps1              # both MSIs and the bundle → build\release-windows\
 ```
 
-`WayforkWindows/app` is the Flutter app, `WayforkWindows/service` the Go service
+`windows/app` is the Flutter app, `windows/service` the Go service
 (`internal/core` is the pure, everywhere-tested half; Win32 stays behind `//go:build
-windows`, so `go test ./...` passes on macOS too) and `WayforkWindows/installer` the WiX
+windows`, so `go test ./...` passes on macOS too) and `windows/installer` the WiX
 source of the MSI.
 
 ### Shared

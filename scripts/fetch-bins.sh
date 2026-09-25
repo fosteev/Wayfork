@@ -2,7 +2,7 @@
 #
 # Fetches the pinned sing-box release and builds a fully static openvpn (OpenSSL, lz4, lzo)
 # for every architecture in WAYFORK_ARCHS, then places universal binaries into
-# Wayfork/Resources/bin/ (git-ignored; copied into the app bundle at build time).
+# macos/Resources/bin/ (git-ignored; copied into the app bundle at build time).
 #
 # Usage: scripts/fetch-bins.sh [--clean]
 #
@@ -19,7 +19,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=versions.env
 source "$ROOT/scripts/versions.env"
 
-OUT_DIR="$ROOT/Wayfork/Resources/bin"
+OUT_DIR="$ROOT/macos/Resources/bin"
 BUILD_DIR="${WAYFORK_BUILD_DIR:-$ROOT/build/bins}"
 DL_DIR="$BUILD_DIR/downloads"
 ARCHS="${WAYFORK_ARCHS:-arm64 x86_64}"

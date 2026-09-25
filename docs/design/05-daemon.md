@@ -10,7 +10,7 @@ target of the `WayforkCore` package, unit-tested without root): `ManagedProcess`
 `AtomicFile`, the management-protocol parser and `OpenVPNSessionReducer` (the whole
 tunnel state machine as a pure reducer: events in, `TunnelState` + effects out),
 `ReconcilePlanner`, `PlanValidator`, `BackoffPolicy`/`CrashCounter`, `RouteCommand`,
-argv builders. `Wayfork/Daemon/` only wires those to XPC, `Security` and the filesystem.
+argv builders. `macos/Daemon/` only wires those to XPC, `Security` and the filesystem.
 
 ## Registration (SMAppService)
 
@@ -134,7 +134,7 @@ connection.setCodeSigningRequirement(
     "anchor apple generic and identifier \"com.wayfork.app\" and certificate leaf[subject.OU] = \"<TEAMID>\"")
 ```
 
-The Team ID is baked in at build time from the signing identity: `Wayfork/Daemon/Info.plist`
+The Team ID is baked in at build time from the signing identity: `macos/Daemon/Info.plist`
 carries `WayforkTeamID = $(DEVELOPMENT_TEAM)`, which Xcode expands and embeds into the
 daemon binary (`__TEXT,__info_plist` section, `CREATE_INFOPLIST_SECTION_IN_BINARY`).
 `scripts/dev-sign.sh` derives `DEVELOPMENT_TEAM` from the chosen identity and verifies the

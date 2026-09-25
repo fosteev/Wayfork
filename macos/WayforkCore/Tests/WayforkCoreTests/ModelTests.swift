@@ -7,7 +7,7 @@ enum Fixtures {
     /// The repo-level `fixtures/` directory, shared with the Windows client's Dart and Go
     /// tests: golden inputs/outputs of the generator, parser samples, protocol captures.
     static let root: URL = {
-        // <repo>/Wayfork/WayforkCore/Tests/WayforkCoreTests/ModelTests.swift → <repo>/fixtures
+        // <repo>/macos/WayforkCore/Tests/WayforkCoreTests/ModelTests.swift → <repo>/fixtures
         var url = URL(fileURLWithPath: #filePath)
         for _ in 0..<5 { url.deleteLastPathComponent() }
         return url.appendingPathComponent("fixtures")

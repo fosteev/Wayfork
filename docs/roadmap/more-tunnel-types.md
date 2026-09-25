@@ -232,7 +232,7 @@ riskiest unknown.
       it was tripping over. The stale caveat is removed from dead-udp-suggestions.md.
 
 **Done when:** `xcodebuild test -scheme WayforkCore-Package -destination 'platform=macOS'`
-from `Wayfork/WayforkCore` is green, goldens reviewed, `swift-format lint` clean.
+from `macos/WayforkCore` is green, goldens reviewed, `swift-format lint` clean.
 **Done 2026-09-07:** 144 + 80 tests, no failures at all (see the fake-IP fix above); the
 three new goldens were additionally started under a real `sing-box run` with the TUN
 inbound swapped for a loopback inbound, which is the only way to prove the tag references
@@ -261,7 +261,7 @@ and the WireGuard peer resolution actually work.
       now a structural case match; the `AllowedIPs` warning was yellow where the rest of the
       app uses orange.
 
-**Done when:** the app builds (`xcodebuild -project Wayfork/Wayfork.xcodeproj -scheme
+**Done when:** the app builds (`xcodebuild -project macos/Wayfork.xcodeproj -scheme
 Wayfork -configuration Debug -derivedDataPath build/DerivedData build`), `swift-format
 lint --recursive` clean, a dev-apply plan with one tunnel of each kind passes
 `sing-box check`. Build only — the live Wayfork is installed by the maintainer.
@@ -302,8 +302,8 @@ verify in Context fails.
       `endpoints[]` passes through it unnoticed — the config really is opaque to the service.
 
 **Done when:** `dart format` + `dart analyze --fatal-infos` + `flutter test` green in
-`WayforkWindows/app`; `gofmt` + `go vet` + `go test ./...` green in
-`WayforkWindows/service`; the new goldens match on all three suites.
+`windows/app`; `gofmt` + `go vet` + `go test ./...` green in
+`windows/service`; the new goldens match on all three suites.
 **Done 2026-09-07:** 338 Dart tests, analyze clean, Go untouched and green; the golden
 replay matches all thirteen `singbox/*` variants byte for byte, which is the actual proof
 that the Swift and Dart generators agree about `endpoints[]` and the three new outbounds.

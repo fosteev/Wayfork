@@ -452,7 +452,7 @@ void main() {
   test('sing-box accepts generated Windows configs', () async {
     final binary = Platform.isWindows
         ? File('../../bin/amd64/sing-box.exe').absolute
-        : File('../../Wayfork/Resources/bin/sing-box').absolute;
+        : File('../../macos/Resources/bin/sing-box').absolute;
     if (!binary.existsSync()) return;
 
     final variants = _configVariants(

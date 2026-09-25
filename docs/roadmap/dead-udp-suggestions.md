@@ -79,7 +79,7 @@ and answer the query.
 
 **Done when:** `go test ./...`, `flutter test`, and the WayforkCore package tests pass
 (`xcodebuild test -scheme WayforkCore-Package -destination 'platform=macOS'` from
-`Wayfork/WayforkCore`). The old caveat that
+`macos/WayforkCore`). The old caveat that
 `openVPNServersAlwaysGoDirectByNameAndAddress` fails falsely under a live Wayfork is gone
 as of 2026-09-07: `HostResolver.resolveIPv4` now drops fake-IP answers (F13, see
 design/04-tunnels.md), which is what the test was tripping over.
@@ -98,7 +98,7 @@ design/04-tunnels.md), which is what the test was tripping over.
 
 **Done when:** `dart format` + `dart analyze --fatal-infos` + `flutter test` are green;
 `xcrun swift-format lint --recursive` clean; the app builds
-(`xcodebuild -project Wayfork/Wayfork.xcodeproj -scheme Wayfork -configuration Debug
+(`xcodebuild -project macos/Wayfork.xcodeproj -scheme Wayfork -configuration Debug
 -derivedDataPath build/DerivedData build`).
 
 ### 5. Ship

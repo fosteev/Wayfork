@@ -1,5 +1,5 @@
 # Fetches the pinned Windows sing-box and OpenVPN binaries, plus the ovpn-dco driver
-# package, and places them under WayforkWindows/ (git-ignored; packaged by the build).
+# package, and places them under windows/ (git-ignored; packaged by the build).
 #
 # Usage: scripts\fetch-win-bins.ps1 [-Arch amd64] [-Clean] [-BuildDir <path>] [-ForceCabinet]
 #                                   [-Record]
@@ -452,8 +452,8 @@ try {
     }
 
     [void](New-Item -ItemType Directory -Path $script:DownloadsDir -Force)
-    $binOutputDir = Join-Path $root "WayforkWindows\bin\$Arch"
-    $driverOutputDir = Join-Path $root "WayforkWindows\drivers\$Arch\ovpn-dco"
+    $binOutputDir = Join-Path $root "windows\bin\$Arch"
+    $driverOutputDir = Join-Path $root "windows\drivers\$Arch\ovpn-dco"
     [void](New-Item -ItemType Directory -Path $binOutputDir -Force)
     [void](New-Item -ItemType Directory -Path $driverOutputDir -Force)
     $outputFiles = @()

@@ -107,7 +107,7 @@ with tests on a recorded sample of that output.
       isBlockedLine` matches on the raw, unstripped line — safe because the reject/
       predefined text it scans for never sits inside the ANSI-coloured id span. Left
       unchanged.)
-- [x] `scripts/format.sh`; package tests via `xcodebuild` from `Wayfork/WayforkCore`;
+- [x] `scripts/format.sh`; package tests via `xcodebuild` from `macos/WayforkCore`;
       `xcodebuild` builds of the Wayfork and WayforkDaemon schemes.
       (2026-09-19: `scripts/format.sh` clean; `xcodebuild test -scheme
       WayforkCore-Package -destination 'platform=macOS'` → TEST SUCCEEDED; `xcodebuild
@@ -161,13 +161,13 @@ with tests on a recorded sample of that output.
 Модель: sonnet, effort: high
 
 You are working in /Users/fost/Projects/Wayfork (read CLAUDE.md: English in the repo,
-swift-format via scripts/format.sh, gofmt/go vet in WayforkWindows/service, commit only
+swift-format via scripts/format.sh, gofmt/go vet in windows/service, commit only
 when asked, no AI trailers; never restart the installed Wayfork — build only). Task:
 docs/roadmap/failed-connections-live-log.md, all three stages in order. Read that file
 whole, then fixtures/logs/sing-box-1.13.19.log (it is the contract — `cat -v` it to see
-the escapes), then Wayfork/WayforkCore/Sources/WayforkDaemonCore/SingBoxLog.swift and
-FailedConnections.swift with their tests, Wayfork/Daemon/SingBoxEngine.swift around the
-relay (grep isInteresting), WayforkWindows/service/internal/core/failed.go with its tests
+the escapes), then macos/WayforkCore/Sources/WayforkDaemonCore/SingBoxLog.swift and
+FailedConnections.swift with their tests, macos/Daemon/SingBoxEngine.swift around the
+relay (grep isInteresting), windows/service/internal/core/failed.go with its tests
 and internal/service/clashhttp.go around Ingest, and docs/design/05-daemon.md § Failed
 connections. Read big files by grep first, then ranges.
 

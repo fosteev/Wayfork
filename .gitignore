@@ -19,11 +19,11 @@ xcuserdata/
 Package.resolved.bak
 
 # Bundled binaries and the compiled block list (fetched by scripts/, not committed)
-Wayfork/Resources/bin/
-Wayfork/Resources/rulesets/
-WayforkWindows/bin/
-WayforkWindows/drivers/
-WayforkWindows/rulesets/
+macos/Resources/bin/
+macos/Resources/rulesets/
+windows/bin/
+windows/drivers/
+windows/rulesets/
 
 # Secrets / real configs
 *.ovpn
@@ -40,15 +40,15 @@ WayforkWindows/rulesets/
 # Shared test fixtures (placeholder keys only)
 !fixtures/**/*.ovpn
 
-# Flutter (WayforkWindows/app)
+# Flutter (windows/app)
 .dart_tool/
 .flutter-plugins-dependencies
 ephemeral/
-WayforkWindows/app/build/
+windows/app/build/
 *.iml
 
-# Go (WayforkWindows/service)
-WayforkWindows/service/bin/
+# Go (windows/service)
+windows/service/bin/
 
 # Developer seed configs (real tunnels; never committed)
 local/

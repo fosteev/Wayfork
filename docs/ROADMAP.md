@@ -420,7 +420,7 @@ config generator, XPC payloads — no UI, no privileges, fully unit-testable).
 - [x] App `Info.plist`: `LSUIElement`, bundle id `com.wayfork.app`; daemon plist under
       `Contents/Library/LaunchDaemons/` per [05-daemon.md](design/05-daemon.md).
 - [x] `scripts/versions.env` + `scripts/fetch-bins.sh`: download pinned sing-box release,
-      build static openvpn (OpenSSL, lz4, lzo) into `Wayfork/Resources/bin/`; checksums.
+      build static openvpn (OpenSSL, lz4, lzo) into `macos/Resources/bin/`; checksums.
 - [x] `scripts/dev-sign.sh`: sign app + daemon + bundled binaries with the developer's
       identity, inject Team ID into the daemon's code-signing requirement.
 - [x] GitHub Actions: build, `swift-format lint`, `WayforkCore` tests on every PR.
@@ -449,7 +449,7 @@ config generator, XPC payloads — no UI, no privileges, fully unit-testable).
 ### M2 — Daemon
 
 Unprivileged logic lives in the `WayforkDaemonCore` package target (tests run without
-root); `Wayfork/Daemon/` is the XPC/Security/filesystem shell. `WayforkDaemon --dev-apply`
+root); `macos/Daemon/` is the XPC/Security/filesystem shell. `WayforkDaemon --dev-apply`
 plus `wayforkctl plan` exercise the daemon without the app (see
 [05-daemon.md](design/05-daemon.md), "Developer mode").
 

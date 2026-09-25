@@ -5,7 +5,7 @@ part of 'app_model.dart';
 // Turn On (`TrafficSnapshot.exits`), so the app keeps a short ring of
 // samples to answer *Last 5 min* and a baseline to answer *Reset* — both
 // windows read the same cumulative wire data, never a fresh protocol round
-// trip. Mirrors Wayfork/App/Model/AppModel+Exits.swift.
+// trip. Mirrors macos/App/Model/AppModel+Exits.swift.
 
 /// `Since Turn On` (from the service's counters, offset by the last *Reset*)
 /// or `Last 5 min` (subtracted from the ring).

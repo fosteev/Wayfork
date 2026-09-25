@@ -263,7 +263,7 @@ Decided for WM4 (2026-08-28):
   (verified in the VM since WM3c) while everything privileged stays native. The MSI carries
   the matching `Platform`, so Windows refuses the wrong package by itself.
 - **One `.exe` on top of the two packages.** A WiX Burn bundle,
-  `WayforkWindows/installer/WayforkBundle.wxs` → `Wayfork-<version>.exe`, carries both MSIs
+  `windows/installer/WayforkBundle.wxs` → `Wayfork-<version>.exe`, carries both MSIs
   compressed and installs the one the machine needs (`NativeMachine` = `0x8664` → amd64,
   `0xAA64` → arm64; anything else is refused with a message). It is what the release page
   offers first — a download nobody has to pick an architecture for — while the MSIs stay
@@ -312,12 +312,12 @@ WM4a landed the payload both packages need:
   to, so an unsigned client inside `%ProgramFiles%\Wayfork` is accepted with a warning
   (see "Trust boundary"); publisher pinning is still owed with the signing setup.
 
-WM4b landed the package itself (`WayforkWindows/installer/Wayfork.wxs`,
+WM4b landed the package itself (`windows/installer/Wayfork.wxs`,
 `scripts/release-windows.ps1`), verified end to end on the arm64 VM on 2026-08-28:
 
 - **WiX 6.0.2, not 7.** WiX 7 refuses to build until the Open Source Maintenance Fee EULA
   is accepted — a licensing decision for the maintainer, not for a build script — so the
-  pin is `WIX_VERSION=6.0.2` in `WayforkWindows/versions.env`. It is a dotnet tool
+  pin is `WIX_VERSION=6.0.2` in `windows/versions.env`. It is a dotnet tool
   targeting net6.0 and runs fine on the pinned .NET 8 SDK. `wix build` warns (WIX1149)
   that MSI's `ServiceConfig` is documented as unreliable; it is kept anyway, because
   `DelayedAutostart` is exactly what it sets and the installed service does come out with
@@ -375,18 +375,18 @@ WM4b landed the package itself (`WayforkWindows/installer/Wayfork.wxs`,
 
 ## Repository layout (WM0)
 
-`WayforkWindows/app` (Flutter, `fluent_ui`, `lib/core` mirrors WayforkCore file by file),
-`WayforkWindows/service` (Go module `wayfork/service`: `internal/core` pure and tested on
+`windows/app` (Flutter, `fluent_ui`, `lib/core` mirrors WayforkCore file by file),
+`windows/service` (Go module `wayfork/service`: `internal/core` pure and tested on
 every OS, `internal/winnet` = Win32 behind `//go:build windows`, `cmd/wayfork-service`,
-`cmd/wayforkctl`), `WayforkWindows/versions.env` (Flutter/Dart/Go pins), fetched binaries in
-`WayforkWindows/bin/<arch>` and `drivers/<arch>/ovpn-dco` (git-ignored). Shared
+`cmd/wayforkctl`), `windows/versions.env` (Flutter/Dart/Go pins), fetched binaries in
+`windows/bin/<arch>` and `drivers/<arch>/ovpn-dco` (git-ignored). Shared
 `fixtures/` (see its README): `singbox/<variant>/input.json` + golden outputs, `ovpn/`,
 `vless/links.json`, `clash/connections.json`; the Swift tests read them from there and
 regenerate with `WAYFORK_UPDATE_GOLDEN=1`. The Windows runner under `app/windows/` was
 rendered from Flutter's `app/windows.tmpl` (`flutter create --platforms=windows` refuses to
 emit it on macOS); `generated_plugin_registrant.*` and `generated_plugins.cmake` are written
 by `flutter pub get` on Windows. CI: `.github/workflows/ci-windows.yml` (windows-latest,
-Flutter + Go jobs) runs on `WayforkWindows/**`, `fixtures/**`, `scripts/**`; `ci.yml` ignores
+Flutter + Go jobs) runs on `windows/**`, `fixtures/**`, `scripts/**`; `ci.yml` ignores
 the mirror set.
 
 ## Dart core (WM1)
@@ -490,7 +490,7 @@ tested everywhere against `fixtures/`. The deltas from the Swift daemon core:
 
 ## Service shell (WM2, `service/internal/{service,ipc,winnet,winproc}`, `cmd/`)
 
-The macOS daemon's wiring (`Wayfork/Daemon/`) ported with one structural change: the
+The macOS daemon's wiring (`macos/Daemon/`) ported with one structural change: the
 orchestration is a cross-platform package over small I/O interfaces, so it is unit-tested
 on every platform with fakes; only the interface implementations touch Win32.
 
@@ -1204,7 +1204,7 @@ The port landed in three commits (Dart core d4ac090, Go service 9400543, Flutter
   (cards with latency + sparkline, group cards with members, Recent, the F19 line) and
   the stat tiles stay.
 - **Block list**: fetched and compiled by `scripts/fetch-win-blocklist.ps1` (the twin of
-  `fetch-blocklist.sh`, same pins in `versions.env`) into `WayforkWindows\rulesets\`, staged
+  `fetch-blocklist.sh`, same pins in `versions.env`) into `windows\rulesets\`, staged
   into the MSI payload as `rulesets\block-ads.srs` by `release-windows.ps1`; the service
   accepts only `<install>\rulesets\block-ads.srs` (`core.ValidateOptions`).
 - **Process names** in Recent and Can't reach are the executable's file name (no
@@ -1449,7 +1449,7 @@ at the pinned version's `main`, OpenVPN `Changes.rst` and sources at `master`,
 ### Configs
 
 Two sing-box configs and the rule-set files, all in `C:\wf\sb\`. Both are the
-[two-tunnels golden](../../Wayfork/WayforkCore/Tests/WayforkCoreTests/Golden/two-tunnels/sing-box.json)
+[two-tunnels golden](../../macos/WayforkCore/Tests/WayforkCoreTests/Golden/two-tunnels/sing-box.json)
 adapted for Windows: `interface_name` `Wayfork`, `bind_interface` `Wayfork-N`,
 `process_path` of `openvpn.exe`, `dns-direct` named explicitly (the `local` transport
 loops under the resolver override, 2026-08-26), a third tunnel (second OpenVPN), a Clash

@@ -1,7 +1,7 @@
 # Shared test fixtures
 
-Inputs and golden outputs used by the Swift tests (`Wayfork/WayforkCore/Tests`), the Dart
-tests (`WayforkWindows/app`) and the Go tests (`WayforkWindows/service`). Every client must
+Inputs and golden outputs used by the Swift tests (`macos/WayforkCore/Tests`), the Dart
+tests (`windows/app`) and the Go tests (`windows/service`). Every client must
 produce or accept exactly what is recorded here; a change to a golden file is a deliberate,
 reviewed change to the product.
 
@@ -20,7 +20,7 @@ reviewed change to the product.
 Regenerating the recorded results after an intentional change:
 
 ```sh
-WAYFORK_UPDATE_GOLDEN=1 swift test --package-path Wayfork/WayforkCore
+WAYFORK_UPDATE_GOLDEN=1 swift test --package-path macos/WayforkCore
 ```
 
 then review the diff. Rule ids in `input.json` are renumbered (`…-0000000001NN`) because

@@ -17,7 +17,7 @@ for (16-48 px, 100-300 % DPI) as uncompressed 32-bit BGRA bitmaps, the only
 format `LoadImage` reads from a file on every Windows version.
 
 Usage: python3 scripts/make-win-tray-icons.py [output-dir]
-       (default: WayforkWindows/app/assets/tray)
+       (default: windows/app/assets/tray)
 """
 
 from __future__ import annotations
@@ -209,7 +209,7 @@ def write_ico(path, shapes, colour, alpha_scale):
 def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     target = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
-        root, 'WayforkWindows', 'app', 'assets', 'tray'
+        root, 'windows', 'app', 'assets', 'tray'
     )
     for theme, colour in COLOURS.items():
         directory = os.path.join(target, theme)

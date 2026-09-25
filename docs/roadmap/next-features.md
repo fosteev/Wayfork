@@ -305,19 +305,19 @@ ROADMAP.md: M10 (friendlier screens, existing features only), M9 (F14), M11–M1
 > group…; Rules › group section and target picker; the wording table), and boards C1, C3
 > (dark) and C7 of `docs/design/prototype/variant-c.html`.
 >
-> Code to know: `Wayfork/WayforkCore/Sources/WayforkCore/Model/TunnelGroup.swift`
+> Code to know: `macos/WayforkCore/Sources/WayforkCore/Model/TunnelGroup.swift`
 > (`TunnelGroup`, `GroupPolicy`, `RoutedExit`), `Model/Store.swift` (`groups`,
 > `effectiveDefaultExit`, `enabledMembers(of:)`, `exitName(id:)`), `Model/Rule.swift`
 > (`RuleTarget.group`, `exitID`), `App/StatusText.swift` (cards and rows; M10 wording),
 > `App/LatencyFormat.swift`, `XPC/Payloads.swift` (`TrafficSnapshot.latency`,
-> `LatencySample`), `Wayfork/Daemon/LatencyProber.swift` and `TrafficSampler.swift` (F14
+> `LatencySample`), `macos/Daemon/LatencyProber.swift` and `TrafficSampler.swift` (F14
 > prober rounds, snapshot assembly), `Daemon/Supervisor.swift` (`probeTargets`, plan
-> access), `Wayfork/App/Model/AppModel*.swift`, `App/Views/Popover/PopoverView.swift`
+> access), `macos/App/Model/AppModel*.swift`, `App/Views/Popover/PopoverView.swift`
 > (`TunnelCardView`, `RecentSectionView`), `App/Views/Settings/TunnelsSettingsView.swift`,
 > `RulesSettingsView.swift` (groups by `RuleGroup`), `App/Views/Shared/Components.swift`
 > (`AccentBadge`, `LatencyLabel`, `SparklineView`).
 >
-> Deliver, in this order, building and running `cd Wayfork/WayforkCore && swift test`
+> Deliver, in this order, building and running `cd macos/WayforkCore && swift test`
 > after each step:
 >
 > 1. **Snapshot**: `TrafficSnapshot.groups: [String: GroupState]` (`activeMember: String?`),
@@ -355,7 +355,7 @@ ROADMAP.md: M10 (friendlier screens, existing features only), M9 (F14), M11–M1
 >    `Move to…` and the quick-add picker list groups, `targetName` already handles them.
 > 7. Roadmap: tick the M12 boxes you close in `docs/ROADMAP.md` and update the F16 line in
 >    `docs/roadmap/next-features.md` stage 4; the manual check stays open for the
->    maintainer. Do not touch `WayforkWindows/` (WM13) or the F17/F18 fields.
+>    maintainer. Do not touch `windows/` (WM13) or the F17/F18 fields.
 >
 > Definition of done: `swift test` green (≥ 245 tests + the new ones), `cd Wayfork &&
 > xcodebuild -scheme Wayfork -project Wayfork.xcodeproj -configuration Debug

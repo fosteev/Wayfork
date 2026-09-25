@@ -2,7 +2,7 @@
 #
 # Fetches the pinned block list (scripts/versions.env, BLOCKLIST_*), converts it to
 # sing-box's source rule-set format (one domain_suffix per entry) and compiles it with the
-# bundled sing-box into Wayfork/Resources/rulesets/block-ads.srs, next to a block-ads.json
+# bundled sing-box into macos/Resources/rulesets/block-ads.srs, next to a block-ads.json
 # sidecar (entry count, source, version) the app shows in Settings › General (F18,
 # docs/design/03-routing.md, "Block list"). Both files are git-ignored and copied into the
 # bundle by scripts/embed-bins.sh.
@@ -17,8 +17,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=versions.env
 source "$ROOT/scripts/versions.env"
 
-SING_BOX="$ROOT/Wayfork/Resources/bin/sing-box"
-OUT_DIR="$ROOT/Wayfork/Resources/rulesets"
+SING_BOX="$ROOT/macos/Resources/bin/sing-box"
+OUT_DIR="$ROOT/macos/Resources/rulesets"
 BUILD_DIR="${WAYFORK_BUILD_DIR:-$ROOT/build/blocklist}"
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }

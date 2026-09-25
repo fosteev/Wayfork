@@ -1,7 +1,7 @@
 # Releasing
 
 Bump `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in the Xcode project and the
-version in `WayforkWindows/app/lib/core/version.dart` (and `pubspec.yaml`), date the entry in
+version in `windows/app/lib/core/version.dart` (and `pubspec.yaml`), date the entry in
 [CHANGELOG.md](../CHANGELOG.md), commit, then build both platforms, tag `v<version>` and
 attach every artefact and its `.sha256` to the GitHub release.
 

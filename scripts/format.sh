@@ -11,11 +11,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 PATHS=(
-    "$ROOT/Wayfork/App"
-    "$ROOT/Wayfork/Daemon"
-    "$ROOT/Wayfork/WayforkCore/Package.swift"
-    "$ROOT/Wayfork/WayforkCore/Sources"
-    "$ROOT/Wayfork/WayforkCore/Tests"
+    "$ROOT/macos/App"
+    "$ROOT/macos/Daemon"
+    "$ROOT/macos/WayforkCore/Package.swift"
+    "$ROOT/macos/WayforkCore/Sources"
+    "$ROOT/macos/WayforkCore/Tests"
 )
 
 if [[ "${1:-}" == "--lint" ]]; then

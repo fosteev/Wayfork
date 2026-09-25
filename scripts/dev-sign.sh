@@ -55,7 +55,7 @@ TEAM_ID="$(security find-certificate -c "$CERT_NAME" -p \
 
 log "Building $CONFIGURATION with identity '$IDENTITY' (team $TEAM_ID)"
 xcodebuild \
-    -project "$ROOT/Wayfork/Wayfork.xcodeproj" \
+    -project "$ROOT/macos/Wayfork.xcodeproj" \
     -scheme Wayfork \
     -configuration "$CONFIGURATION" \
     -destination 'platform=macOS' \

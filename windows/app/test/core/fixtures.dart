@@ -10,7 +10,7 @@ abstract final class Fixtures {
     if (!directory.existsSync()) {
       throw StateError(
         'Shared fixtures directory does not exist at ${directory.path}; '
-        'run tests from WayforkWindows/app.',
+        'run tests from windows/app.',
       );
     }
     return directory;

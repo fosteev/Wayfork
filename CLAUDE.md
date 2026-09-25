@@ -8,7 +8,7 @@ that stores configs/rules, generates `sing-box.json` and manages processes; priv
 (TUN, openvpn) live in a launchd daemon registered via `SMAppService`. No custom Network
 Extension. Binaries (sing-box, openvpn) are bundled. Don't revisit this without a reason.
 
-A Windows client with the same feature set lives in `WayforkWindows/`: a Flutter app plus a
+A Windows client with the same feature set lives in `windows/`: a Flutter app plus a
 Go service (`internal/core` is the pure, everywhere-tested half; Win32 stays behind
 `//go:build windows`). Roadmap in `docs/ROADMAP-windows.md`, design deltas in
 `docs/design/08-windows.md`; the macOS design docs remain the reference.
@@ -33,9 +33,9 @@ Go service (`internal/core` is the pure, everywhere-tested half; Win32 stays beh
 
 ## Windows client (Dart, Go)
 - Flutter with `fluent_ui`; Go 1.25 with `golang.org/x/sys` and `winipcfg`. Toolchains are
-  pinned in `WayforkWindows/versions.env`; pub and Go dependencies are exact versions.
-- Formatting: `dart format` + `dart analyze --fatal-infos` in `WayforkWindows/app`,
-  `gofmt` + `go vet` in `WayforkWindows/service`. Run them before handing work over.
+  pinned in `windows/versions.env`; pub and Go dependencies are exact versions.
+- Formatting: `dart format` + `dart analyze --fatal-infos` in `windows/app`,
+  `gofmt` + `go vet` in `windows/service`. Run them before handing work over.
 - `go test ./...` must pass on macOS too: keep Win32 in `_windows.go` files or behind
   build tags, and check with `GOOS=windows go build ./...`.
 - Secrets are DPAPI-encrypted (`secrets.dat`), never plain text.
@@ -46,8 +46,8 @@ Go service (`internal/core` is the pure, everywhere-tested half; Win32 stays beh
 - Real user configs live outside the repo (`~/Library/Application Support/Wayfork/`).
 
 ## Layout
-- `Wayfork/` — macOS app sources (Xcode project / SPM package).
-- `WayforkWindows/` — Windows client: `app/` (Flutter), `service/` (Go), `versions.env`;
+- `macos/` — macOS app sources (Xcode project / SPM package).
+- `windows/` — Windows client: `app/` (Flutter), `service/` (Go), `versions.env`;
   fetched binaries land in `bin/` and `drivers/` (git-ignored).
 - `fixtures/` — test inputs and golden outputs shared by the Swift, Dart and Go tests
   (see `fixtures/README.md`; regenerate with `WAYFORK_UPDATE_GOLDEN=1`).

@@ -26,7 +26,7 @@ maintainer approval.
 | App ↔ service IPC | named pipe, newline-delimited JSON, versioned payloads mirroring the XPC ones | no ffi in Dart for a pipe client beyond `win32`; JSON keeps the plan human-readable in `--dev-apply` |
 | Where logic lives | Dart = `WayforkCore` (models, rule normalization, `.ovpn` / VLESS parsers, generator, plan builder); Go = `WayforkDaemonCore` (plan validation, supervisor, routes, DNS, management client, sampler) | same split as macOS, so the design docs apply file by file |
 | Secrets | DPAPI (user scope) blobs under `%LOCALAPPDATA%\Wayfork\secrets\`; decrypted by the app and sent in the plan | Credential Manager caps blobs at 2.5 KB — inline certs do not fit; the service runs as SYSTEM and cannot use user DPAPI anyway |
-| Repo | monorepo: `WayforkWindows/{app,service}`, shared `fixtures/` | one design, one changelog, one version per release |
+| Repo | monorepo: `windows/{app,service}`, shared `fixtures/` | one design, one changelog, one version per release |
 | Parity target | F1–F12 except where the table in W1 says otherwise; Later items stay Later | ship the same product, then diverge only where Windows forces it |
 | Not doing | WinUI 3, C#, Swift on Windows, embedding sing-box as libbox, a macOS Flutter rewrite | see chat 2026-08-27; revisit only with a reason |
 
@@ -179,7 +179,7 @@ window chrome, sidebar and tray menu are new. Approved before WM3.
 
 ## Phase W3 — Implementation
 
-Targets: `WayforkWindows/app` (Flutter), `WayforkWindows/service` (Go, module
+Targets: `windows/app` (Flutter), `windows/service` (Go, module
 `wayfork/service`) with `internal/core` (the `WayforkDaemonCore` counterpart, no
 privileges, fully testable) and `cmd/wayfork-service`, `cmd/wayforkctl`. Shared
 `fixtures/` are read by the Swift, Dart and Go tests.
@@ -191,12 +191,12 @@ privileges, fully testable) and `cmd/wayfork-service`, `cmd/wayforkctl`. Shared
       Swift tests read them from there; CI still green. *(2026-08-27: `fixtures/{singbox,
       ovpn,vless,clash}` + README; each sing-box variant now records its `input.json`;
       `vless/links.json` holds accepted links with results and rejected ones.)*
-- [x] `WayforkWindows/app`: `flutter create --platforms=windows`, pinned Flutter/Dart
-      versions in `WayforkWindows/versions.env`, dependencies pinned to exact versions
+- [x] `windows/app`: `flutter create --platforms=windows`, pinned Flutter/Dart
+      versions in `windows/versions.env`, dependencies pinned to exact versions
       (`tray_manager`, `window_manager`, `fluent_ui`, `win32`, `path_provider`); `dart
       format` + `dart analyze` clean. *(Windows runner rendered from Flutter's template —
       `flutter create` skips it on macOS; Fluent shell + smoke test in place.)*
-- [x] `WayforkWindows/service`: Go module, pinned Go version, `golang.org/x/sys`,
+- [x] `windows/service`: Go module, pinned Go version, `golang.org/x/sys`,
       `golang.zx2c4.com/wireguard/windows` (`winipcfg`); `gofmt` + `go vet` clean;
       `go test ./...` runs on macOS for the pure packages (build tags keep Win32 out).
 - [x] `scripts/fetch-win-bins.ps1`: sing-box Windows amd64 zip (wintun is embedded in the
@@ -205,11 +205,11 @@ privileges, fully testable) and `cmd/wayfork-service`, `cmd/wayforkctl`. Shared
       *(Verified in the spike VM: the driver comes out of the MSI's embedded cabinet, see
       08-windows.md § Installer.)*
 - [x] GitHub Actions: `windows-latest` job (flutter build, dart tests, go tests, go vet)
-      with path filters so it runs only on `WayforkWindows/`, `fixtures/`, `scripts/`
+      with path filters so it runs only on `windows/`, `fixtures/`, `scripts/`
       changes; the macOS job gets the mirror filter. *(`ci-windows.yml`; first real run
       happens on push.)*
 - [x] `.gitignore`: `.dart_tool/`, `ephemeral/`, Flutter `build/`, Go `bin/`.
-- [x] CLAUDE.md: Layout gains `WayforkWindows/` and `fixtures/`; formatting rule per
+- [x] CLAUDE.md: Layout gains `windows/` and `fixtures/`; formatting rule per
       language (`swift-format`, `dart format`, `gofmt`); commit scopes `win`, `win-service`.
 
 ### WM1 — Core in Dart (`app/lib/core`)
@@ -421,7 +421,7 @@ there is a certificate — see [08-windows.md](design/08-windows.md) § Installe
       (`pnputil`) if the spike says so, upgrade (stop service → replace → start),
       uninstall (stop, restore DNS, delete adapters, remove `%ProgramData%\Wayfork\run`,
       keep `%LOCALAPPDATA%\Wayfork`).
-      *(WM4a/WM4b 2026-08-28: `WayforkWindows/installer/Wayfork.wxs` (WiX 6.0.2) lays down
+      *(WM4a/WM4b 2026-08-28: `windows/installer/Wayfork.wxs` (WiX 6.0.2) lays down
       the payload, registers the LocalSystem service with delayed auto-start and calls
       `wayfork-service --install-driver` / `--uninstall-cleanup` from two deferred custom
       actions; the cleanup is skipped for the removal half of an upgrade. Install,
@@ -442,7 +442,7 @@ there is a certificate — see [08-windows.md](design/08-windows.md) § Installe
       31.6 MB, `-arm64.msi` 29.4 MB); the tag path itself is exercised by the first tag.)*
 - [x] One `.exe` installer over the two MSIs, so the download page asks nobody about
       architectures.
-      *(WM4d 2026-08-28: `WayforkWindows/installer/WayforkBundle.wxs`, a WiX Burn bundle with
+      *(WM4d 2026-08-28: `windows/installer/WayforkBundle.wxs`, a WiX Burn bundle with
       both packages embedded and `NativeMachine` picking one, built `-arch x86` so it starts
       on every supported Windows; `scripts/release-windows.ps1` builds and (given a
       certificate) signs it through detach/reattach, the release workflow attaches

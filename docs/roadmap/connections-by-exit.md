@@ -21,8 +21,8 @@ on macOS and Windows, from the log lines the F19 tracker already reads.
   *Last 5 min* callout, and the note with the decisions. Windows twin not drawn yet
   (stage 2).
 - F19 is the base: `FailedConnections` in
-  [WayforkDaemonCore/FailedConnections.swift](../../Wayfork/WayforkCore/Sources/WayforkDaemonCore/FailedConnections.swift)
-  and [internal/core/failed.go](../../WayforkWindows/service/internal/core/failed.go)
+  [WayforkDaemonCore/FailedConnections.swift](../../macos/WayforkCore/Sources/WayforkDaemonCore/FailedConnections.swift)
+  and [internal/core/failed.go](../../windows/service/internal/core/failed.go)
   already join sing-box's lines by connection id and know, per connection, the exit
   (`match[N] rule => t-<id>` / `g-<id>` / `direct`, `no match, using <tag>`) and the
   failure (`ERROR … open connection to …`). The design is
@@ -311,10 +311,10 @@ docs/roadmap/connections-by-exit.md — F20 "Connections by exit" on macOS. Read
 file whole; the contract is its § Context "Decisions". Then read: board C9 in
 docs/design/prototype/variant-c.html (id="C9"), the F20 paragraphs in
 docs/design/05-daemon.md and 06-logging.md (stage 2 wrote them),
-Wayfork/WayforkCore/Sources/WayforkDaemonCore/FailedConnections.swift and its tests,
-Wayfork/WayforkCore/Sources/WayforkCore/XPC/Payloads.swift (TrafficSnapshot),
-Wayfork/App/Views/Logs/LogsWindowView.swift, FailedPaneView.swift,
-Wayfork/App/Model/AppModel+Failed.swift, and the popover footer / tunnel card views.
+macos/WayforkCore/Sources/WayforkDaemonCore/FailedConnections.swift and its tests,
+macos/WayforkCore/Sources/WayforkCore/XPC/Payloads.swift (TrafficSnapshot),
+macos/App/Views/Logs/LogsWindowView.swift, FailedPaneView.swift,
+macos/App/Model/AppModel+Failed.swift, and the popover footer / tunnel card views.
 
 Do the stage-3 checkboxes in order (core → daemon → app), ticking each in the roadmap
 file when its tests pass. Rules: the wire field is optional with a [:] default so an
@@ -324,7 +324,7 @@ baseline), nothing new in the XPC protocol beyond the field; fixed row order as 
 roadmap. Tests: FailedConnectionsTests on the recorded line shapes (put a hand-made line
 file under fixtures/ if you need one, and describe it in fixtures/README.md so the Go
 and Dart tests can share it). Run scripts/format.sh, the package tests via xcodebuild
-from Wayfork/WayforkCore, and build the app scheme.
+from macos/WayforkCore, and build the app scheme.
 
 Hand back: files touched, test command and result, every decision you took beyond the
 roadmap (one line each), and the manual check you could not do. Do not commit.
@@ -335,13 +335,13 @@ roadmap (one line each), and the manual check you could not do. Do not commit.
 ```
 Модель: sonnet, effort: medium
 
-You are working in /Users/fost/Projects/Wayfork/WayforkWindows (read ../CLAUDE.md: English,
+You are working in /Users/fost/Projects/Wayfork/windows (read ../CLAUDE.md: English,
 dart format + dart analyze --fatal-infos in app/, gofmt + go vet in service/, go test must
 pass on macOS, GOOS=windows go build ./... must pass; commit only when asked, no AI
 trailers). Task: stage 4 (WM17) of ../docs/roadmap/connections-by-exit.md — the Windows
 mirror of F20. Read the roadmap file whole; the wire contract is what stage 3 shipped in
-Wayfork/WayforkCore/Sources/WayforkCore/XPC/Payloads.swift (ExitStats, TrafficSnapshot.exits) and the five cases of
-Wayfork/WayforkCore/Tests/WayforkDaemonCoreTests/FailedConnectionsTests.swift (no fixture
+macos/WayforkCore/Sources/WayforkCore/XPC/Payloads.swift (ExitStats, TrafficSnapshot.exits) and the five cases of
+macos/WayforkCore/Tests/WayforkDaemonCoreTests/FailedConnectionsTests.swift (no fixture
 file was added — mirror those cases in Go); the § Decisions block after § Context lists
 what stage 3 settled (Reset/Last 5 min semantics, rate clamp, Problems hint, Copy, tray
 entry) — follow it. Then read board W17 in ../docs/design/prototype/

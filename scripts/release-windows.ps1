@@ -9,7 +9,7 @@
 #   -Version X.Y.Z         must equal the app's version — a guard against building a
 #                          release of the wrong version. Default: what the app declares.
 #   -Arch both             which packages to build (default: both).
-#   -SkipFetch             reuse WayforkWindows\bin\<arch> and drivers\<arch> as they are.
+#   -SkipFetch             reuse windows\bin\<arch> and drivers\<arch> as they are.
 #   -SkipFlutter           reuse the last `flutter build windows --release`.
 #   -CertificatePath       PFX to sign Wayfork's own binaries, the MSIs and the bundle
 #                          (through `wix burn detach`/`reattach`) with. Without it
@@ -21,7 +21,7 @@
 #   Wayfork-<version>-<arch>.msi (+ .sha256)
 #   Wayfork-<version>.exe (+ .sha256)   both MSIs in one bundle, -Arch both only
 #
-# Requires: Windows, the pinned Flutter and Go toolchains (WayforkWindows\versions.env),
+# Requires: Windows, the pinned Flutter and Go toolchains (windows\versions.env),
 # the .NET SDK for the WiX tool, and network access on the first run (WiX, the pinned
 # binaries, the timestamp server).
 
@@ -90,13 +90,13 @@ function Read-EnvFile {
 function Get-AppVersion {
     param([Parameter(Mandatory = $true)][string]$Root)
 
-    $dartPath = Join-Path $Root 'WayforkWindows\app\lib\core\version.dart'
+    $dartPath = Join-Path $Root 'windows\app\lib\core\version.dart'
     $dart = Get-Content -LiteralPath $dartPath -Raw
     if ($dart -notmatch "app\s*=\s*'([0-9]+\.[0-9]+\.[0-9]+)'") {
         Fail "cannot read the app version from $dartPath"
     }
     $version = $matches[1]
-    $pubspecPath = Join-Path $Root 'WayforkWindows\app\pubspec.yaml'
+    $pubspecPath = Join-Path $Root 'windows\app\pubspec.yaml'
     $pubspec = Get-Content -LiteralPath $pubspecPath -Raw
     if ($pubspec -notmatch '(?m)^version:\s*([0-9]+\.[0-9]+\.[0-9]+)') {
         Fail "cannot read the version from $pubspecPath"
@@ -185,10 +185,10 @@ function Set-BundleSignature {
 
 try {
     $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-    $appDir = Join-Path $root 'WayforkWindows\app'
-    $serviceDir = Join-Path $root 'WayforkWindows\service'
-    $versions = Read-EnvFile (Join-Path $root 'WayforkWindows\versions.env')
-    if (-not $versions.ContainsKey('WIX_VERSION')) { Fail 'WIX_VERSION is missing from WayforkWindows/versions.env' }
+    $appDir = Join-Path $root 'windows\app'
+    $serviceDir = Join-Path $root 'windows\service'
+    $versions = Read-EnvFile (Join-Path $root 'windows\versions.env')
+    if (-not $versions.ContainsKey('WIX_VERSION')) { Fail 'WIX_VERSION is missing from windows/versions.env' }
     $wixVersion = $versions['WIX_VERSION']
 
     $appVersion = Get-AppVersion $root
@@ -228,9 +228,9 @@ try {
                 '-NoProfile', '-ExecutionPolicy', 'Bypass',
                 '-File', (Join-Path $root 'scripts\fetch-win-blocklist.ps1'), '-Arch', $architecture)
         }
-        $binDir = Join-Path $root "WayforkWindows\bin\$architecture"
-        $driverDir = Join-Path $root "WayforkWindows\drivers\$architecture\ovpn-dco"
-        $rulesetsDir = Join-Path $root 'WayforkWindows\rulesets'
+        $binDir = Join-Path $root "windows\bin\$architecture"
+        $driverDir = Join-Path $root "windows\drivers\$architecture\ovpn-dco"
+        $rulesetsDir = Join-Path $root 'windows\rulesets'
         foreach ($required in @($binDir, $driverDir)) {
             if (-not (Test-Path -LiteralPath $required)) {
                 Fail "missing $required (run scripts\fetch-win-bins.ps1 -Arch $architecture)"
@@ -278,7 +278,7 @@ try {
         Remove-Item -LiteralPath $msi -Force -ErrorAction SilentlyContinue
         Log "Building $([IO.Path]::GetFileName($msi))"
         Invoke-Tool $wixPath @(
-            'build', (Join-Path $root 'WayforkWindows\installer\Wayfork.wxs'),
+            'build', (Join-Path $root 'windows\installer\Wayfork.wxs'),
             '-arch', $wixArch,
             '-d', "Version=$Version",
             '-bindpath', "Payload=$payload",
@@ -305,7 +305,7 @@ try {
         Remove-Item -LiteralPath $bundle -Force -ErrorAction SilentlyContinue
         Log "Building $([IO.Path]::GetFileName($bundle))"
         Invoke-Tool $wixPath @(
-            'build', (Join-Path $root 'WayforkWindows\installer\WayforkBundle.wxs'),
+            'build', (Join-Path $root 'windows\installer\WayforkBundle.wxs'),
             '-arch', 'x86',
             '-ext', 'WixToolset.BootstrapperApplications.wixext',
             '-d', "Version=$Version",

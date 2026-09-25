@@ -14,7 +14,7 @@ embeds it in `wayfork.exe`, which is where the taskbar, the Start menu, the
 shortcut the MSI creates and `ARPPRODUCTICON` all read the icon from.
 
 Usage: python3 scripts/make-win-app-icon.py [output.ico]
-       (default: WayforkWindows/app/windows/runner/resources/app_icon.ico)
+       (default: windows/app/windows/runner/resources/app_icon.ico)
 """
 
 from __future__ import annotations
@@ -131,7 +131,7 @@ def main():
         if len(sys.argv) > 1
         else os.path.join(
             root,
-            'WayforkWindows',
+            'windows',
             'app',
             'windows',
             'runner',
