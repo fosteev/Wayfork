@@ -6,6 +6,16 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **`wayforkctl connections` and `explain` (Windows).** Read-only diagnostics on the
+  service pipe: `connections` lists every connection sing-box's Clash API currently
+  reports — exit, matched rule, upload/download, and a one-way-UDP flag per connection —
+  with `--process`/`--exit`/`--udp`/`--one-way` filters; `explain --process <path> |
+  --host <h> | --ip <a>` says which rule the applied plan would take, in route order.
+  `diagnostics` gained `--tail N` to override its default 200-line log cap (capped at
+  5000). Same pipe ACL as every other method; no secrets in the replies.
+
 ### Fixed
 
 - **App rules survive an auto-update.** A rule pointed at a Squirrel or MSIX versioned

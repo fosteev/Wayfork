@@ -40,6 +40,15 @@ func (b *trafficBytes) add(other trafficBytes) {
 // before it counts as one-way (H3, docs/design/05-daemon.md "Traffic sampling").
 const OneWayUDPGrace = 10 * time.Second
 
+// IsOneWayUDP reports whether a connection is a one-way UDP flow: sent for
+// OneWayUDPGrace with nothing back since firstSeenAt (H3). Shared by
+// TrafficAccumulator.Ingest (aggregate oneWayUDPFlows) and ConnectionsSnapshot's per-
+// connection `oneWay` flag (#2), so the two always agree for the same sample.
+func IsOneWayUDP(connection ClashConnection, firstSeenAt, now time.Time) bool {
+	return connection.Network == "udp" && connection.Upload > 0 && connection.Download == 0 &&
+		now.Sub(firstSeenAt) >= OneWayUDPGrace
+}
+
 type trafficSeen struct {
 	exit     TrafficExit
 	download uint64
@@ -112,9 +121,7 @@ func (a *TrafficAccumulator) Ingest(connections []ClashConnection, now time.Time
 		total.add(delta)
 		deltas[exit] = total
 		open[exit]++
-		// Sent for OneWayUDPGrace with nothing back: a one-way UDP flow (H3).
-		if connection.Network == "udp" && connection.Upload > 0 && connection.Download == 0 &&
-			now.Sub(firstSeenAt) >= OneWayUDPGrace {
+		if IsOneWayUDP(connection, firstSeenAt, now) {
 			oneWayUDP[exit]++
 		}
 		current[connection.ID] = trafficSeen{
@@ -157,4 +164,15 @@ func (a *TrafficAccumulator) Ingest(connections []ClashConnection, now time.Time
 	return TrafficSnapshot{
 		SampledAt: NewTimestamp(now), Interval: interval, Tunnels: tunnels, Direct: counters(DirectExit),
 	}
+}
+
+// FirstSeenAtByID snapshots when each currently tracked connection id was first sampled,
+// for ConnectionsSnapshot's per-connection `oneWay` flag (#2). Safe to call right after
+// Ingest; a connection absent from the result was not in the last sample.
+func (a *TrafficAccumulator) FirstSeenAtByID() map[string]time.Time {
+	result := make(map[string]time.Time, len(a.previous))
+	for id, seen := range a.previous {
+		result[id] = seen.firstSeenAt
+	}
+	return result
 }

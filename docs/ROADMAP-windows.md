@@ -681,7 +681,7 @@ Windows only; the macOS client keeps stable `.app` paths.
 
 - [x] #1 App (Flutter): Squirrel/MSIX version folders widened in `process_path_regex`,
       version-insensitive duplicates, stored paths self-heal (stages 1–3).
-- [ ] #2 Service (Go): `wayforkctl connections` with `oneWay`, `explain`,
+- [x] #2 Service (Go): `wayforkctl connections` with `oneWay`, `explain`,
       `diagnostics --tail N` (stages 4–6).
 - [ ] PC run: Discord rule heals and routes voice; `connections` / `explain` show it
       (stage 7).

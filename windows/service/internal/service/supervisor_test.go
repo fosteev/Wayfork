@@ -371,12 +371,53 @@ func TestReconnectAndInfoAndDiagnostics(t *testing.T) {
 	if info.SingBoxVersion != "1.13.19" || info.OpenVPNVersion != "2.7.6" || info.InstallPath != env.InstallDir || info.Version != "0.1.0-test" {
 		t.Errorf("info = %+v", info)
 	}
-	diagnostics := supervisor.CollectDiagnostics(ctx)
+	diagnostics := supervisor.CollectDiagnostics(ctx, 0)
 	if diagnostics.Routes != "routes" || len(diagnostics.DaemonLogTail) == 0 || !contains(diagnostics.RunDirectoryListing, "sing-box.json "+itoa(int64(len(mustRead(t, env.RunPath(core.SingBoxConfig)))))) {
 		t.Errorf("diagnostics = %+v", diagnostics)
 	}
 	if _, ok := diagnostics.ChildLogTails["openvpn-"+tunnelA]; !ok {
 		t.Errorf("child tails = %v", diagnostics.ChildLogTails)
+	}
+}
+
+// clampDiagnosticsTail (#2): <= 0 defaults, anything past the cap is cut down to it.
+func TestClampDiagnosticsTail(t *testing.T) {
+	cases := map[int]int{
+		0: defaultDiagnosticsTail, -5: defaultDiagnosticsTail, 50: 50,
+		maxDiagnosticsTail: maxDiagnosticsTail, maxDiagnosticsTail + 1: maxDiagnosticsTail, 100_000: maxDiagnosticsTail,
+	}
+	for tail, want := range cases {
+		if got := clampDiagnosticsTail(tail); got != want {
+			t.Errorf("clampDiagnosticsTail(%d) = %d, want %d", tail, got, want)
+		}
+	}
+}
+
+// CollectDiagnostics wires the clamped tail into Hub.Tails (#2).
+func TestCollectDiagnosticsRespectsAnExplicitTail(t *testing.T) {
+	supervisor, hub, _, _, _, _ := newTestSupervisor(t)
+	for i := 0; i < defaultDiagnosticsTail+10; i++ {
+		hub.Log(core.LogLevelInfo, "line")
+	}
+	ctx := context.Background()
+	if d := supervisor.CollectDiagnostics(ctx, 0); len(d.DaemonLogTail) != defaultDiagnosticsTail {
+		t.Errorf("default tail = %d lines, want %d", len(d.DaemonLogTail), defaultDiagnosticsTail)
+	}
+	if d := supervisor.CollectDiagnostics(ctx, 50); len(d.DaemonLogTail) != 50 {
+		t.Errorf("tail=50 = %d lines, want 50", len(d.DaemonLogTail))
+	}
+}
+
+// GetConnections and Explain (#2) before anything has ever applied or sampled.
+func TestGetConnectionsAndExplainBeforeAnythingIsApplied(t *testing.T) {
+	supervisor, _, _, _, _, _ := newTestSupervisor(t)
+	ctx := context.Background()
+	if snapshot := supervisor.GetConnections(ctx); len(snapshot.Connections) != 0 {
+		t.Errorf("connections before sampling = %+v", snapshot)
+	}
+	result := supervisor.Explain(ctx, core.ExplainQuery{Host: "example.com"})
+	if len(result.Matches) != 0 || result.Note == core.ExplainNote {
+		t.Errorf("explain before apply = %+v", result)
 	}
 }
 

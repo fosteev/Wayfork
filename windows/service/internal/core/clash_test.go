@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 const (
@@ -148,19 +149,23 @@ func TestClashConnectionsDecodeTheFixture(t *testing.T) {
 		t.Fatalf("%d connections", len(decoded.Connections))
 	}
 	first := decoded.Connections[0]
+	wantStart := time.Date(2026, 8, 25, 20, 0, 0, 0, time.FixedZone("", 3*3600))
 	if first.ID != "0f8a9c8e-1d2b-4c3a-9e8f-7a6b5c4d3e2f" || !reflect.DeepEqual(first.Chains, []string{"t-" + clashTunnelA}) ||
 		first.Upload != 4096 || first.Download != 1048576 || first.Network != "tcp" ||
-		first.Host != "example.com" || first.DestinationIP != "198.18.0.5" || first.ProcessPath != "" {
+		first.Host != "example.com" || first.DestinationIP != "198.18.0.5" || first.DestinationPort != 443 ||
+		first.ProcessPath != "" || first.Rule != "rule_set=rules-t-"+clashTunnelA || first.RulePayload != "" ||
+		!first.Start.Equal(wantStart) {
 		t.Errorf("first = %+v", first)
 	}
 	if oneWay := decoded.Connections[5]; oneWay.Network != "udp" || oneWay.Upload != 15360 ||
-		oneWay.Download != 0 || !reflect.DeepEqual(oneWay.Chains, []string{"t-" + clashTunnelA}) {
+		oneWay.Download != 0 || !reflect.DeepEqual(oneWay.Chains, []string{"t-" + clashTunnelA}) ||
+		oneWay.DestinationPort != 50021 || oneWay.Rule != "rule_set=rules-t-"+clashTunnelA+"-ip" {
 		t.Errorf("one-way = %+v", oneWay)
 	}
 	if decoded.Connections[1].ProcessPath != "/Applications/Safari.app/Contents/MacOS/Safari" {
 		t.Errorf("second = %+v", decoded.Connections[1])
 	}
-	if last := decoded.Connections[4]; last.Chains == nil || len(last.Chains) != 0 {
+	if last := decoded.Connections[4]; last.Chains == nil || len(last.Chains) != 0 || last.Rule != "final" {
 		t.Errorf("null chains decoded as %#v", last.Chains)
 	}
 	exits := map[string]TrafficExit{
@@ -188,6 +193,14 @@ func TestClashConnectionsTolerateNullAndNegativeCounters(t *testing.T) {
 	bare, _ := DecodeClashConnections([]byte(`{"connections": [{"id": "x", "metadata": null}]}`))
 	if bare.Connections[0].Host != "" {
 		t.Error("null metadata must give empty fields")
+	}
+	odd, err = DecodeClashConnections([]byte(`{"connections": [{"id": "y", "metadata": {"destinationPort": "not a number"}}]}`))
+	if err != nil || odd.Connections[0].DestinationPort != 0 {
+		t.Errorf("unparsable destinationPort = %+v, %v", odd.Connections, err)
+	}
+	odd, err = DecodeClashConnections([]byte(`{"connections": [{"id": "z", "start": "not a time"}]}`))
+	if err != nil || !odd.Connections[0].Start.IsZero() {
+		t.Errorf("unparsable start = %+v, %v", odd.Connections, err)
 	}
 	if _, err := DecodeClashConnections([]byte(`not json`)); err == nil {
 		t.Error("garbage must fail")

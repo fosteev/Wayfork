@@ -560,11 +560,37 @@ on every platform with fakes; only the interface implementations touch Win32.
   with client verification, event-log mirror of warnings/errors, stop → `Shutdown`), and
   `--dev-apply <plan.json>` (console, no trust checks, plan re-applied on change, pipe
   served for `wayforkctl`). `DaemonInfo.buildID` is the SHA-256 of the executable.
-- **`cmd/wayforkctl`** — `info | status | stop | diagnostics | apply <plan> | reconnect
-  <id> | watch`, and `plan --config sing-box.json --rules <dir> --ovpn
+- **`cmd/wayforkctl`** — `info | status | stop | apply <plan> | reconnect <id> | watch`,
+  and `plan --config sing-box.json --rules <dir> --ovpn
   <id>=<adapter>:<file>[:<user>:<password>][:passphrase=<p>] -o plan.json` to assemble a
   plan from files the Dart core generated (the profile is taken as is — the importer's
-  stripping is the app's job).
+  stripping is the app's job); plus three read-only diagnostics commands (issue #2), all
+  answered from state the service already holds — no secrets, no plan or credential
+  material in the reply, and no new access class (every authenticated user can already
+  call `apply`/`stop`/the diagnostics methods over this pipe, same ACL as everything
+  else):
+  - `diagnostics [--tail N]` — `collectDiagnostics` with an optional line-count override
+    on `daemonLogTail`/`childLogTails` (`tail` in the request; default 200, capped at
+    5000 either way).
+  - `connections [--process <substr>] [--exit <id|direct|block>] [--udp] [--one-way]` —
+    `getConnections` returns the traffic sampler's last decoded `/connections` sample as
+    `{sampledAt, connections: [{id, network, host, destinationIP, destinationPort,
+    processPath, exit, chains, rule, rulePayload, upload, download, start, oneWay}]}`
+    (an empty snapshot before sing-box has produced one); `exit` is a tunnel id, a group
+    id, `"direct"` or `"block"`; `oneWay` is the same one-way-UDP rule as the traffic
+    rates (H3), evaluated per connection. The pipe returns every connection; the flags
+    filter client-side.
+  - `explain --process <path> | --host <h> | --ip <a>` — `explain` takes exactly one of
+    the three and answers from the **currently applied** plan (`Supervisor.plan`, already
+    kept in reach for the group/probe queries): the config's `route.rules` that route by
+    rule-set, in order, matched against each rule-set file's parsed selectors
+    (`RuleSetSelectors.Matches`) — `{matches: [{exit, tags}], fallback, note}`, `matches[0]`
+    the rule sing-box would apply first, `fallback` the `route.final` outbound when
+    nothing matches. `explain` does not model sniffing, fake-ip, block lists (F18's
+    `reject` is a logical rule with exceptions, so a blocked host reports the exit it would
+    take otherwise), or rules with no rule-set (the `sniff`/`hijack-dns` actions, the literal `process_path`/`domain`
+    exclusions, `ip_is_private`) — `note` says so; `connections.rule` is the ground
+    truth, `explain` is "what the rule-sets say".
 
 **Verified in the `wf-win` VM (2026-08-28)** via `wayfork-service --dev-apply` on a plan the
 Dart core built from the maintainer's real export (sing-box TUN + one VLESS + two OpenVPN on

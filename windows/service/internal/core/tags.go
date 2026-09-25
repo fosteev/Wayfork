@@ -43,6 +43,31 @@ func ExitIDFromOutboundTag(tag string) (string, bool) {
 	return GroupIDFromOutboundTag(tag)
 }
 
+// BlockOutboundTag is sing-box's built-in reject outbound tag.
+const BlockOutboundTag = "block"
+
+// ExitLabel is the wire label for an outbound-tag chain: a tunnel id, a group id (group
+// wins, as ExitForChains), "block" for the built-in reject outbound, or "direct" for
+// everything else — direct, dns-out, chain-less (#2's ConnectionsSnapshot.exit / Explain).
+func ExitLabel(chains []string) string {
+	for _, tag := range chains {
+		if id, ok := GroupIDFromOutboundTag(tag); ok {
+			return id
+		}
+	}
+	for _, tag := range chains {
+		if id, ok := TunnelIDFromOutboundTag(tag); ok {
+			return id
+		}
+	}
+	for _, tag := range chains {
+		if tag == BlockOutboundTag {
+			return BlockOutboundTag
+		}
+	}
+	return "direct"
+}
+
 // LocalProxyInboundTagPrefix precedes the exit's outbound tag in a `mixed` inbound's tag (F17).
 const LocalProxyInboundTagPrefix = "proxy-"
 

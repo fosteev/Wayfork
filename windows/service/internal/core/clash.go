@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
+	"time"
 )
 
 // ClashAPIEndpoint is the loopback controller sing-box exposes for traffic sampling (F9).
@@ -100,9 +102,10 @@ func InjectClashAPI(endpoint ClashAPIEndpoint, config string) (string, error) {
 	return out.String(), nil
 }
 
-// ClashConnection is one entry of `GET /connections`, reduced to what the sampler and the
-// connection cut need. Upload and Download are cumulative for the connection's lifetime;
-// the metadata fields stay inside the service.
+// ClashConnection is one entry of `GET /connections`, reduced to what the sampler, the
+// connection cut and `wayforkctl connections`/`explain` need (#2). Upload and Download are
+// cumulative for the connection's lifetime; the rest of the metadata stays inside the
+// service.
 type ClashConnection struct {
 	ID string
 	// Outbound chain, e.g. `["t-<tunnel id>"]` or `["direct"]`.
@@ -115,8 +118,16 @@ type ClashConnection struct {
 	Host string
 	// `metadata.destinationIP`.
 	DestinationIP string
+	// `metadata.destinationPort`; 0 when missing or not a number.
+	DestinationPort int
 	// `metadata.processPath`; empty when sing-box could not find the process.
 	ProcessPath string
+	// The rule sing-box matched, e.g. `rule_set=rules-t-<id>` or `final`; empty if unknown.
+	Rule string
+	// The matched rule's payload, when sing-box reports one; usually empty.
+	RulePayload string
+	// When the connection was opened; the zero time when missing or unparsable.
+	Start time.Time
 }
 
 // ClashConnections is the decoded `GET /connections` reply.
@@ -125,21 +136,26 @@ type ClashConnections struct {
 }
 
 type clashConnectionWire struct {
-	ID       string   `json:"id"`
-	Chains   []string `json:"chains"`
-	Upload   int64    `json:"upload"`
-	Download int64    `json:"download"`
-	Metadata *struct {
-		Network       string `json:"network"`
-		Host          string `json:"host"`
-		DestinationIP string `json:"destinationIP"`
-		ProcessPath   string `json:"processPath"`
+	ID          string   `json:"id"`
+	Chains      []string `json:"chains"`
+	Upload      int64    `json:"upload"`
+	Download    int64    `json:"download"`
+	Start       string   `json:"start"`
+	Rule        string   `json:"rule"`
+	RulePayload string   `json:"rulePayload"`
+	Metadata    *struct {
+		Network         string `json:"network"`
+		Host            string `json:"host"`
+		DestinationIP   string `json:"destinationIP"`
+		DestinationPort string `json:"destinationPort"`
+		ProcessPath     string `json:"processPath"`
 	} `json:"metadata"`
 }
 
 // DecodeClashConnections decodes sing-box's Clash API reply, tolerating a `null`
-// connection list, missing metadata and missing or negative counters. Other fields
-// (`downloadTotal`, `memory`, the rest of `metadata`) are ignored.
+// connection list, missing metadata, a missing/unparsable `destinationPort` or `start`,
+// and missing or negative counters. Other fields (`downloadTotal`, `memory`, the rest of
+// `metadata`) are ignored.
 func DecodeClashConnections(data []byte) (ClashConnections, error) {
 	var wire struct {
 		Connections []clashConnectionWire `json:"connections"`
@@ -152,12 +168,21 @@ func DecodeClashConnections(data []byte) (ClashConnections, error) {
 		connection := ClashConnection{
 			ID: entry.ID, Chains: nonNilSlice(entry.Chains),
 			Upload: uint64(max(entry.Upload, 0)), Download: uint64(max(entry.Download, 0)),
+			Rule: entry.Rule, RulePayload: entry.RulePayload,
+		}
+		if entry.Start != "" {
+			if start, err := time.Parse(time.RFC3339Nano, entry.Start); err == nil {
+				connection.Start = start
+			}
 		}
 		if entry.Metadata != nil {
 			connection.Network = entry.Metadata.Network
 			connection.Host = entry.Metadata.Host
 			connection.DestinationIP = entry.Metadata.DestinationIP
 			connection.ProcessPath = entry.Metadata.ProcessPath
+			if port, err := strconv.Atoi(entry.Metadata.DestinationPort); err == nil {
+				connection.DestinationPort = port
+			}
 		}
 		connections = append(connections, connection)
 	}

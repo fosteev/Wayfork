@@ -115,6 +115,11 @@ type TrafficSampler struct {
 	// Tunnels warned about one-way UDP flows; cleared when their count returns to zero,
 	// so each streak logs once (H3).
 	oneWayWarned map[string]bool
+	// The last decoded `/connections` sample and when it was taken, for
+	// `wayforkctl connections` (#2). Cleared on Pause/Reset like everything else the
+	// per-connection map depends on.
+	lastConnections []core.ClashConnection
+	lastSampledAt   time.Time
 }
 
 // NewTrafficSampler makes an idle sampler.
@@ -132,6 +137,18 @@ func NewTrafficSampler(hub *Hub, clock Clock) *TrafficSampler {
 
 // Prober is the latency prober the sampler starts and pauses with itself (F14).
 func (s *TrafficSampler) Prober() *LatencyProber { return s.prober }
+
+// Connections returns the last decoded `/connections` sample as the wire snapshot
+// (`wayforkctl connections`, #2), or an empty one when nothing has been sampled yet —
+// sing-box not running, or no successful poll since Start.
+func (s *TrafficSampler) Connections() core.ConnectionsSnapshot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.lastSampledAt.IsZero() {
+		return core.ConnectionsSnapshot{}
+	}
+	return core.BuildConnectionsSnapshot(s.lastConnections, s.accumulator.FirstSeenAtByID(), s.lastSampledAt)
+}
 
 // SetDefaultExit sets where a flow no rule matched leaves (`route.final`); per plan.
 func (s *TrafficSampler) SetDefaultExit(exit core.TrafficExit) {
@@ -195,6 +212,8 @@ func (s *TrafficSampler) Pause() {
 	}
 	s.failing = false
 	s.oneWayWarned = map[string]bool{}
+	s.lastConnections = nil
+	s.lastSampledAt = time.Time{}
 	s.mu.Unlock()
 	s.prober.Pause()
 }
@@ -245,6 +264,8 @@ func (s *TrafficSampler) sample(ctx context.Context, endpoint core.ClashAPIEndpo
 	}
 	now := s.clock.Now()
 	snapshot := s.accumulator.Ingest(decoded.Connections, now)
+	s.lastConnections = decoded.Connections
+	s.lastSampledAt = now
 	snapshot.Latency = s.prober.Current()
 	s.recent.Ingest(decoded.Connections, s.defaultExit, now)
 	snapshot.RecentHosts = s.recent.Snapshot()

@@ -190,9 +190,27 @@ func (c *Client) Reconnect(ctx context.Context, id string) (core.ApplyResult, er
 	return result, err
 }
 
-// CollectDiagnostics calls collectDiagnostics.
-func (c *Client) CollectDiagnostics(ctx context.Context) (core.DaemonDiagnostics, error) {
+// CollectDiagnostics calls collectDiagnostics. tail <= 0 asks for the service's default.
+func (c *Client) CollectDiagnostics(ctx context.Context, tail int) (core.DaemonDiagnostics, error) {
 	var diagnostics core.DaemonDiagnostics
-	err := c.Call(ctx, MethodCollectDiagnostics, nil, &diagnostics)
+	var params any
+	if tail > 0 {
+		params = CollectDiagnosticsParams{Tail: tail}
+	}
+	err := c.Call(ctx, MethodCollectDiagnostics, params, &diagnostics)
 	return diagnostics, err
+}
+
+// GetConnections calls getConnections.
+func (c *Client) GetConnections(ctx context.Context) (core.ConnectionsSnapshot, error) {
+	var snapshot core.ConnectionsSnapshot
+	err := c.Call(ctx, MethodGetConnections, nil, &snapshot)
+	return snapshot, err
+}
+
+// Explain calls explain with exactly one of query's fields set.
+func (c *Client) Explain(ctx context.Context, query core.ExplainQuery) (core.ExplainResult, error) {
+	var result core.ExplainResult
+	err := c.Call(ctx, MethodExplain, query, &result)
+	return result, err
 }

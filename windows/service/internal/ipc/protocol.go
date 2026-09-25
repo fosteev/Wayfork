@@ -21,7 +21,10 @@ const ProtocolVersion = 1
 // the OpenVPN bodies, each at most core.MaxConfigBytes.
 const MaxLineBytes = 64 << 20
 
-// Methods the app calls (the macOS XPC interface, docs/design/05-daemon.md).
+// Methods the app calls (the macOS XPC interface, docs/design/05-daemon.md), plus the
+// read-only diagnostics methods `wayforkctl` alone calls (#2): `getConnections` and
+// `explain`. No new access class: every authenticated user can already call
+// apply/stop/diagnostics over this pipe.
 const (
 	MethodGetInfo            = "getInfo"
 	MethodGetStatus          = "getStatus"
@@ -30,6 +33,8 @@ const (
 	MethodStop               = "stop"
 	MethodReconnect          = "reconnect"
 	MethodCollectDiagnostics = "collectDiagnostics"
+	MethodGetConnections     = "getConnections"
+	MethodExplain            = "explain"
 )
 
 // Events the service pushes (the macOS WayforkClientXPC methods, plus the hello).
@@ -64,6 +69,13 @@ type ReconnectParams struct {
 	ID string `json:"id"`
 }
 
+// CollectDiagnosticsParams are collectDiagnostics' optional params: `tail` overrides the
+// service's default line cap (#2). Absent or <= 0 means the default; the service applies
+// its own upper cap.
+type CollectDiagnosticsParams struct {
+	Tail int `json:"tail,omitempty"`
+}
+
 // Sink receives the pushes of one subscribed connection.
 type Sink interface {
 	StatusChanged(status core.RuntimeStatus)
@@ -78,7 +90,14 @@ type Handler interface {
 	Apply(ctx context.Context, plan core.RuntimePlan) core.ApplyResult
 	Stop(ctx context.Context) core.ApplyResult
 	Reconnect(ctx context.Context, id string) core.ApplyResult
-	CollectDiagnostics(ctx context.Context) core.DaemonDiagnostics
+	// CollectDiagnostics: tail <= 0 means the handler's own default.
+	CollectDiagnostics(ctx context.Context, tail int) core.DaemonDiagnostics
+	// GetConnections is the sampler's last decoded sample, or an empty snapshot when
+	// sing-box has not produced one yet (#2).
+	GetConnections(ctx context.Context) core.ConnectionsSnapshot
+	// Explain answers `wayforkctl explain` from the currently applied plan (#2). The
+	// server has already checked that exactly one of query's fields is set.
+	Explain(ctx context.Context, query core.ExplainQuery) core.ExplainResult
 	// Subscribe registers the connection's sink for pushes until Unsubscribe.
 	Subscribe(ctx context.Context, sink Sink) core.ApplyResult
 	Unsubscribe(sink Sink)

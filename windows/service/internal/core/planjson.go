@@ -134,6 +134,69 @@ func (p SingBoxPlan) BinaryRuleSetPaths() []string {
 // HasBlockList reports whether the config carries the block list's rule-set (F18).
 func (p SingBoxPlan) HasBlockList() bool { return len(p.BinaryRuleSetPaths()) > 0 }
 
+// ExplainRule is one `route.rules` entry that names a rule-set, in config order (#2's
+// `explain`). Entries without both `outbound` and `rule_set` — `sniff`/`hijack-dns`
+// actions, the literal `process_path`/`domain` exclusions, `ip_is_private` — are not
+// modelled; `explain` says so in its `note`.
+type ExplainRule struct {
+	Outbound string
+	Tags     []string
+}
+
+// RouteRules lists the config's `route.rules` entries that route by rule-set, in config
+// order (#2's `explain`). "" when the config is not the generator's shape.
+func (p SingBoxPlan) RouteRules() []ExplainRule {
+	route, _ := p.root()["route"].(map[string]any)
+	rules, _ := route["rules"].([]any)
+	result := []ExplainRule{}
+	for _, entry := range rules {
+		rule, _ := entry.(map[string]any)
+		outbound, _ := rule["outbound"].(string)
+		tagsRaw, _ := rule["rule_set"].([]any)
+		if outbound == "" || len(tagsRaw) == 0 {
+			continue
+		}
+		tags := make([]string, 0, len(tagsRaw))
+		for _, item := range tagsRaw {
+			if tag, ok := item.(string); ok {
+				tags = append(tags, tag)
+			}
+		}
+		if len(tags) == 0 {
+			continue
+		}
+		result = append(result, ExplainRule{Outbound: outbound, Tags: tags})
+	}
+	return result
+}
+
+// RuleSetSelectorsByTag parses every local rule-set file the config's `route.rule_set`
+// names, by tag (#2's `explain`). A tag whose file is missing from RuleSets, or does not
+// parse as the generator's shape, is left out — it then matches nothing.
+func (p SingBoxPlan) RuleSetSelectorsByTag() map[string]RuleSetSelectors {
+	route, _ := p.root()["route"].(map[string]any)
+	entries, _ := route["rule_set"].([]any)
+	result := map[string]RuleSetSelectors{}
+	for _, entry := range entries {
+		ruleSet, _ := entry.(map[string]any)
+		tag, _ := ruleSet["tag"].(string)
+		path, _ := ruleSet["path"].(string)
+		if tag == "" || path == "" {
+			continue
+		}
+		text, ok := p.RuleSets[path]
+		if !ok {
+			continue
+		}
+		selectors, ok := ParseRuleSetSelectors(text)
+		if !ok {
+			continue
+		}
+		result[tag] = selectors
+	}
+	return result
+}
+
 // StripLocalProxyInbound removes one local proxy inbound and its route rule from a config
 // whose port another program holds, so the engine can start without it (F17). Returns
 // ok=false when the config has no inbound with that tag.

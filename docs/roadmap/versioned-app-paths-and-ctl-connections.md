@@ -1,7 +1,8 @@
 # Versioned app paths and `wayforkctl connections` — issues #1, #2
 
-> Status: in progress · created 2026-09-25 · session A (stages 1–3) accepted 2026-09-25,
-> session B (stages 4–6) next, stage 7 owed by the maintainer · Windows only. Milestone skeleton:
+> Status: stage 7 owed · created 2026-09-25 · session A (stages 1–3) and session B
+> (stages 4–6) accepted and committed 2026-09-25; the PC run (stage 7) is owed by the
+> maintainer · Windows only. Milestone skeleton:
 > [ROADMAP-windows.md](../ROADMAP-windows.md) § WM18. The executing session ticks the
 > checkboxes below as it goes; statuses live here and in § WM18 only.
 
@@ -125,6 +126,18 @@ IP?" with `wayforkctl explain`.
 - MSIX heal is best-effort: `WindowsApps` cannot be listed without admin rights, so heal
   returns nothing there and only the widened regex works. That is enough for routing.
 
+### Decisions after session B (2026-09-25, acceptance)
+
+- The applied plan lives in `Supervisor.plan` (the assumption held); no run-directory
+  fallback.
+- `explain` with nothing applied answers `{matches: [], note: "not running: no applied
+  plan"}` instead of a pipe error, the same no-error style as `getStatus`.
+- `core.ExplainQuery` is the pipe's params type directly (like `apply` takes
+  `core.RuntimePlan`). `HasOneField` is shared by the server and the CLI.
+- **Block lists are not modelled by `explain`.** F18's `reject` is a logical `and` rule
+  with inverted exceptions, so a blocked host reports the exit it would take otherwise.
+  The note and 08-windows.md say so. `connections.rule` remains the ground truth.
+
 ## Stages
 
 ### 1. Versioned app paths — regex and duplicates (Dart, #1)
@@ -188,16 +201,16 @@ Pure core change plus tests. No UI.
 
 Pure `internal/core`, tested on macOS.
 
-- [ ] `ClashConnection` gains `DestinationPort`, `Rule`, `RulePayload`, `Start time.Time`.
+- [x] `ClashConnection` gains `DestinationPort`, `Rule`, `RulePayload`, `Start time.Time`.
       `DecodeClashConnections` fills them and tolerates them missing.
-- [ ] Extract `IsOneWayUDP(connection, firstSeenAt, now) bool` and use it in
+- [x] Extract `IsOneWayUDP(connection, firstSeenAt, now) bool` and use it in
       `TrafficAccumulator.Ingest` (behaviour unchanged, existing tests stay green)
-- [ ] `ConnectionsSnapshot` + builder from a sample + the accumulator's `firstSeenAt`
+- [x] `ConnectionsSnapshot` + builder from a sample + the accumulator's `firstSeenAt`
       per id. `MarshalJSON` never emits null slices (same style as `DaemonDiagnostics`).
-- [ ] `Explain` pure func: input (process | host | ip) + ordered route rules
+- [x] `Explain` pure func: input (process | host | ip) + ordered route rules
       (rule-set tag → outbound) + parsed `RuleSetSelectors` per tag → ordered matches and
       the fallback outbound, with a `note` that sniffing/fake-ip are not modelled
-- [ ] Tests: decode with and without the new fields, including a `/connections` fixture
+- [x] Tests: decode with and without the new fields, including a `/connections` fixture
       in `fixtures/clash/` if one exists; one-way flags agree with `oneWayUDPFlows` for
       the same sample; `Explain` for a Squirrel-widened regex, for a domain suffix, for an
       IP CIDR, and for no match
@@ -210,18 +223,18 @@ accepted, because both touch `08-windows.md` and `ROADMAP-windows.md`.
 
 ### 5. Service, pipe and CLI (#2)
 
-- [ ] `TrafficSampler` keeps the last decoded sample, its time and the `firstSeenAt` map
+- [x] `TrafficSampler` keeps the last decoded sample, its time and the `firstSeenAt` map
       under `mu`. It is cleared on `Pause`/`Reset`.
-- [ ] `ipc`: `MethodGetConnections = "getConnections"`, `MethodExplain = "explain"`,
+- [x] `ipc`: `MethodGetConnections = "getConnections"`, `MethodExplain = "explain"`,
       optional `tail` param on `collectDiagnostics`; handler interface, server dispatch,
       client methods
-- [ ] Supervisor: `GetConnections` (empty snapshot when not running), `Explain` from the
+- [x] Supervisor: `GetConnections` (empty snapshot when not running), `Explain` from the
       applied plan (verify the assumption in *Decisions*; fall back to the run directory),
       `CollectDiagnostics(tail)` with the cap
-- [ ] `wayforkctl connections [--process s] [--exit id|direct] [--udp] [--one-way]`,
+- [x] `wayforkctl connections [--process s] [--exit id|direct] [--udp] [--one-way]`,
       `wayforkctl explain --process <path> | --host <h> | --ip <a>`,
       `wayforkctl diagnostics [--tail N]`; usage text updated; JSON output like the rest
-- [ ] Tests for the dispatch and for the CLI filters (a pure filter func in the ctl
+- [x] Tests for the dispatch and for the CLI filters (a pure filter func in the ctl
       package or core)
 
 **Done when:** `go vet ./...`, `go test ./...` green and `GOOS=windows go build ./...`
@@ -231,10 +244,10 @@ succeeds.
 
 ### 6. Docs for #2
 
-- [ ] [08-windows.md](../design/08-windows.md) § `cmd/wayforkctl` (~l.539): the three
+- [x] [08-windows.md](../design/08-windows.md) § `cmd/wayforkctl` (~l.539): the three
       commands, their JSON, the note on access (same ACL, read-only, no secrets)
-- [ ] `CHANGELOG.md` § [Unreleased]: Windows addition line
-- [ ] § WM18: tick the #2 box
+- [x] `CHANGELOG.md` § [Unreleased]: Windows addition line
+- [x] § WM18: tick the #2 box
 
 **Done when:** docs match the code.
 

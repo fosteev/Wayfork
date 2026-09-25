@@ -260,9 +260,29 @@ func (s *Supervisor) firstLiveGroups() map[string][]string {
 	return groups
 }
 
-// CollectDiagnostics implements ipc.Handler.
-func (s *Supervisor) CollectDiagnostics(ctx context.Context) core.DaemonDiagnostics {
-	tails := s.hub.Tails(200)
+// Diagnostics tail bounds (#2): collectDiagnostics defaults to defaultDiagnosticsTail
+// lines and never returns more than maxDiagnosticsTail, no matter what `--tail` asks for.
+const (
+	defaultDiagnosticsTail = 200
+	maxDiagnosticsTail     = 5000
+)
+
+// clampDiagnosticsTail applies the tail bounds: <= 0 becomes the default, anything past
+// the cap is cut down to it.
+func clampDiagnosticsTail(tail int) int {
+	switch {
+	case tail <= 0:
+		return defaultDiagnosticsTail
+	case tail > maxDiagnosticsTail:
+		return maxDiagnosticsTail
+	default:
+		return tail
+	}
+}
+
+// CollectDiagnostics implements ipc.Handler. tail <= 0 means defaultDiagnosticsTail.
+func (s *Supervisor) CollectDiagnostics(ctx context.Context, tail int) core.DaemonDiagnostics {
+	tails := s.hub.Tails(clampDiagnosticsTail(tail))
 	daemonTail := tails[DaemonSource]
 	if daemonTail == nil {
 		daemonTail = []string{}
@@ -273,6 +293,25 @@ func (s *Supervisor) CollectDiagnostics(ctx context.Context) core.DaemonDiagnost
 		RunDirectoryListing: RunListing(s.env.Layout.Dir),
 		Routes:              s.deps.Network.Diagnostics(ctx),
 	}
+}
+
+// GetConnections implements ipc.Handler: the sampler's last decoded sample (#2).
+func (s *Supervisor) GetConnections(ctx context.Context) core.ConnectionsSnapshot {
+	return s.sampler.Connections()
+}
+
+// Explain implements ipc.Handler: answers `wayforkctl explain` from the currently applied
+// plan — the route rules of the running sing-box config, in order, matched against each
+// rule-set's own selectors (#2, docs/roadmap/versioned-app-paths-and-ctl-connections.md
+// "Decisions"). When nothing is applied, there is nothing to explain from.
+func (s *Supervisor) Explain(ctx context.Context, query core.ExplainQuery) core.ExplainResult {
+	s.mu.Lock()
+	plan := s.plan
+	s.mu.Unlock()
+	if plan == nil {
+		return core.ExplainResult{Note: "not running: no applied plan"}
+	}
+	return core.Explain(query, plan.SingBox.RouteRules(), plan.SingBox.RuleSetSelectorsByTag(), plan.SingBox.RouteFinal())
 }
 
 func (s *Supervisor) validateBinaries() *core.DaemonError {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -13,12 +14,15 @@ import (
 )
 
 type fakeHandler struct {
-	mu       sync.Mutex
-	status   core.RuntimeStatus
-	applied  []core.RuntimePlan
-	sink     Sink
-	applyGo  chan struct{}
-	unsubbed int
+	mu          sync.Mutex
+	status      core.RuntimeStatus
+	applied     []core.RuntimePlan
+	sink        Sink
+	applyGo     chan struct{}
+	unsubbed    int
+	tailsSeen   []int
+	connections core.ConnectionsSnapshot
+	explained   []core.ExplainQuery
 }
 
 func (h *fakeHandler) GetInfo(context.Context) core.DaemonInfo {
@@ -53,8 +57,24 @@ func (h *fakeHandler) Reconnect(_ context.Context, id string) core.ApplyResult {
 	return core.ApplySuccess()
 }
 
-func (h *fakeHandler) CollectDiagnostics(context.Context) core.DaemonDiagnostics {
+func (h *fakeHandler) CollectDiagnostics(_ context.Context, tail int) core.DaemonDiagnostics {
+	h.mu.Lock()
+	h.tailsSeen = append(h.tailsSeen, tail)
+	h.mu.Unlock()
 	return core.DaemonDiagnostics{Routes: "r"}
+}
+
+func (h *fakeHandler) GetConnections(context.Context) core.ConnectionsSnapshot {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.connections
+}
+
+func (h *fakeHandler) Explain(_ context.Context, query core.ExplainQuery) core.ExplainResult {
+	h.mu.Lock()
+	h.explained = append(h.explained, query)
+	h.mu.Unlock()
+	return core.ExplainResult{Fallback: "direct", Note: core.ExplainNote}
 }
 
 func (h *fakeHandler) Subscribe(_ context.Context, sink Sink) core.ApplyResult {
@@ -120,9 +140,42 @@ func TestRequestsAndReplies(t *testing.T) {
 	if result, err := client.Stop(ctx); err != nil || !result.OK {
 		t.Errorf("stop = %+v, %v", result, err)
 	}
-	if diagnostics, err := client.CollectDiagnostics(ctx); err != nil || diagnostics.Routes != "r" {
+	if diagnostics, err := client.CollectDiagnostics(ctx, 0); err != nil || diagnostics.Routes != "r" {
 		t.Errorf("diagnostics = %+v, %v", diagnostics, err)
 	}
+	if diagnostics, err := client.CollectDiagnostics(ctx, 500); err != nil || diagnostics.Routes != "r" {
+		t.Errorf("diagnostics with tail = %+v, %v", diagnostics, err)
+	}
+	handler.mu.Lock()
+	tailsSeen := append([]int(nil), handler.tailsSeen...)
+	handler.mu.Unlock()
+	if !reflect.DeepEqual(tailsSeen, []int{0, 500}) {
+		t.Errorf("tails seen by the handler = %v", tailsSeen)
+	}
+
+	handler.mu.Lock()
+	handler.connections = core.ConnectionsSnapshot{Connections: []core.Connection{{ID: "c1", Exit: "direct"}}}
+	handler.mu.Unlock()
+	if snapshot, err := client.GetConnections(ctx); err != nil || len(snapshot.Connections) != 1 || snapshot.Connections[0].ID != "c1" {
+		t.Errorf("connections = %+v, %v", snapshot, err)
+	}
+
+	if result, err := client.Explain(ctx, core.ExplainQuery{Host: "example.com"}); err != nil || result.Fallback != "direct" || result.Note != core.ExplainNote {
+		t.Errorf("explain = %+v, %v", result, err)
+	}
+	handler.mu.Lock()
+	explained := append([]core.ExplainQuery(nil), handler.explained...)
+	handler.mu.Unlock()
+	if !reflect.DeepEqual(explained, []core.ExplainQuery{{Host: "example.com"}}) {
+		t.Errorf("explained queries = %+v", explained)
+	}
+	if err := client.Call(ctx, MethodExplain, core.ExplainQuery{}, nil); err == nil || !strings.Contains(err.Error(), "exactly one") {
+		t.Errorf("explain with no field set must fail: %v", err)
+	}
+	if err := client.Call(ctx, MethodExplain, core.ExplainQuery{Host: "a", IP: "1.2.3.4"}, nil); err == nil || !strings.Contains(err.Error(), "exactly one") {
+		t.Errorf("explain with two fields set must fail: %v", err)
+	}
+
 	if err := client.Call(ctx, "explode", nil, nil); err == nil || !strings.Contains(err.Error(), "unknown method") {
 		t.Errorf("unknown method error = %v", err)
 	}

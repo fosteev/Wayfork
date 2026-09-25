@@ -50,6 +50,37 @@ func TestAccumulatorAttributesTheFixtureAndRatesTheFirstSample(t *testing.T) {
 	}
 }
 
+// IsOneWayUDP, extracted for ConnectionsSnapshot (#2), must keep agreeing with the
+// accumulator's own aggregate oneWayUDPFlows for the same sample.
+func TestIsOneWayUDPAgreesWithTheAccumulatorsAggregate(t *testing.T) {
+	accumulator := NewTrafficAccumulator()
+	accumulator.RestartConnections(t0)
+	decoded, err := DecodeClashConnections([]byte(readFixture(t, "clash", "connections.json")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	accumulator.Ingest(decoded.Connections, t0.Add(2*time.Second))
+	later := accumulator.Ingest(decoded.Connections, t0.Add(12*time.Second))
+	firstSeenAt := accumulator.FirstSeenAtByID()
+	oneWayCount := map[TrafficExit]int{}
+	for _, connection := range decoded.Connections {
+		first, ok := firstSeenAt[connection.ID]
+		if !ok {
+			t.Fatalf("connection %s missing from FirstSeenAtByID", connection.ID)
+		}
+		if IsOneWayUDP(connection, first, t0.Add(12*time.Second)) {
+			oneWayCount[ExitForChains(connection.Chains)]++
+		}
+	}
+	if oneWayCount[TrafficExit{Tunnel: clashTunnelA}] != later.CountersForTunnel(clashTunnelA).OneWayUDPFlows {
+		t.Errorf("per-connection one-way = %d, aggregate = %d",
+			oneWayCount[TrafficExit{Tunnel: clashTunnelA}], later.CountersForTunnel(clashTunnelA).OneWayUDPFlows)
+	}
+	if oneWayCount[DirectExit] != later.Direct.OneWayUDPFlows {
+		t.Errorf("direct per-connection one-way = %d, aggregate = %d", oneWayCount[DirectExit], later.Direct.OneWayUDPFlows)
+	}
+}
+
 func TestAccumulatorFlagsOneWayUDPOnlyAfterTheGraceAndClearsOnReplies(t *testing.T) {
 	accumulator := NewTrafficAccumulator()
 	accumulator.RestartConnections(t0)

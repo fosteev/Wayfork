@@ -102,7 +102,29 @@ func (c *Conn) dispatch(ctx context.Context, message Message) {
 		}
 		result = c.handler.Reconnect(ctx, params.ID)
 	case MethodCollectDiagnostics:
-		result = c.handler.CollectDiagnostics(ctx)
+		var params CollectDiagnosticsParams
+		if len(message.Params) > 0 {
+			if err := json.Unmarshal(message.Params, &params); err != nil {
+				c.reply(message.ID, nil, fmt.Sprintf("undecodable params: %v", err))
+				return
+			}
+		}
+		result = c.handler.CollectDiagnostics(ctx, params.Tail)
+	case MethodGetConnections:
+		result = c.handler.GetConnections(ctx)
+	case MethodExplain:
+		var query core.ExplainQuery
+		if len(message.Params) > 0 {
+			if err := json.Unmarshal(message.Params, &query); err != nil {
+				c.reply(message.ID, nil, fmt.Sprintf("undecodable params: %v", err))
+				return
+			}
+		}
+		if !query.HasOneField() {
+			c.reply(message.ID, nil, "explain needs exactly one of process, host, ip")
+			return
+		}
+		result = c.handler.Explain(ctx, query)
 	default:
 		c.reply(message.ID, nil, "unknown method "+message.Method)
 		return
