@@ -42,7 +42,11 @@ private func temporaryDirectory() -> URL {
         store.settings.logRetentionDays = i
         await repo.save(store)
     }
-    try await Task.sleep(for: .milliseconds(200))
+    // Wait for the debounced write itself, not a fixed time: CI runners can be slow.
+    let deadline = ContinuousClock.now + .seconds(5)
+    while await repo.hasPendingChanges, ContinuousClock.now < deadline {
+        try await Task.sleep(for: .milliseconds(10))
+    }
     let reloaded = try await repo.load()
     #expect(reloaded.store.settings.logRetentionDays == 4)
 }
