@@ -36,6 +36,7 @@ windows/rulesets/
 # Tooling
 .serena/
 *.log
+!fixtures/logs/*.log
 
 # Shared test fixtures (placeholder keys only)
 !fixtures/**/*.ovpn
