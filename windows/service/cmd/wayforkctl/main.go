@@ -26,6 +26,13 @@ const usage = `usage:
   wayforkctl reconnect <tunnel id>
   wayforkctl watch                      subscribe and print pushes until Ctrl-C
   wayforkctl diagnostics [--tail N]     N defaults to 200, capped at 5000
+  wayforkctl logs [flags]               the service's log lines, filtered here (F21)
+      --source <s>                      daemon | sing-box | openvpn | openvpn:<id>; repeatable
+      --level <l>                       error | warning | info | debug (threshold)
+      --grep <text>                     message contains text, case-insensitive; repeatable
+      --since <d>                       90s | 15m | 2h | 1d | RFC 3339
+      --tail <n>                        last n matching lines, default 100, 0 = all
+      --json                            one JSON object per line instead of text
   wayforkctl connections [flags]        every connection sing-box's Clash API reports
       --process <substr>                process path contains substr, case-insensitive
       --exit <id|direct|block>          only this exit
@@ -59,6 +66,8 @@ func main() {
 		err = call(ctx, func(c *ipc.Client) (any, error) { return c.GetStatus(ctx) })
 	case "stop":
 		err = call(ctx, func(c *ipc.Client) (any, error) { return c.Stop(ctx) })
+	case "logs":
+		err = logs(ctx, os.Args[2:])
 	case "diagnostics":
 		err = diagnostics(ctx, os.Args[2:])
 	case "connections":
@@ -167,6 +176,82 @@ func diagnostics(ctx context.Context, args []string) error {
 		return err
 	}
 	return call(ctx, func(c *ipc.Client) (any, error) { return c.CollectDiagnostics(ctx, *tail) })
+}
+
+// stringsFlag collects a repeated string flag.
+type stringsFlag []string
+
+func (f *stringsFlag) String() string     { return strings.Join(*f, ",") }
+func (f *stringsFlag) Set(v string) error { *f = append(*f, v); return nil }
+
+// logs runs `wayforkctl logs [flags]` (F21, docs/design/09-wayforkctl.md § Commands
+// (Windows)): the diagnostics tails at their cap, parsed, filtered and merged here — no
+// service method of its own.
+func logs(ctx context.Context, args []string) error {
+	flags := flag.NewFlagSet("logs", flag.ContinueOnError)
+	var sources, grep stringsFlag
+	flags.Var(&sources, "source", "source (repeatable)")
+	flags.Var(&grep, "grep", "substring (repeatable)")
+	level := flags.String("level", "", "error | warning | info | debug")
+	since := flags.String("since", "", "90s | 15m | 2h | 1d | RFC 3339")
+	tail := flags.Int("tail", core.DefaultLogTail, "last n matching lines, 0 = all")
+	asJSON := flags.Bool("json", false, "one JSON object per line")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	query := core.LogQuery{Sources: sources, Grep: grep, Tail: *tail}
+	if *level != "" {
+		parsed, err := core.ParseLogLevel(strings.ToLower(*level))
+		if err != nil {
+			return errors.New("--level: error | warning | info | debug")
+		}
+		query.Level = parsed
+	}
+	if *since != "" {
+		parsed, ok := core.ParseLogSince(*since, time.Now())
+		if !ok {
+			return fmt.Errorf("--since: 90s | 15m | 2h | 1d | RFC 3339, got %s", *since)
+		}
+		query.Since = parsed
+	}
+	if query.Tail < 0 {
+		return errors.New("--tail must not be negative")
+	}
+	client, err := connect(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	diagnostics, err := client.CollectDiagnostics(ctx, 5000)
+	if err != nil {
+		return err
+	}
+	tails := map[string][]string{"daemon": diagnostics.DaemonLogTail}
+	for stem, lines := range diagnostics.ChildLogTails {
+		tails[stem] = lines
+	}
+	var all []core.LogLine
+	for stem, lines := range tails {
+		source := core.LogSourceForFile(stem)
+		for _, text := range lines {
+			if line, ok := core.ParseLogFileLine(source, text); ok {
+				all = append(all, line)
+			}
+		}
+	}
+	for _, line := range query.Run(all) {
+		if *asJSON {
+			data, err := core.MarshalWire(line)
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(data))
+		} else {
+			fmt.Println(line.TS.UTC().Format(time.RFC3339) + " " + line.Source + " " +
+				strings.ToUpper(string(line.Level)) + " " + line.Message)
+		}
+	}
+	return nil
 }
 
 // connections runs `wayforkctl connections [flags]`: the pipe returns every connection,
