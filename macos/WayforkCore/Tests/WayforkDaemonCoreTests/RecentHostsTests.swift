@@ -20,7 +20,8 @@ private func connection(
             connection(
                 "1", chains: ["t-work"], host: "news.example.com",
                 process: "/A/Safari.app/Contents/MacOS/Safari"),
-            connection("2", chains: ["t-home"], host: "video.example.com"),  // a rule sent it elsewhere
+            // a rule sent it elsewhere
+            connection("2", chains: ["t-home"], host: "video.example.com"),
             connection("3", chains: ["direct"], host: "bank.example"),  // an exception
             connection("4", chains: ["t-work"], host: ""),  // bare IP: no name to list
             connection("5", chains: ["t-work"], host: "203.0.113.7"),

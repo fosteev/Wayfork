@@ -505,7 +505,8 @@ private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased()
 // MARK: - F15
 
 @Test func recentFilterDropsOldHiddenAndRuledHosts() {
-    let (store, _, _, _) = sampleStore()  // rules: example.com (suffix), *.cdn.example.com, news.example.org…
+    // rules: example.com (suffix), *.cdn.example.com, news.example.org…
+    let (store, _, _, _) = sampleStore()
     let now = Date()
     let hosts = [
         RecentHost(host: "fresh.example.net", exit: "direct", lastSeen: now),
@@ -513,7 +514,8 @@ private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased()
         RecentHost(host: "hidden.example.net", exit: "direct", lastSeen: now),
         RecentHost(host: "shop.example.com", exit: "direct", lastSeen: now),  // suffix rule
         RecentHost(host: "a.cdn.example.com", exit: "direct", lastSeen: now),  // wildcard rule
-        RecentHost(host: "old.example.com", exit: "direct", lastSeen: now),  // covered by example.com
+        // covered by example.com
+        RecentHost(host: "old.example.com", exit: "direct", lastSeen: now),
     ]
     let visible = RecentFilter.visible(
         hosts, sampledAt: now, window: 300, hidden: ["hidden.example.net"], store: store)
