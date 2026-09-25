@@ -51,6 +51,23 @@ void main() {
     expect(direct[1]['process_path_regex'], [r'^/Applications/Bank\.app/']);
   });
 
+  test('a Windows app rule with a Squirrel path widens the regex', () {
+    final rules = [
+      Rule.tunnel(
+        pattern:
+            r'C:\Users\Alex\AppData\Local\Discord\app-1.0.9255\Discord.exe',
+        match: RuleMatch.app,
+        tunnelID: Fixtures.workID,
+      ),
+    ];
+    // Default platform is windows.
+    final objects = _ruleObjects(RuleSetGenerator.render(rules));
+    expect(objects, hasLength(1));
+    expect(objects[0]['process_path_regex'], [
+      r'(?i)^C:\\Users\\Alex\\AppData\\Local\\Discord\\app-\d[^\\]*\\Discord\.exe$',
+    ]);
+  });
+
   test('IP rule sets are separate files', () {
     final rules = [
       Rule.tunnel(pattern: 'example.com', tunnelID: Fixtures.workID),

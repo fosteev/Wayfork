@@ -410,6 +410,30 @@ against `fixtures/` from `test/core/`. The deltas from the Swift core, all delib
   URLs accepted, `/` becomes `\`, must end in `.exe`, no `.`/`..` components, case kept); the
   rule-set emits `process_path_regex` `(?i)^<escaped path>$` — one executable, case-insensitive
   because sing-box reports the on-disk case (S3a). macOS bundles keep `^<path>/`.
+  - **Versioned app paths.** `VersionedAppPath` (`core/rules/versioned_app_path.dart`) makes a
+    rule survive an auto-update into a new versioned install folder — Squirrel `app-<ver>`
+    or MSIX `<Name>_<ver>_<arch>__<hash>` — by treating that one path component specially,
+    never the final `.exe` name:
+    - `regex(path)` widens a Squirrel component to `app-\d[^\\]*` and an MSIX component to
+      `<escaped name>_[^_\\]+_<escaped arch>__<escaped hash>` (name, arch and publisher hash
+      stay literal, only the version varies); everything else is escaped literally, same as
+      before. `appPathRegex`'s Windows branch builds from it; the macOS branch is unchanged.
+    - `key(path)` lowercases the path and replaces a versioned component with a stable
+      placeholder, so two versions of the same app compare equal. The duplicate check in
+      `RuleEditing.normalize` uses it for app rules instead of literal pattern equality — a
+      newer Squirrel/MSIX path over an existing rule in the same group is the `duplicate`
+      failure, not a second rule (heal below moves the stored path). Quick add never produces
+      app rules, so it keeps literal equality; domain and IP rules compare literally.
+    - `heal(Store, AppFiles)` is pure: for every enabled or disabled app rule with a versioned
+      component, it lists that component's parent directory, keeps the siblings with the same
+      `key` (the rule's own build included), and repoints the rule at the one whose `.exe`
+      exists with the newest modification time — not the highest version string, since
+      Squirrel and MSIX sort differently. An old build still on disk does not stop it:
+      Squirrel keeps the previous `app-<ver>` after an update. No versioned component, or a
+      parent that cannot be listed (`WindowsApps` needs admin rights), leaves the rule
+      untouched — the widened regex still matches. `AppModel` calls it through `update(...)` from `bootstrap()` (after load) and
+      the start of `_apply()`, behind the `AppFiles` interface (`IoAppFiles` on `dart:io`, a
+      fake in tests), logging `app rule healed: <old> → <new>` per rule it repoints.
 - **Importer.** On top of the macOS strip list ([04-tunnels.md](04-tunnels.md)) the Windows
   importer drops `comp-lzo`, `compress`, `comp-noadapt`, `allow-compression` (compression
   framing forces the TAP fallback, see Adapters) and the Windows-only `windows-driver`,

@@ -131,6 +131,57 @@ void main() {
     );
   });
 
+  test('app rule duplicate detection follows Squirrel/MSIX siblings', () {
+    final sample = SampleStore();
+    final store = sample.store.copyWith(
+      rules: [
+        ...sample.store.rules,
+        Rule.tunnel(
+          pattern:
+              r'C:\Users\Alex\AppData\Local\Discord\app-1.0.9255\Discord.exe',
+          match: RuleMatch.app,
+          tunnelID: sample.work.id,
+        ),
+      ],
+    );
+    // A newer Squirrel version of the same app is a duplicate, not a
+    // second rule.
+    expect(
+      RuleEditing.normalize(
+        r'C:\Users\Alex\AppData\Local\Discord\app-1.0.9259\Discord.exe',
+        match: RuleMatch.app,
+        target: RuleTargetTunnel(sample.work.id),
+        store: store,
+      ),
+      const RuleEditingResult.failure(RuleEditingFailure.duplicate()),
+    );
+    // A different app is a new rule.
+    expect(
+      RuleEditing.normalize(
+        r'C:\Users\Alex\AppData\Local\Slack\app-1.0.9255\Slack.exe',
+        match: RuleMatch.app,
+        target: RuleTargetTunnel(sample.work.id),
+        store: store,
+      ),
+      const RuleEditingResult.success(
+        r'C:\Users\Alex\AppData\Local\Slack\app-1.0.9255\Slack.exe',
+      ),
+    );
+    // The same app under another tunnel is legal (flagged as shadowed, not
+    // a duplicate).
+    expect(
+      RuleEditing.normalize(
+        r'C:\Users\Alex\AppData\Local\Discord\app-1.0.9259\Discord.exe',
+        match: RuleMatch.app,
+        target: RuleTargetTunnel(sample.home.id),
+        store: store,
+      ),
+      const RuleEditingResult.success(
+        r'C:\Users\Alex\AppData\Local\Discord\app-1.0.9259\Discord.exe',
+      ),
+    );
+  });
+
   test('quick add and editing support Direct (F8)', () {
     final sample = SampleStore();
     final store = sample.store;

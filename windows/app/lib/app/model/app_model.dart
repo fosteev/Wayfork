@@ -33,9 +33,11 @@ import 'package:wayfork/core/platform.dart';
 import 'package:wayfork/core/plan/host_resolver.dart';
 import 'package:wayfork/core/plan/runtime_plan_builder.dart';
 import 'package:wayfork/core/plan/system_dns.dart';
+import 'package:wayfork/core/rules/app_files.dart';
 import 'package:wayfork/core/rules/fake_ip.dart';
 import 'package:wayfork/core/rules/rule_pattern.dart';
 import 'package:wayfork/core/rules/rule_validator.dart';
+import 'package:wayfork/core/rules/versioned_app_path.dart';
 import 'package:wayfork/core/secrets/secret_store.dart';
 import 'package:wayfork/core/singbox/sing_box_config_generator.dart';
 import 'package:wayfork/core/store/store_repository.dart';
@@ -75,6 +77,7 @@ final class AppModel extends ChangeNotifier {
     this._resolveHosts = HostResolver.resolveIPv4,
     this._systemDns = SystemDns.snapshot,
     this._localNetworks = LocalNetwork.current,
+    this._appFiles = const IoAppFiles(),
     Stream<void>? networkChanges,
     String? installDir,
     this.appVersion = WayforkVersion.app,
@@ -136,6 +139,7 @@ final class AppModel extends ChangeNotifier {
   final HostResolve _resolveHosts;
   final SystemDnsSnapshot Function() _systemDns;
   final List<LocalNetwork> Function() _localNetworks;
+  final AppFiles _appFiles;
   final String _installDirFallback;
   final RecoveryBackoff _recovery;
   final DateTime Function() _now;
@@ -499,6 +503,7 @@ final class AppModel extends ChangeNotifier {
     } on Object catch (error) {
       logs.app(LogLevel.error, 'cannot load store: $error');
     }
+    await _healAppRules();
     try {
       await _secrets.removeOrphans(_store);
     } on Object catch (error) {
@@ -1035,6 +1040,24 @@ final class AppModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// F10 on Windows: an app rule whose `.exe` moved to a new versioned build
+  /// (Squirrel, MSIX) is repointed at the newest existing sibling. A no-op
+  /// when nothing needs it.
+  Future<void> _healAppRules() async {
+    final before = _store;
+    await update((store) => VersionedAppPath.heal(store, _appFiles));
+    if (identical(_store, before)) return;
+    for (final rule in before.rules) {
+      final healed = _store.rules.firstWhereOrNull((r) => r.id == rule.id);
+      if (healed != null && healed.pattern != rule.pattern) {
+        logs.app(
+          LogLevel.info,
+          'app rule healed: ${rule.pattern} → ${healed.pattern}',
+        );
+      }
+    }
+  }
+
   /// Call after secret writes too: they change the plan without touching the
   /// store.
   void secretsChanged() {
@@ -1109,6 +1132,7 @@ final class AppModel extends ChangeNotifier {
   }
 
   Future<void> _apply() async {
+    await _healAppRules();
     if (!_desiredOn || !_client.isConnected) return;
     final PlanSecrets planSecrets;
     try {

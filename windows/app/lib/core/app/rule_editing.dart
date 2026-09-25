@@ -2,6 +2,7 @@ import 'package:wayfork/core/model/rule.dart';
 import 'package:wayfork/core/model/store.dart';
 import 'package:wayfork/core/platform.dart';
 import 'package:wayfork/core/rules/rule_pattern.dart';
+import 'package:wayfork/core/rules/versioned_app_path.dart';
 
 /// Why an edited rule was rejected (docs/design/02-ux.md, `rule.invalid`).
 sealed class RuleEditingFailure {
@@ -103,13 +104,20 @@ abstract final class RuleEditing {
     } on RulePatternException catch (error) {
       return RuleEditingResult.failure(RuleEditingFailure.pattern(error.kind));
     }
-    final duplicate = store.rules.any(
-      (rule) =>
-          rule.id != excluding &&
-          rule.target == target &&
-          rule.pattern == pattern &&
-          rule.match == match,
-    );
+    final duplicate = store.rules.any((rule) {
+      if (rule.id == excluding ||
+          rule.target != target ||
+          rule.match != match) {
+        return false;
+      }
+      // Two versions of the same Squirrel/MSIX install are the same rule
+      // (F10, versioned app paths), even though their literal paths differ.
+      if (match == RuleMatch.app && platform == WayforkPlatform.windows) {
+        return VersionedAppPath.key(rule.pattern) ==
+            VersionedAppPath.key(pattern);
+      }
+      return rule.pattern == pattern;
+    });
     return duplicate
         ? const RuleEditingResult.failure(RuleEditingFailure.duplicate())
         : RuleEditingResult.success(pattern);

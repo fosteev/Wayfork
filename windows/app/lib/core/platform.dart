@@ -1,4 +1,5 @@
 import 'package:wayfork/core/rules/rule_pattern_error.dart';
+import 'package:wayfork/core/rules/versioned_app_path.dart';
 import 'package:wayfork/core/support/regex_escape.dart';
 
 final class WayforkPlatform {
@@ -29,10 +30,13 @@ final class WayforkPlatform {
   }
 
   /// sing-box reports the on-disk case on Windows, so the process regex is
-  /// case-insensitive there. A macOS bundle regex covers every executable in
-  /// the bundle while excluding similarly prefixed bundle names.
-  String appPathRegex(String pattern) =>
-      _windows ? '(?i)^${escapeRegex(pattern)}\$' : '^${escapeRegex(pattern)}/';
+  /// case-insensitive there, and a versioned install folder (Squirrel,
+  /// MSIX) is widened to match any sibling version (F10, versioned app
+  /// paths). A macOS bundle regex covers every executable in the bundle
+  /// while excluding similarly prefixed bundle names.
+  String appPathRegex(String pattern) => _windows
+      ? '(?i)^${VersionedAppPath.regex(pattern)}\$'
+      : '^${escapeRegex(pattern)}/';
 
   String appName(String pattern) {
     final parts = _windows

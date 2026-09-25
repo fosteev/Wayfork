@@ -672,3 +672,16 @@ keys and optionality as the Swift side; Last 5 min and Reset are app-side there 
       (2026-09-19: opened/failed now count from the actual 1.13.19 line shapes, mirroring
       the macOS fix; see docs/roadmap/failed-connections-live-log.md. The PC run above is
       still owed.)
+
+### WM18 — Versioned app paths and `wayforkctl connections` (issues #1, #2)
+
+Field findings 2026-09-24 (Discord voice on the PC); plan in
+[roadmap/versioned-app-paths-and-ctl-connections.md](roadmap/versioned-app-paths-and-ctl-connections.md).
+Windows only; the macOS client keeps stable `.app` paths.
+
+- [x] #1 App (Flutter): Squirrel/MSIX version folders widened in `process_path_regex`,
+      version-insensitive duplicates, stored paths self-heal (stages 1–3).
+- [ ] #2 Service (Go): `wayforkctl connections` with `oneWay`, `explain`,
+      `diagnostics --tail N` (stages 4–6).
+- [ ] PC run: Discord rule heals and routes voice; `connections` / `explain` show it
+      (stage 7).

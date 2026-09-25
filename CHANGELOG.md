@@ -6,6 +6,14 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **App rules survive an auto-update.** A rule pointed at a Squirrel or MSIX versioned
+  install folder (`app-<ver>`, `WindowsApps\<Name>_<ver>_<arch>__<hash>`) stopped matching
+  the moment the app updated into a new one (Discord, Slack, …). The rule now matches any
+  version of that install, its stored path follows the newest build, and adding the newer
+  `.exe` again is recognized as the same rule (Windows).
+
 ## [0.8.0] — 2026-09-19
 
 *Connections by exit* on both platforms, and the *Can't reach* pane made to work on the
