@@ -685,3 +685,5 @@ Windows only; the macOS client keeps stable `.app` paths.
       `diagnostics --tail N` (stages 4–6).
 - [ ] PC run: Discord rule heals and routes voice; `connections` / `explain` show it
       (stage 7).
+      (2026-09-25: deferred on the maintainer's call to after the next release; #1 and #2
+      closed with a564d8d and 44cd952. The PC run above is still owed.)

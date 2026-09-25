@@ -1,8 +1,9 @@
 # Versioned app paths and `wayforkctl connections` — issues #1, #2
 
-> Status: stage 7 owed · created 2026-09-25 · session A (stages 1–3) and session B
-> (stages 4–6) accepted and committed 2026-09-25; the PC run (stage 7) is owed by the
-> maintainer · Windows only. Milestone skeleton:
+> Status: done · created 2026-09-25 · session A (stages 1–3) and session B
+> (stages 4–6) accepted and committed 2026-09-25 (a564d8d, 44cd952); issues #1 and #2
+> closed. Stage 7 (PC run) deferred on the maintainer's call to after the next release
+> · Windows only. Milestone skeleton:
 > [ROADMAP-windows.md](../ROADMAP-windows.md) § WM18. The executing session ticks the
 > checkboxes below as it goes; statuses live here and in § WM18 only.
 
@@ -261,9 +262,11 @@ succeeds.
 - [ ] `wayforkctl connections --process discord --udp` shows the voice UDP destination,
       its exit, `rule`/`rulePayload`, and `oneWay: true` if the exit drops UDP
 - [ ] `wayforkctl explain --process "<path to Discord.exe>"` names the Discord rule first
-- [ ] Close #1 and #2 with a link to the commits
+- [x] Close #1 and #2 with a link to the commits (2026-09-25)
 
 **Done when:** all boxes ticked by the maintainer.
+(2026-09-25: the PC run is deferred on the maintainer's call — the PC still runs 0.8.0;
+the maintainer checks the three boxes above after installing the next release.)
 
 **Session:** maintainer, `ssh wf-pc`.
 
