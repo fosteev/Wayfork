@@ -21,6 +21,8 @@ struct AddLinkSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let mode: Mode
+    /// Pre-fills the link field, e.g. from the first-run guide's Return/Add (F22).
+    var initialText: String = ""
 
     /// What the sheet is doing with a pasted subscription URL.
     private enum Subscription {
@@ -97,7 +99,10 @@ struct AddLinkSheet: View {
         .frame(width: 520)
         .onDisappear { fetchTask?.cancel() }
         .onAppear {
-            if uri.isEmpty, let clipboard = NSPasteboard.general.string(forType: .string) {
+            if uri.isEmpty, !initialText.isEmpty {
+                uri = initialText
+                parse()
+            } else if uri.isEmpty, let clipboard = NSPasteboard.general.string(forType: .string) {
                 let value = clipboard.trimmingCharacters(in: .whitespacesAndNewlines)
                 if supportedScheme(value) {
                     uri = value

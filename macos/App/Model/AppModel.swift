@@ -42,6 +42,13 @@ final class AppModel {
     private(set) var iconPulse = false
     /// Set when `store.json` was written by a newer version: never overwrite it.
     private(set) var persistenceDisabled = false
+    /// F22: this Mac's first-run guide progress, loaded from `UserDefaults` at init. Mutated
+    /// only from `AppModel+Guide.swift`.
+    var guideState: GuideState
+    /// F22: the step the guide window is currently showing, kept for `recordGuideWindowClosed()`.
+    var guideCurrentStep: GuideStep = .welcome
+    /// F22: owns the guide's `NSWindow` while it is open.
+    var guideWindowController: GuideWindowController?
 
     // MARK: - Navigation
 
@@ -74,6 +81,7 @@ final class AppModel {
     private let repository: StoreRepository
     private let client = DaemonClient()
     private let helper = HelperInstaller()
+    let guideStore = GuideStore()
     let notifier = Notifier()
 
     private var applyTask: Task<Void, Never>?
@@ -114,6 +122,7 @@ final class AppModel {
     ) {
         self.secrets = secrets
         self.repository = repository
+        self.guideState = GuideStore().load()
         client.onStatus = { [weak self] status in self?.handleStatus(status) }
         client.onLogLines = { [weak self] lines in
             guard let self else { return }
@@ -475,6 +484,25 @@ final class AppModel {
 
     func refreshHelperState() {
         helperState = helper.state
+    }
+
+    /// Guide step 2: registers the daemon if needed, opens Login Items and waits — no
+    /// alert (docs/design/02-ux.md, "First-run guide" step 2). `ensureHelperApproved` stays
+    /// the Turn On path, alert included.
+    func approveHelperForGuide() async -> Bool {
+        refreshHelperState()
+        if helperState == .enabled { return true }
+        if helperState == .notInstalled || helperState == .notFound {
+            try? helper.register()
+            refreshHelperState()
+        }
+        guard helperState == .requiresApproval else { return helperState == .enabled }
+        HelperInstaller.openLoginItems()
+        helperMessage = "Waiting for approval in System Settings…"
+        defer { helperMessage = nil }
+        let approved = await helper.waitUntilEnabled()
+        refreshHelperState()
+        return approved
     }
 
     /// Registers the daemon if needed and waits for the one-time approval

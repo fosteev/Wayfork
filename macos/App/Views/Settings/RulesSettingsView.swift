@@ -370,6 +370,7 @@ private struct RuleGroupView: View {
         panel.prompt = "Add Rule"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         error = model.addRule(pattern: url.path, match: .app, target: group.target)
+        if error == nil { model.tickGuideCard(.appRule) }
     }
 }
 

@@ -10,8 +10,16 @@ struct PopoverView: View {
         VStack(alignment: .leading, spacing: 10) {
             header
             Divider()
+            if model.guideState.showsCard {
+                GettingStartedCardView()
+            }
             if model.store.tunnels.isEmpty {
-                emptyState
+                if let step = model.guideState.resumeStep {
+                    // No tunnels: the guide resumes at Add a VPN at the latest (AppModel.openGuide).
+                    resumeState(step.isAfter(.addVPN) ? .addVPN : step)
+                } else {
+                    emptyState
+                }
             } else if enabledTunnels.isEmpty {
                 allDisabledState
             } else {
@@ -103,6 +111,26 @@ struct PopoverView: View {
                 .controlSize(.small)
         }
         .padding(.vertical, 4)
+    }
+
+    /// C12·c: the no-tunnels popover once the guide window was closed without an outcome.
+    private func resumeState(_ step: GuideStep) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Finish setting up Wayfork")
+                .font(.system(size: 14, weight: .semibold))
+            Text("You stopped at \(GuideStrings.railTitle(step)).")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            Button("Continue setup") { model.openGuide() }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .padding(.top, 4)
+            Text("or drop a .ovpn file on this window")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 10)
     }
 
     private var emptyState: some View {
@@ -621,6 +649,7 @@ struct QuickAddView: View {
         } else {
             input = ""
             error = nil
+            model.tickGuideCard(.popoverRule)
         }
     }
 }

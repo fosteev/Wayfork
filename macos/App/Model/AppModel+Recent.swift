@@ -47,6 +47,7 @@ extension AppModel {
             return message
         }
         hideRecent(host)
+        tickGuideCard(.popoverRule)
         return nil
     }
 

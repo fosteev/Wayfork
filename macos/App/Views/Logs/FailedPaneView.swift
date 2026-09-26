@@ -38,6 +38,7 @@ struct FailedPaneView: View {
             }
             .padding(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
             .background(Color.primary.opacity(0.03))
+            .onAppear { model.tickGuideCard(.cantReach) }
             if !rows.isEmpty {
                 Divider()
                 columns

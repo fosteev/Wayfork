@@ -7,7 +7,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         if Bundle.main.bundleIdentifier != nil, Bundle.main.bundleURL.pathExtension == "app" {
             UNUserNotificationCenter.current().delegate = self
         }
-        Task { await AppModel.shared.bootstrap() }
+        Task {
+            await AppModel.shared.bootstrap()
+            AppModel.shared.autoOpenGuideIfNeeded()
+        }
     }
 
     /// MVP decision: no headless tunnels without the UI (docs/design/00-architecture.md).

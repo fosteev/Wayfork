@@ -81,6 +81,24 @@ struct GeneralSettingsView: View {
                         }
                     }
                 }
+                Section("Guide") {
+                    LabeledContent {
+                        Button("Show") { model.replayGuide() }
+                    } label: {
+                        Text("Welcome guide")
+                        Text(
+                            "Walk through the setup again. Your tunnels and rules stay as they are."
+                        )
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                    LabeledContent {
+                        Button("Show") { model.replayGettingStartedCard() }
+                    } label: {
+                        Text("Getting started card")
+                        Text("Show the three tips in the menu bar again.")
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                }
                 Section("Helper & About") {
                     helperRow
                     LabeledContent {
