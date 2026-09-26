@@ -304,6 +304,25 @@ Feature text, stages and working order for F15–F18 and the friendlier UI pass:
 - Design: [design/09-wayforkctl.md](design/09-wayforkctl.md); stages:
   [roadmap/wayforkctl-agent.md](roadmap/wayforkctl-agent.md).
 
+**F22. First-run guide** *(added 2026-09-25; approved 2026-09-25)*
+- The user's scenario: Wayfork was just installed. The first launch ends with a working
+  setup (helper allowed, one tunnel, one site through it, checked), and the user knows
+  where to look when a site does not open. Everything else stays discoverable, not taught.
+- A small window that does the real setup, step by step, not a slide tour: the one-sentence
+  model (*"the sites you choose go through the VPN you choose; everything else goes
+  direct"*) → allow the helper, explained before the system prompt → add a tunnel (file,
+  link or subscription) → pick the first sites (a text field with a placeholder, no preset
+  site list) → Turn On and see the tunnel connect → open one of those sites and see it go
+  through the tunnel. The last step can be skipped. No coach marks over the popover.
+- After the guide, a dismissible *Getting started* card in the popover, one line per item,
+  each ticked when the user does it once: add a site from the popover (quick add, Recent,
+  F15), a site does not open → *Can't reach* (F19), route a whole app (F10).
+- Shown only while there are no tunnels and the guide was neither finished nor skipped;
+  users upgrading with tunnels never see it. Replay: General → *Show the welcome guide*.
+- Windows: the same guide without the helper step (the installer registers the service;
+  service-missing keeps its own alert).
+- Stages: [roadmap/first-run-guide.md](roadmap/first-run-guide.md).
+
 ### Later
 
 The F15–F18 wave (recent domains → rule, tunnel groups, local proxy ports, block lists) was
@@ -417,6 +436,11 @@ to the existing screens before the features land. Windows twin: boards W9–W15 
 [design/prototype/windows.html](design/prototype/windows.html).
 Board **C9** (2026-09-18) adds the *Connections* view of the Logs window for F20; its
 Windows twin is W17.
+
+**Approved 2026-09-25: [design/prototype/first-run.html](design/prototype/first-run.html)**
+— the F22 first-run guide: C10 (the six steps), C11 (waiting and failure states), C12
+(*Getting started* card, resume, replay). Decisions and open questions are the comment at
+the top of the file.
 
 [design/prototype/index.html](design/prototype/index.html) — rejected v1 (native NSMenu,
 toolbar tabs, flat rules table); still the reference for the Logs window, helper alert and
@@ -973,3 +997,23 @@ and statuses in [roadmap/wayforkctl-agent.md](roadmap/wayforkctl-agent.md).
 - [ ] Manual check with the installed app: `rules add … --via …` reverts after the
       deadline, `confirm` keeps it, `revert` undoes it, `logs --grep` finds the host.
 - [x] Windows: WM19 in ROADMAP-windows.md (2026-09-25).
+
+### M18 — First-run guide (F22)
+
+Phase 1 above, § F22. Design in [design/02-ux.md](design/02-ux.md) § First-run guide and
+[design/01-data-model.md](design/01-data-model.md) § Persistence; boards C10–C12 of
+[design/prototype/first-run.html](design/prototype/first-run.html); stages in
+[roadmap/first-run-guide.md](roadmap/first-run-guide.md).
+
+- [x] `WayforkCore`: `GuideState`, `GuideStep`, `GuideCardItem` with the trigger, card
+      visibility and resume rules, `GuideTryItCheck` (step 6 from `TrafficSnapshot`
+      samples); tests. — 2026-09-25.
+- [x] App: `GuideStore` (UserDefaults), `GuideWindowController` (NSWindow +
+      NSHostingController), auto-open from `AppDelegate`, public helper-approval entry
+      without the alert. — 2026-09-25.
+- [x] Guide views: rail, footer, steps 1–6 with the C11 states. — 2026-09-25.
+- [x] Popover: Getting started card, No-tunnels resume; card ticks at the three call sites.
+      — 2026-09-25.
+- [x] General: *Welcome guide* and *Getting started card* rows. — 2026-09-25.
+- [x] Format, package tests, app build. — 2026-09-25.
+- [ ] Manual check on a fresh macOS user account (maintainer).

@@ -331,6 +331,14 @@ like `suffix` rule patterns and applied with suffix semantics. Export carries bo
   trips — an afternoon, still no schema version.
 - `slot` is assigned at creation (lowest free); it never changes, so the interface name
   stays stable across reconnects and app restarts.
+- **First-run guide progress (F22) is not in the store.** It lives in `UserDefaults`
+  under `WayforkGuideState` as one JSON-encoded `GuideState` (WayforkCore, `App/`):
+  `outcome` (`finished` | `skipped` | nil), `stoppedAt` (the step the window was closed
+  on), `cardActive`, `cardDismissed`, `cardDone` (set of the three card items). Why not
+  `store.json`: it is this Mac's UI progress, not configuration — it must not travel with
+  an export, and it needs no schema migration. A missing or undecodable value reads as
+  the empty state; the trigger also needs *no tunnels*, so a lost value never shows the
+  guide to someone who has a setup.
 
 ## Keychain
 
