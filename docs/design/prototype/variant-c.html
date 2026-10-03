@@ -371,6 +371,7 @@ h2 { font-size:15px; font-weight:600; margin:0 0 10px; color:rgba(0,0,0,0.75); }
 <li><a href="#C7">C7 · New group sheet</a></li>
 <li><a href="#C8">C8 · Logs window with the "Can't reach" pane (F19)</a></li>
 <li><a href="#C9">C9 · Logs window › Connections by exit (F20 draft)</a></li>
+<li><a href="#C13">C13 · Settings › Rules — TCP only / UDP only (F23)</a></li>
 <li><a href="first-run.html">C10–C12 · First-run guide (F22) — separate file</a></li>
 </ol>
 
@@ -833,6 +834,54 @@ h2 { font-size:15px; font-weight:600; margin:0 0 10px; color:rgba(0,0,0,0.75); }
 </div>
 </div>
 <div class="note"><b>Connections by exit</b> (F20 draft) is a second view of the Logs window, chosen by the <b>Log · Connections</b> segment in the toolbar — the <i>Can't reach</i> pane already lives there and both views answer the same "why doesn't it work?" question, so no new window. Opened from the popover footer (<b>Connections ⇧⌘L</b>), from <i>Details</i> on a tunnel card whose connections fail, and from the red line. One row per exit: every tunnel, every group (with the member it is using), <i>Not via any tunnel</i> (direct), and a dimmed <i>Blocked by your list</i> row that is shown for completeness but is excluded from the failure counts and the total. Columns: <b>Connections</b> (opened through the exit), <b>Reached</b> (sing-box opened them), <b>Failed</b> (sing-box could not — the F19 rows, summed), the <b>fail rate</b> with a bar (grey ≤ 1 %, amber ≤ 5 %, red above), the last failure's reason and time. Clicking an exit expands the F19 rows that went through it (site, app, tries, why, when), with <i>Route via ▾</i> on hover — the fix is one click away, as everywhere else. <b>Since Turn On · Last 5 min</b> switches the window; <i>Reset</i> zeroes the counters. Numbers are connections, not requests: one page load is dozens, a keep-alive connection carries hundreds of requests — the rate is what to read, the counts only say how busy an exit is. Both counts come from the same sing-box log lines the F19 tracker already parses (<code>inbound connection to</code> = opened, <code>ERROR … open connection</code> = failed), so the numerator and the denominator never disagree; the Clash API is not used — it lists live connections only and misses everything shorter than a second. What happened inside a reached connection (HTTP status, a stalled download) is invisible and is not counted.</div>
+</div></section>
+
+<!-- ============================ C13 ============================ -->
+<section id="C13" class="board"><h2>C13 · Settings › Rules — an app or IP rule for TCP only or UDP only (F23): Discord's calls direct, the rest through Work</h2>
+<div class="bd" style="width:1100px">
+<div style="display:flex;gap:24px;align-items:flex-start">
+<div class="t"><div class="win" style="height:330px;width:720px">
+  <div class="titlebar"><div class="tl"><span style="background:#ff5f57"></span><span style="background:#febc2e"></span><span style="background:#28c840"></span></div><div class="title">Wayfork Settings</div></div>
+  <div class="content">
+    <div class="side">
+      <div class="sitem"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18" cy="17" r="2.5" fill="var(--acc)" stroke="none"/></svg><span>Tunnels</span></div>
+      <div class="sitem on"><svg viewBox="0 0 24 24"><path d="M4 6h5M13 6h7M4 12h11M19 12h1M4 18h3M11 18h9"/><circle cx="11" cy="6" r="2"/><circle cx="17" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg><span>Rules</span></div>
+      <div class="sitem"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/></svg><span>General</span></div>
+    </div>
+    <div class="main" style="gap:8px">
+      <div class="phd"><div class="ph1">Rules</div><div class="tf ph round" style="width:170px"><svg class="icn sm" viewBox="0 0 24 24" style="color:var(--fg3)"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>Search sites and apps</div></div>
+      <div class="group rg"><div class="h"><span class="d off"></span><span>Not via any tunnel</span><span class="hint">stay on your normal connection, whatever other rules say</span><span style="flex:1"></span><div class="btn"><svg class="icn sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add site</div></div>
+        <div class="r"><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg></div><span class="p">bank.example</span><span class="m">and subdomains</span><span class="w"></span><span class="grip">⠿</span></div>
+        <div class="r"><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg></div><span class="p" style="display:flex;align-items:center;gap:6px;font-family:inherit"><span class="ai" style="background:#5865f2">D</span>Discord</span><span class="m">the app</span><span class="w"><span class="chip">UDP only</span></span><span class="grip">⠿</span></div>
+        <div class="r"><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg></div><span class="p">203.0.113.0/24</span><span class="m">address range</span><span class="w"><span class="chip">TCP only</span></span><span class="grip">⠿</span></div>
+      </div>
+      <div class="group rg"><div class="h"><span class="d ok"></span><span>Work</span><span class="badge acc">Default</span><span class="hint">everything without a rule goes here, plus:</span><span style="flex:1"></span><div class="btn"><svg class="icn sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add site</div></div>
+        <div class="r"><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg></div><span class="p">example.com</span><span class="m">and subdomains</span><span class="w"></span><span class="grip">⠿</span></div>
+        <div class="r"><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg></div><span class="p" style="display:flex;align-items:center;gap:6px;font-family:inherit"><span class="ai" style="background:#5865f2">D</span>Discord</span><span class="m">the app</span><span class="w"></span><span class="grip">⠿</span></div>
+      </div>
+    </div>
+  </div>
+</div></div>
+<div style="display:flex;flex-direction:column;gap:16px">
+  <div class="callout" style="width:340px"><div class="cap">The Discord row, network menu open · light</div>
+    <div class="t" style="margin:0 -12px"><div class="rg" style="border-radius:0"><div class="r" style="height:30px;gap:8px">
+      <span class="p" style="display:flex;align-items:center;gap:6px;font-family:inherit;width:auto"><span class="ai" style="background:#5865f2">D</span>Discord</span><span style="flex:1"></span>
+      <div class="pop"><span>the app</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10l5-5 5 5"/><path d="M7 14l5 5 5-5"/></svg></span></div>
+      <div class="pop"><span>UDP only</span><span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10l5-5 5 5"/><path d="M7 14l5 5 5-5"/></svg></span></div>
+    </div></div></div>
+    <div style="align-self:flex-end;margin-top:-4px;background:var(--card);box-shadow:var(--cardsh);border-radius:6px;padding:4px;font-size:13px;width:150px">
+      <div style="display:flex;align-items:center;gap:6px;padding:2px 8px;border-radius:4px;"><span style="width:12px"></span>TCP and UDP</div>
+      <div style="display:flex;align-items:center;gap:6px;padding:2px 8px;border-radius:4px;"><span style="width:12px"></span>TCP only</div>
+      <div style="display:flex;align-items:center;gap:6px;padding:2px 8px;border-radius:4px;background:var(--acc);color:#fff;"><span style="width:12px">✓</span>UDP only</div>
+    </div>
+    <div class="hint" style="font-size:11px;color:var(--fg2)">Inline in every app and address-range row, like the match menu of a site row (app rows have no edit mode, F10). Unnarrowed it reads <i>TCP + UDP</i> in secondary grey; narrowed it reads <i>TCP only</i> / <i>UDP only</i> — the chip on the board. Help tag: <i>"UDP carries calls, voice and games; TCP carries everything else."</i></div>
+  </div>
+  <div class="callout" style="width:340px"><div class="cap">Same row · dark</div>
+    <div class="t dark" style="margin:0 -12px"><div class="rg" style="border-radius:0"><div class="r" style="height:26px"><div class="cb on"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg></div><span class="p" style="display:flex;align-items:center;gap:6px;font-family:inherit;width:auto"><span class="ai" style="background:#5865f2">D</span>Discord</span><span class="m" style="width:auto">the app</span><span class="w"><span class="chip">UDP only</span></span></div></div></div>
+  </div>
+</div>
+</div>
+<div class="note"><b>TCP only / UDP only</b> (F23) narrows an <i>app</i> or <i>address range</i> rule to one network; site rules (domains and patterns) do not offer it. The default, <i>TCP and UDP</i>, shows nothing; a narrowed rule shows a chip after the match kind. The issue that asked for it: a voice app whose client must go through a tunnel, while its calls (UDP to a media server picked per call) only work direct — one <i>UDP only</i> rule under <i>Not via any tunnel</i> replaces an ever-growing list of IP exceptions; the app's rule under Work stays as it is. <b>Who wins:</b> <i>Not via any tunnel</i> still beats every tunnel, as before; between tunnels and groups, a narrowed rule beats a rule for the same app or range that covers both networks, whatever the section order. Two rules for the same app in one section that differ only in the network are allowed. The usual "never used" chip appears when an earlier rule covers the same app and network — e.g. <i>Discord</i> under <i>Not via any tunnel</i> makes <i>Discord, UDP only</i> under Work never used. The same menu is in the new-rule row; <code>wayforkctl rules add … --network udp</code> does it from a script. Popover quick add and Recent make domain rules and never narrow.</div>
 </div></section>
 
 </body>

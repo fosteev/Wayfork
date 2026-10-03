@@ -338,6 +338,7 @@ Mapping from `RuleMatch`:
 | `wildcard` | `domain_regex: ["^" + escape(p).replace("\\*", ".+") + "$"]` |
 | `app`      | `process_path_regex: ["^" + escape(p) + "/"]` in a **separate** rule object (F10) |
 | `ip`       | `ip_cidr: [p]` in the separate `rules-…-ip.json` file, referenced by route rules only (F11) |
+| `app`/`ip` with `network` | the same items in `rules-…-tcp.json` / `rules-…-udp.json`, route rule with `network` (F23) |
 
 Domain entries are grouped by kind into a single rule object per tunnel (sing-box ORs the
 domain items of one rule).
@@ -345,7 +346,8 @@ Disabled rules and rules whose tunnel is disabled are omitted. A tunnel with zer
 rules still gets an (empty) rule-set file so the main config doesn't change.
 
 Order between groups: `rules-direct` first, then one route rule per tunnel in store order,
-and each rule-set keeps its group's rule order. Identical patterns under a later tunnel are shadowed
+and each rule-set keeps its group's rule order (F23 inserts the narrowed rules before the
+tunnel rules, see below). Identical patterns under a later tunnel are shadowed
 and dropped (the UI flags them). Overlaps between different patterns (`a.example.com` exact
 under Home, `example.com` suffix under Work) resolve by tunnel order — Work wins if it
 comes first. L2 "where does this domain go?" makes this inspectable.
@@ -426,6 +428,62 @@ Implementation notes (2026-08-25): `RuleSetGenerator.renderIP` and
 `10.8.0.0/24 → Work` turns `10.0.0.0/8` into 16 prefixes. Golden variant `ip-rules` passes
 `sing-box check` on 1.13.19. A tunnel that is enabled but unusable (no secret) carves
 nothing — its rules are not emitted either.
+
+### Network-narrowed rules (F23)
+
+An app or IP rule with `network` (`tcp` | `udp`, [01-data-model.md](01-data-model.md)) goes
+into a third kind of file, one per exit **and** network, and only when that exit has such a
+rule: `rules-t-<id>-tcp.json`, `rules-t-<id>-udp.json`, their `rules-g-<id>-…` twins and
+`rules-direct-tcp.json` / `rules-direct-udp.json`. Content: the `process_path_regex` object
+(F10) and the `ip_cidr` object (F11, with the same reserved-range subtraction) of that
+exit's narrowed rules, each object only when non-empty —
+
+```json
+{ "version": 3, "rules": [ { "process_path_regex": ["^/Applications/Discord\\.app/"] } ] }
+```
+
+— and one route rule per file, with the network on the **route rule**, not inside the
+rule-set:
+
+```json
+{ "rule_set": ["rules-direct-udp"], "network": ["udp"], "outbound": "direct" }
+```
+
+Route order (additions in bold): sniff → hijack-dns → proxy inbounds → DDR reject → openvpn
+→ servers → `rules-direct` + `rules-direct-ip` → **`rules-direct-tcp`, `rules-direct-udp`**
+→ block list → **narrowed tunnel files in store order, then narrowed group files (tcp
+before udp per exit)** → tunnels → groups → private → final. Direct exceptions keep beating
+everything (F8); among tunnels and groups a narrowed rule beats a both-networks rule for
+the same app or range regardless of section order. Overlaps between *different* patterns
+keep resolving by this order, as before.
+
+Why separate files and a route-level `network`, rather than a `network` key inside the
+existing rule-sets:
+- **Order.** A headless `network` inside `rules-t-<id>.json` still fires at that tunnel's
+  position, so `Discord, UDP → Home` would lose to `Discord → Work` whenever Work is listed
+  first. Only a route rule placed earlier can win.
+- **DNS.** The DNS rules reference the domain rule-sets. Narrowed files are route-only like
+  the `-ip` ones and are never referenced there, so DNS is untouched. (App objects never
+  match a DNS query anyway — the process is `mDNSResponder` / the service.)
+- **Selectors.** The daemons' rule-set selector parsers (connection cut, Windows
+  `explain`) reject unknown keys; the new files only hold `process_path_regex` and
+  `ip_cidr`, which they already read. The network lives in the main config.
+- **Goldens.** A store without narrowed rules produces byte-identical output: no new files,
+  no new route rules.
+
+Plan validation: the file name patterns accepted by `PlanValidator` / `RuntimePlan`
+(Swift) and `validate.go` / `RuleSetID` / `planjson.go` (Go) gain `-tcp` and `-udp` next to
+`-ip`; deriving the routed tunnel and group IDs strips them like `-ip`.
+
+Reload: rule changes inside an existing file are a hot reload as before. Adding the first
+or removing the last narrowed rule of an exit + network adds or removes a rule-set and a
+route rule — `sing-box.json` changes → restart (< 1 s, fake-ip cache survives), the same
+trade as a carved IP rule. Emitting all four files for every exit would avoid it at the
+cost of changing every generated config and golden for a feature most stores never use.
+
+What matches: the connection's transport. QUIC is UDP: `YouTube app, UDP only → Direct`
+sends its QUIC direct and its TCP fallback wherever the app's other rule says. The
+connections list (F20, Windows `connections`) already shows `tcp` / `udp` per flow.
 
 ## Tunnel groups (F16)
 
@@ -626,6 +684,7 @@ groups' `url` above is the same constant, so the goldens pin it).
 | Rule added/edited/removed/reordered/toggled | rewrite `rules-*.json` → sing-box reloads local rule-sets on file change (verified on 1.13.19: ~350 ms after an atomic rename); the daemon then closes the connections the changed matchers cover ([05-daemon.md](05-daemon.md), "Connection cut on rule change") |
 | Exception (Direct rule) added/edited/removed | rewrite `rules-direct.json` → same hot reload |
 | IP rule (F11) | rewrite `rules-…-ip.json` → hot reload; a *tunnel* IP rule inside a private range also changes `route_exclude_address` → restart |
+| Narrowed app/IP rule (F23) | rewrite `rules-…-tcp/udp.json` → hot reload; the first or last one of an exit + network adds/removes the file and its route rule → restart |
 | Default tunnel set/cleared/changed | `route.final` / `dns.final` change → restart |
 | Tunnel enabled/disabled, added, removed | outbounds change → `sing-box check` → restart sing-box (< 1 s) |
 | Tunnel DNS changed, `discoveredDNS` updated | dns section changes → restart |

@@ -34,7 +34,7 @@ developer-mode meaning (05-daemon.md § Developer mode); the new commands:
 | `status` | yes | no |
 | `failed` | yes | no |
 | `rules [--via EXIT]` | yes | no |
-| `rules add <pattern> --via EXIT [--confirm-within S] [--dry-run]` | yes | yes |
+| `rules add <pattern> --via EXIT [--network tcp\|udp] [--confirm-within S] [--dry-run]` | yes | yes |
 | `rules remove <pattern\|id> [--confirm-within S] [--dry-run]` | yes | yes |
 | `log-level <error\|warning\|info\|debug> [--confirm-within S]` | yes | yes |
 | `confirm` / `revert` | yes | yes |
@@ -113,7 +113,14 @@ path. The app side is `AppModel+Control.swift`, which calls the existing `quickA
 - `failed`: the Can't reach rows (host, app, tries, reason, exit, last seen) and the
   per-exit counters (F19, F20) exactly as the app holds them.
 - `rules.list`: `id`, `pattern`, `match`, `via` (exit name, `direct` for exceptions),
-  `enabled`, `note`, in route order.
+  `enabled`, `note`, `network` (F23; omitted when the rule covers both), in route order.
+
+F23 on `rules add`: an absolute path ending in `.app` is an app rule (F10) — the popover's
+quick add still never infers one. `--network tcp|udp` narrows an app or IP rule
+([01-data-model.md](01-data-model.md) § Network-narrowed rules); with a domain pattern it is
+a usage error (exit 2). An existing rule is found by `pattern` + `network`, so
+`rules add /Applications/Discord.app --via direct --network udp` adds the narrowed rule
+next to `Discord → Work` instead of moving it; the undo inverse removes exactly that rule.
 - A change: `{"change": ChangeDescription, "applied": Bool, "applyError": String?,
   "pending": Pending?}` where `applied` is the result of the apply that the change
   triggered (the handler awaits it, 15 s cap); with Wayfork turned off it is `false` and
@@ -159,6 +166,11 @@ filtered, merged and cut exactly as above; the filter is a pure function in
 as an open item). This revisits the WM18 decision that dropped a `logs` command: the
 diagnostics tail is unfiltered — 200 lines per source — which is exactly the token cost
 F21 exists to remove; no new service method is added.
+
+F23: `explain` gains `--network tcp|udp`; the planned route rules carry their `network`
+and a narrowed rule matches only a query with that network. Without `--network` the reply
+is evaluated for both and, when the two answers differ, carries both
+(`{"tcp": …, "udp": …}`); otherwise it keeps today's shape.
 
 Rule changes on Windows would need a control channel into the Flutter app (the service
 never sees rules in source form); that is a separate milestone, not part of F21.

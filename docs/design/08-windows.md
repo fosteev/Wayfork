@@ -431,9 +431,22 @@ against `fixtures/` from `test/core/`. The deltas from the Swift core, all delib
       Squirrel and MSIX sort differently. An old build still on disk does not stop it:
       Squirrel keeps the previous `app-<ver>` after an update. No versioned component, or a
       parent that cannot be listed (`WindowsApps` needs admin rights), leaves the rule
-      untouched — the widened regex still matches. `AppModel` calls it through `update(...)` from `bootstrap()` (after load) and
-      the start of `_apply()`, behind the `AppFiles` interface (`IoAppFiles` on `dart:io`, a
-      fake in tests), logging `app rule healed: <old> → <new>` per rule it repoints.
+      untouched — the widened regex still matches. Afterwards app rules with the same target
+      and the same `key` are merged into the first of them (enabled if any was, first note
+      kept): rules written for two older builds both heal to the newest one and would
+      otherwise stay as duplicates the editor refuses to create (#3). `AppModel` calls it
+      through `update(...)` from `bootstrap()` (after load) and the start of `_apply()`,
+      behind the `AppFiles` interface (`IoAppFiles` on `dart:io`, a fake in tests), logging
+      `app rule healed: <old> → <new>` per rule it repoints and
+      `app rule merged as a duplicate: <path>` per rule it drops.
+- **Network-narrowed rules (F23).** Same model, files and route order as macOS
+  ([03-routing.md](03-routing.md) § Network-narrowed rules): `Rule.network` on app and IP
+  rules, `rules-…-tcp/udp.json` from the Dart generator, `-tcp` / `-udp` accepted by
+  `validate.go`, `RuleSetID` and `planjson.go`. `heal`'s duplicate merge uses
+  target + `key` + `network`, so `Discord TCP` and `Discord UDP` under one exit stay two
+  rules. UI: a *Network* field in the *Edit rule* dialog for *the app* / *address range*,
+  a chip in the row (board W20). `wayforkctl explain --network` per
+  [09-wayforkctl.md](09-wayforkctl.md).
 - **Importer.** On top of the macOS strip list ([04-tunnels.md](04-tunnels.md)) the Windows
   importer drops `comp-lzo`, `compress`, `comp-noadapt`, `allow-compression` (compression
   framing forces the TAP fallback, see Adapters) and the Windows-only `windows-driver`,

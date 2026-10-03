@@ -135,6 +135,7 @@ struct Rule: Codable, Identifiable {
     var target: RuleTarget            // F8: .tunnel(id) | .direct (an exception)
     var isEnabled: Bool
     var note: String?
+    var network: RuleNetwork?         // F23: tcp | udp; nil = both. Only app and ip rules
     var tunnelID: UUID? { target.tunnelID }
 }
 
@@ -184,7 +185,8 @@ character. `suffix` is the default; typing `*` switches the row to `wildcard`.
 Rules are edited grouped by target. Effective order = the **Direct** group first
 (exceptions always win), then tunnels in store order, and within a group the rules in list
 order. A pattern that also appears in an earlier group is **shadowed** (never matches) and
-flagged in the UI; the generator drops it.
+flagged in the UI; the generator drops it. F23 adds one step: among tunnels and groups,
+rules narrowed to one network come before the ones that cover both (see below).
 
 ### Default tunnel and exceptions (F8)
 
@@ -264,6 +266,43 @@ range; `coversLocalNetwork(interface:)` when the range overlaps one of the Mac's
 networks (passed in by the app from `getifaddrs`; Core stays free of network lookups).
 Neither blocks the rule. `store.json` uses the same schema 2 as F10 (a build that does not
 know `"match": "ip"` refuses the file); export files carry IP rules unchanged.
+
+### Network-narrowed rules (F23)
+
+`Rule.network: RuleNetwork?` (`tcp` | `udp`; absent = both, today's behaviour) narrows an
+**app or IP rule** to one transport. The case it exists for (issue #3): a voice app whose
+client must go through a tunnel while its calls — UDP to a media server picked per call —
+only work direct. `Discord → Work` plus `Discord, UDP only → Direct` replaces an
+ever-growing list of IP exceptions.
+
+- **Only `app` and `ip`.** Domain rules (`suffix`, `exact`, `wildcard`) feed the DNS rules
+  (fake-ip vs direct resolution, [03-routing.md](03-routing.md)), and a network-dependent
+  answer to "how is this name resolved" has no good meaning. App and IP rules never take
+  part in DNS decisions, so narrowing them is a pure route change. `Rule`'s initializer and
+  decoder normalize: any other `match` gets `network = nil`, so a store edited by hand or a
+  match changed in the UI never carries a stray value.
+- **Order.** Exceptions (Direct) still come first, narrowed or not — "Not via any tunnel"
+  beats every tunnel, as in F8. Then every narrowed tunnel/group rule, in the usual group
+  order; then the rules that cover both networks. So a narrowed rule beats a both-networks
+  rule for the same app or range whatever the section order: `Discord → Work` +
+  `Discord, UDP → Home` sends UDP to Home even when Work is listed first.
+- **Duplicates and shadowing.** The identity is `pattern` + `match` + `network`: the same app
+  twice in one group with `tcp` and `udp` is two rules, not a duplicate. A rule is shadowed
+  when an *earlier* rule in the effective order has the same `pattern` + `match` and covers
+  its network (absent covers both; equal covers equal). The effective order is a rank —
+  Direct both (0), Direct narrowed (1), tunnel/group narrowed (2), tunnel/group both (3) —
+  then the section order. Consequences: `Discord → Direct` shadows `Discord, UDP → Work`;
+  `Discord, UDP → Direct` shadows nothing under Work (TCP still goes there);
+  `Discord, UDP → Work` next to `Discord → Work` is legal and not flagged — it changes
+  nothing on its own, but dropping it could hand UDP to a narrowed rule of a later section.
+- **Quick add** (popover, Recent, F15) creates and finds only domain rules and never
+  touches a narrowed rule; `wayforkctl rules add … --network` finds an existing rule by
+  `pattern` + `network`.
+
+`store.json` becomes schema **3** with a no-op migration from 2, and
+`ExportDocument.currentVersion` goes to 3: a build that predates F23 would ignore the field
+and send both networks wherever the narrowed rule points — for the issue's pair, every
+Discord connection direct. `newerSchema` / `newerVersion` refuse the file instead.
 
 ### Tunnel groups (F16)
 

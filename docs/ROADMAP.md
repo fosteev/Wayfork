@@ -323,6 +323,27 @@ Feature text, stages and working order for F15–F18 and the friendlier UI pass:
   service-missing keeps its own alert).
 - Stages: [roadmap/first-run-guide.md](roadmap/first-run-guide.md).
 
+**F23. TCP only / UDP only for app and IP rules** *(added 2026-10-03 from issue #3;
+approved 2026-10-03)*
+- The user's scenario: Discord must go through a tunnel, but its voice (UDP to a media
+  server picked per call) gets no replies there and works direct. Today the only fix is a
+  Direct IP exception per voice server, and every new server breaks voice again.
+- An app or IP rule can be narrowed to **TCP only** or **UDP only** (default: both, as
+  today). `Discord → Work` + `Discord, UDP only → Not via any tunnel` is the whole fix.
+  Site (domain) rules are not narrowed: they decide DNS, where a per-network answer has no
+  meaning.
+- A narrowed rule beats a both-networks rule for the same app or range; *Not via any
+  tunnel* still beats every tunnel. The same app may sit in one section twice, once per
+  network.
+- Settings › Rules: a second inline menu in app and address-range rows (board C13);
+  Windows: a *Network* field in the *Edit rule* dialog (board W20).
+  `wayforkctl rules add … --network` on macOS, `wayforkctl explain --network` on Windows.
+- Stores with a narrowed rule are not readable by older builds (schema 3).
+- Design: [design/01-data-model.md](design/01-data-model.md),
+  [design/03-routing.md](design/03-routing.md) § Network-narrowed rules,
+  [design/09-wayforkctl.md](design/09-wayforkctl.md); stages:
+  [roadmap/network-rules.md](roadmap/network-rules.md).
+
 ### Later
 
 The F15–F18 wave (recent domains → rule, tunnel groups, local proxy ports, block lists) was
@@ -436,6 +457,8 @@ to the existing screens before the features land. Windows twin: boards W9–W15 
 [design/prototype/windows.html](design/prototype/windows.html).
 Board **C9** (2026-09-18) adds the *Connections* view of the Logs window for F20; its
 Windows twin is W17.
+Board **C13** (2026-10-03, draft) adds the TCP only / UDP only menu of F23; its Windows
+twin is W20.
 
 **Approved 2026-09-25: [design/prototype/first-run.html](design/prototype/first-run.html)**
 — the F22 first-run guide: C10 (the six steps), C11 (waiting and failure states), C12
