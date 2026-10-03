@@ -35,6 +35,8 @@ Windows**, one repository, one rule model, one export format.
   keep it direct, whatever it talks to.
 - **IP rules** — an IPv4 address or subnet instead of a domain: SSH/RDP/DB by IP, an office
   network behind OpenVPN, an internal server with no name.
+- **TCP only / UDP only** — narrow an app or IP rule to one transport: an app's client
+  through a tunnel, its calls (UDP) direct.
 - **Default tunnel** — everything unmatched through one tunnel; without one it goes direct.
   If that tunnel drops, unmatched traffic is blocked rather than leaked.
 - **Exceptions** — rules that target *Direct*. They win over everything, carving domains,
@@ -188,6 +190,10 @@ Worth knowing:
   reachable.
 - Application rules see the process that opens the connection: an app talking through
   another local proxy is seen as that proxy.
+- App and IP rules can be narrowed to *TCP only* or *UDP only* (the menu next to the match
+  on macOS, *Network* in the rule editor on Windows). A narrowed rule wins over a rule for
+  the same app or range that covers both, so `Discord → Work` plus
+  `Discord, UDP only → Direct` keeps voice calls direct whichever server they land on.
 
 ## Seeing what happens
 

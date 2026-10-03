@@ -6,6 +6,42 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-10-03
+
+TCP only / UDP only for app and IP rules (F23, issue #3) on both platforms, and the
+first-run guide (F22) on macOS. A pre-release like 0.9.0: covered by the test suites; the
+live checks (a Discord call with the rule pair below, the guide on a fresh macOS user) are
+still owed.
+
+### Added
+
+- **TCP only / UDP only for app and IP rules (F23).** An app or address-range rule can be
+  narrowed to one transport; site rules stay as they are. `Discord → Work` plus
+  `Discord, UDP only → Not via any tunnel` sends the client through the tunnel and its
+  calls direct, instead of one Direct IP exception per voice server. A narrowed rule beats
+  a both-networks rule for the same app or range; *Not via any tunnel* still beats every
+  tunnel. macOS: an inline *TCP + UDP / TCP only / UDP only* menu in app and IP rows.
+  Windows: a *Network* field in the rule editor, which app rules can now open (*Edit*,
+  double-click; the path stays read-only), and a chip in the row.
+  `wayforkctl rules add … --network tcp|udp` (macOS; it also takes an `.app` path now) and
+  `wayforkctl explain --network tcp|udp` (Windows).
+- **First-run guide (F22, macOS).** A fresh install opens a small window that does the real
+  setup — allow the helper, add a tunnel, pick the first sites, Turn On, open one of them —
+  followed by a dismissible *Getting started* card in the popover. Replay from
+  *Settings › General*.
+
+### Changed
+
+- **Store schema 3, export version 3.** Builds before 0.10.0 refuse a store or an export
+  written by this one rather than silently routing a narrowed rule's traffic both ways.
+
+### Fixed
+
+- **Duplicate app rules after an update (Windows).** Two rules written for older builds of
+  the same app that both followed it to the newest build are merged into one.
+- **`wayforkctl rules add --network` against an older app** fails with a hint to
+  `wayforkctl revert` instead of exiting 0 with a rule for both networks.
+
 ## [0.9.0] — 2026-09-25
 
 `wayforkctl` for scripts and coding assistants (F21) and the Windows fixes from the Discord
