@@ -81,6 +81,8 @@ struct RuleEditState: Equatable {
     var target: RuleTarget
     var text: String
     var match: RuleMatch
+    /// F23: only used for a new IP rule; an existing rule keeps its network while edited.
+    var network: RuleNetwork? = nil
 }
 
 /// A section in the Rules list: the Direct group (exceptions), one tunnel or one tunnel
@@ -401,6 +403,7 @@ private struct RuleRowView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .frame(width: 100, alignment: .leading)
+                networkPicker
             } else if let binding = Binding($editing) {
                 TextField("example.com or 10.0.0.0/24", text: binding.text)
                     .font(.system(size: 12, design: .monospaced))
@@ -447,6 +450,7 @@ private struct RuleRowView: View {
                 .labelsHidden()
                 .controlSize(.small)
                 .frame(width: 100)
+                if rule.isIP { networkPicker }
             }
             chips
             TextField(
@@ -506,6 +510,14 @@ private struct RuleRowView: View {
             Divider()
             Button("Delete", role: .destructive) { model.removeRule(id: rule.id) }
         }
+    }
+
+    /// F23: which transport the rule covers; app and IP rows only.
+    private var networkPicker: some View {
+        NetworkPicker(
+            selection: Binding(
+                get: { rule.network },
+                set: { error = model.setNetwork(id: rule.id, $0) }))
     }
 
     @ViewBuilder
@@ -614,6 +626,11 @@ private struct NewRuleRow: View {
             .labelsHidden()
             .controlSize(.small)
             .frame(width: 100)
+            if editing?.match == .ip {
+                NetworkPicker(
+                    selection: Binding(
+                        get: { editing?.network }, set: { editing?.network = $0 }))
+            }
             Text("Enter to add, Esc to discard").font(.system(size: 11)).foregroundStyle(.tertiary)
             Spacer()
         }
@@ -623,7 +640,9 @@ private struct NewRuleRow: View {
 
     private func commit() {
         guard let editing else { return }
-        if let message = model.addRule(pattern: editing.text, match: editing.match, target: target)
+        if let message = model.addRule(
+            pattern: editing.text, match: editing.match, target: target,
+            network: editing.network)
         {
             error = message
         } else {
@@ -634,6 +653,25 @@ private struct NewRuleRow: View {
 
     private func cancel() {
         editing = nil
+    }
+}
+
+/// F23: the inline "TCP + UDP / TCP only / UDP only" menu of app and IP rows
+/// (docs/design/prototype/variant-c.html#C13). Unnarrowed reads in secondary colour.
+private struct NetworkPicker: View {
+    @Binding var selection: RuleNetwork?
+
+    var body: some View {
+        Picker("Network", selection: $selection) {
+            Text("TCP + UDP").tag(RuleNetwork?.none)
+            Text("TCP only").tag(RuleNetwork?.some(.tcp))
+            Text("UDP only").tag(RuleNetwork?.some(.udp))
+        }
+        .labelsHidden()
+        .controlSize(.small)
+        .frame(width: 100)
+        .foregroundStyle(selection == nil ? .secondary : .primary)
+        .help("UDP carries calls, voice and games; TCP carries everything else.")
     }
 }
 

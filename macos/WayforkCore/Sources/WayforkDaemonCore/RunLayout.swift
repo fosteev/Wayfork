@@ -24,6 +24,8 @@ public enum RunLayout {
     public static let directRuleSet = "rules-direct.json"
     /// Direct IP rules (F11); always part of the plan.
     public static let directIPRuleSet = "rules-direct-ip.json"
+    /// Direct rules narrowed to one transport (F23); present only when such a rule exists.
+    public static let directNarrowedRuleSets = ["rules-direct-tcp.json", "rules-direct-udp.json"]
 
     /// Everything except `cache.db` is wiped on stop and on daemon startup.
     public static func isTransient(_ fileName: String) -> Bool {

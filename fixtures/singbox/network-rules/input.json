@@ -35,6 +35,52 @@
         "match" : "suffix",
         "pattern" : "disabled.example",
         "tunnelID" : "00000000-0000-4000-8000-000000000002"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000104",
+        "isEnabled" : true,
+        "match" : "app",
+        "pattern" : "/Applications/Discord.app",
+        "tunnelID" : "00000000-0000-4000-8000-000000000001"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000105",
+        "isEnabled" : true,
+        "match" : "app",
+        "network" : "udp",
+        "pattern" : "/Applications/Discord.app",
+        "target" : "direct"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000106",
+        "isEnabled" : true,
+        "match" : "app",
+        "network" : "udp",
+        "pattern" : "/Applications/Discord.app",
+        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000107",
+        "isEnabled" : true,
+        "match" : "app",
+        "network" : "tcp",
+        "pattern" : "/Applications/Slack.app",
+        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000108",
+        "isEnabled" : true,
+        "match" : "ip",
+        "network" : "tcp",
+        "pattern" : "203.0.113.0/24",
+        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000109",
+        "isEnabled" : true,
+        "match" : "ip",
+        "pattern" : "198.51.100.0/24",
+        "tunnelID" : "00000000-0000-4000-8000-000000000001"
       }
     ],
     "schemaVersion" : 3,

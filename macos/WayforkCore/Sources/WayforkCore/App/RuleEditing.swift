@@ -9,10 +9,11 @@ public enum RuleEditing {
         case duplicate
     }
 
-    /// Normalizes `input` for `match` and rejects duplicates within `target`'s group.
+    /// Normalizes `input` for `match` and rejects duplicates (same pattern, match and F23
+    /// network) within `target`'s group.
     public static func normalize(
         _ input: String, match: RuleMatch, target: RuleTarget, store: Store,
-        excluding ruleID: UUID?
+        excluding ruleID: UUID?, network: RuleNetwork? = nil
     ) -> Result<String, Failure> {
         let pattern: String
         do {
@@ -25,6 +26,7 @@ public enum RuleEditing {
         let duplicate = store.rules.contains {
             $0.id != ruleID && $0.target == target && $0.pattern == pattern
                 && $0.match == match
+                && $0.network == Rule.normalizedNetwork(network, for: match)
         }
         return duplicate ? .failure(.duplicate) : .success(pattern)
     }
@@ -62,9 +64,13 @@ public enum QuickAdd {
     }
 
     /// Match type is `suffix`; a `*` in the input switches to `wildcard`. `target: .direct`
-    /// adds an exception (F8).
-    public static func evaluate(input: String, target: RuleTarget, store: Store) -> Outcome {
-        let match = RulePattern.inferMatch(input)
+    /// adds an exception (F8). F23: an existing rule is found by pattern and `network`, so
+    /// the popover (no network) never touches a narrowed rule.
+    public static func evaluate(
+        input: String, target: RuleTarget, store: Store, network: RuleNetwork? = nil,
+        match explicitMatch: RuleMatch? = nil
+    ) -> Outcome {
+        let match = explicitMatch ?? RulePattern.inferMatch(input)
         let pattern: String
         do {
             pattern = try RulePattern.normalize(input, match: match)
@@ -73,20 +79,20 @@ public enum QuickAdd {
         } catch {
             return .invalid(RuleEditing.message(for: .invalidHostname(input)))
         }
-        if var existing = store.rules.first(where: { $0.pattern == pattern }) {
+        if var existing = store.rules.first(where: { $0.pattern == pattern && $0.network == network }) {
             existing.target = target
             existing.match = match
             existing.isEnabled = true
             return .update(existing)
         }
-        return .add(Rule(pattern: pattern, match: match, target: target))
+        return .add(Rule(pattern: pattern, match: match, target: target, network: network))
     }
 
     /// True when the input names a rule that already exists (the button reads "Update").
-    public static func isUpdate(input: String, store: Store) -> Bool {
+    public static func isUpdate(input: String, store: Store, network: RuleNetwork? = nil) -> Bool {
         let match = RulePattern.inferMatch(input)
         guard let pattern = try? RulePattern.normalize(input, match: match) else { return false }
-        return store.rules.contains { $0.pattern == pattern }
+        return store.rules.contains { $0.pattern == pattern && $0.network == network }
     }
 
     /// The normalized host when the clipboard looks like a URL or a hostname; nil otherwise.

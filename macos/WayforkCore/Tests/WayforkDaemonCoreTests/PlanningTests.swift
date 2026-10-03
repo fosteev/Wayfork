@@ -116,6 +116,20 @@ private func validationError(_ plan: RuntimePlan, blockListPath: String? = nil) 
     #expect(
         validationError(plan([runtime(idA)], ruleSets: ["rules-t-\(idA)-ip.json": "{}"])) == nil)
     #expect(validationError(plan([], ruleSets: ["rules-direct-ip.json": "{}"])) == nil)
+    // F23: narrowed files, per exit and Direct.
+    #expect(
+        validationError(
+            plan(
+                [runtime(idA)],
+                ruleSets: ["rules-t-\(idA)-tcp.json": "{}", "rules-t-\(idA)-udp.json": "{}"]))
+            == nil)
+    #expect(
+        validationError(
+            plan([], ruleSets: ["rules-direct-tcp.json": "{}", "rules-direct-udp.json": "{}"]))
+            == nil)
+    #expect(PlanValidator.ruleSetID(fromFileName: "rules-t-\(idA)-udp.json") == idA)
+    #expect(PlanValidator.ruleSetID(fromFileName: "rules-g-\(idA)-tcp.json") == idA)
+    #expect(validationError(plan([], ruleSets: ["rules-t--udp.json": "{}"])) != nil)
     #expect(PlanValidator.ruleSetID(fromFileName: "rules-t-\(idA)-ip.json") == idA)
     #expect(
         reason(validationError(plan([], ruleSets: ["rules-t--ip.json": "{}"]))).contains(

@@ -693,6 +693,26 @@ private func configVariants() -> [(String, SingBoxConfigGenerator.Input)] {
         Rule(pattern: "192.168.50.0/24", match: .ip, target: .direct),
     ]
     variants.append(("ip-rules", input(ips)))
+    // F23: Discord's calls (UDP) direct, the rest through Work; narrowed rules of Home
+    // beat Work's rules for other patterns; the third Discord rule is shadowed by the
+    // Direct UDP one and must not reach any file.
+    var narrowed = twoTunnelStore()
+    narrowed.rules += [
+        Rule(pattern: "/Applications/Discord.app", match: .app, tunnelID: Fixtures.workID),
+        Rule(
+            pattern: "/Applications/Discord.app", match: .app, target: .direct,
+            network: .udp),
+        Rule(
+            pattern: "/Applications/Discord.app", match: .app, tunnelID: Fixtures.homeID,
+            network: .udp),
+        Rule(
+            pattern: "/Applications/Slack.app", match: .app, tunnelID: Fixtures.homeID,
+            network: .tcp),
+        Rule(
+            pattern: "203.0.113.0/24", match: .ip, tunnelID: Fixtures.homeID, network: .tcp),
+        Rule(pattern: "198.51.100.0/24", match: .ip, tunnelID: Fixtures.workID),
+    ]
+    variants.append(("network-rules", input(narrowed)))
     // A LAN resolver carved into the TUN plus a public one: DDR refusal on both.
     variants.append(
         ("system-dns", input(twoTunnelStore(), systemDNS: ["192.168.31.5", "8.8.8.8"])))

@@ -475,6 +475,11 @@ Plan validation: the file name patterns accepted by `PlanValidator` / `RuntimePl
 (Swift) and `validate.go` / `RuleSetID` / `planjson.go` (Go) gain `-tcp` and `-udp` next to
 `-ip`; deriving the routed tunnel and group IDs strips them like `-ip`.
 
+Carve-out: a narrowed tunnel IP rule inside the LAN ranges carves its range out of
+`route_exclude_address` exactly like an unnarrowed one (F11) — otherwise the range never
+enters the TUN and the rule can never fire. The other transport to that range then meets no
+rule and leaves by `ip_is_private` → direct, as it would without Wayfork.
+
 Reload: rule changes inside an existing file are a hot reload as before. Adding the first
 or removing the last narrowed rule of an exit + network adds or removes a rule-set and a
 route rule — `sing-box.json` changes → restart (< 1 s, fake-ip cache survives), the same

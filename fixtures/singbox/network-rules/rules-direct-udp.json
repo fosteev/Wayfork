@@ -1,0 +1,10 @@
+{
+  "rules" : [
+    {
+      "process_path_regex" : [
+        "^/Applications/Discord\\.app/"
+      ]
+    }
+  ],
+  "version" : 3
+}

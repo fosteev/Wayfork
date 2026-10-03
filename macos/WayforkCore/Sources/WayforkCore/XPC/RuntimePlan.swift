@@ -65,7 +65,8 @@ public struct RuntimePlan: Codable, Sendable, Hashable {
 
     private func routedIDs(prefix: String) -> [String] {
         singBox.ruleSets.keys.compactMap { name in
-            guard name.hasPrefix(prefix), name.hasSuffix(".json"), !name.hasSuffix("-ip.json")
+            guard name.hasPrefix(prefix), name.hasSuffix(".json"),
+                !["-ip.json", "-tcp.json", "-udp.json"].contains(where: name.hasSuffix)
             else { return nil }
             return String(name.dropFirst(prefix.count).dropLast(".json".count))
         }

@@ -61,19 +61,40 @@ public enum RuleValidator {
             }
         }
 
-        // Shadowing: an active rule with the same pattern and match in an earlier group.
-        var firstActive: [RuleKey: (ruleID: UUID, group: Int)] = [:]
+        // Shadowing: an active rule is shadowed by an earlier one in the effective order
+        // with the same pattern and match whose network covers its own (F23). The order is
+        // a rank — Direct both 0, Direct narrowed 1, exit narrowed 2, exit both 3 — then the
+        // section order; without narrowed rules that is the plain section order.
+        struct Candidate {
+            let ruleID: UUID
+            let network: RuleNetwork?
+            let order: [Int]
+        }
+        var active: [PatternKey: [Candidate]] = [:]
         for rule in store.effectiveRules {
             guard rule.isEnabled, !duplicates.contains(rule.id), isGroupActive(rule.target),
                 let group = groupOrder[rule.target]
             else { continue }
-            let key = RuleKey(rule, target: nil)
-            if let earlier = firstActive[key] {
-                if earlier.group < group {
-                    issues[rule.id, default: []].append(.shadowed(by: earlier.ruleID))
+            let rank =
+                switch (rule.isException, rule.network != nil) {
+                case (true, false): 0
+                case (true, true): 1
+                case (false, true): 2
+                case (false, false): 3
                 }
-            } else {
-                firstActive[key] = (rule.id, group)
+            active[PatternKey(rule), default: []].append(
+                Candidate(ruleID: rule.id, network: rule.network, order: [rank, group]))
+        }
+        for candidates in active.values {
+            for candidate in candidates {
+                let earlier = candidates.first { other in
+                    other.ruleID != candidate.ruleID
+                        && other.order.lexicographicallyPrecedes(candidate.order)
+                        && (other.network == nil || other.network == candidate.network)
+                }
+                if let earlier {
+                    issues[candidate.ruleID, default: []].append(.shadowed(by: earlier.ruleID))
+                }
             }
         }
 
@@ -181,12 +202,24 @@ public enum RuleValidator {
     private struct RuleKey: Hashable {
         let pattern: String
         let match: RuleMatch
-        let target: RuleTarget?
+        let network: RuleNetwork?
+        let target: RuleTarget
 
-        init(_ rule: Rule, target: RuleTarget?) {
+        init(_ rule: Rule, target: RuleTarget) {
             pattern = rule.pattern
             match = rule.match
+            network = rule.network
             self.target = target
+        }
+    }
+
+    private struct PatternKey: Hashable {
+        let pattern: String
+        let match: RuleMatch
+
+        init(_ rule: Rule) {
+            pattern = rule.pattern
+            match = rule.match
         }
     }
 }

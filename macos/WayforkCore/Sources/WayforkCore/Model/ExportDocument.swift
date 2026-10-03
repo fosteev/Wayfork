@@ -73,9 +73,9 @@ public struct ExportedTunnel: Codable, Sendable, Hashable, Identifiable {
 /// `wayfork-export.json` (F7, docs/design/01-data-model.md).
 public struct ExportDocument: Codable, Sendable, Hashable {
     public static let formatName = "wayfork-export"
-    /// 2 since F10 (app rules); version 1 files import unchanged. F16's `groups` and
+    /// 3 since F23 (`Rule.network`); 2 since F10 (app rules); older files import unchanged. F16's `groups` and
     /// `groupID` rules are additive (a pre-F16 build skips such rules as "tunnel not found").
-    public static let currentVersion = 2
+    public static let currentVersion = 3
 
     public var format: String
     public var version: Int

@@ -202,11 +202,24 @@ public enum SingBoxConfigGenerator {
             "rule_set": [RuleSetGenerator.directTag, RuleSetGenerator.directIPTag],
             "outbound": "direct",
         ])
+        // F23: Direct rules narrowed to one transport, right behind the both-network ones.
         var ruleSetRefs: [[String: Any]] = [
             localRuleSet(tag: RuleSetGenerator.directTag, path: RuleSetGenerator.directFileName),
             localRuleSet(
                 tag: RuleSetGenerator.directIPTag, path: RuleSetGenerator.directIPFileName),
         ]
+        for network in RuleNetwork.allCases
+        where RuleSetGenerator.renderNarrowed(rules: exceptions, network: network) != nil {
+            routeRules.append([
+                "rule_set": [RuleSetGenerator.directNarrowedTag(network)],
+                "network": [network.rawValue],
+                "outbound": "direct",
+            ])
+            ruleSetRefs.append(
+                localRuleSet(
+                    tag: RuleSetGenerator.directNarrowedTag(network),
+                    path: RuleSetGenerator.directNarrowedFileName(network)))
+        }
         // F18: listed names are rejected after the exceptions and before every tunnel
         // rule-set, so the list wins whichever tunnel a rule would send them to.
         let blockList = blockListRules(store.settings.blockList, path: input.blockListPath)
@@ -215,6 +228,26 @@ public enum SingBoxConfigGenerator {
             ruleSetRefs.append([
                 "type": "local", "tag": blockListTag, "format": "binary", "path": blockList.path,
             ])
+        }
+        // F23: narrowed tunnel and group rules go in here, after the block list and before
+        // the both-network rules, so they win over them whatever the section order.
+        let narrowedInsertIndex = routeRules.count
+        var narrowedRouteRules: [[String: Any]] = []
+        func addNarrowed(_ exit: RoutedExit) {
+            for network in RuleNetwork.allCases
+            where RuleSetGenerator.renderNarrowed(
+                rules: activeRules[exit.id] ?? [], network: network) != nil
+            {
+                narrowedRouteRules.append([
+                    "rule_set": [exit.narrowedRuleSetTag(network)],
+                    "network": [network.rawValue],
+                    "outbound": exit.outboundTag,
+                ])
+                ruleSetRefs.append(
+                    localRuleSet(
+                        tag: exit.narrowedRuleSetTag(network),
+                        path: exit.narrowedRuleSetFileName(network)))
+            }
         }
 
         for tunnel in routed {
@@ -271,6 +304,7 @@ public enum SingBoxConfigGenerator {
             ruleSetRefs.append(localRuleSet(tag: tunnel.ruleSetTag, path: tunnel.ruleSetFileName))
             ruleSetRefs.append(
                 localRuleSet(tag: tunnel.ipRuleSetTag, path: tunnel.ipRuleSetFileName))
+            addNarrowed(RoutedExit(tunnel))
         }
         for group in routedGroups {
             let members = group.members.filter { routedIDs.contains($0) }
@@ -304,7 +338,9 @@ public enum SingBoxConfigGenerator {
             ruleSetRefs.append(localRuleSet(tag: group.ruleSetTag, path: group.ruleSetFileName))
             ruleSetRefs.append(
                 localRuleSet(tag: group.ipRuleSetTag, path: group.ipRuleSetFileName))
+            addNarrowed(RoutedExit(group))
         }
+        routeRules.insert(contentsOf: narrowedRouteRules, at: narrowedInsertIndex)
         routeRules.append(["ip_is_private": true, "outbound": "direct"])
 
         // F11: a tunnel IP rule inside the LAN ranges must enter the TUN, so its range is

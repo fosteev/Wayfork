@@ -125,6 +125,26 @@ private func line(
         #expect(store == original)
     }
 
+    // F23: a rule narrowed to another network is a sibling, not a duplicate.
+    @Test func narrowedSiblingInsertsAndItsRemovalReverts() {
+        let app = "/Applications/Discord.app"
+        var store = Store.empty
+        store.rules = [Rule(pattern: app, match: .app, target: .tunnel(UUID()))]
+        let narrowed = Rule(pattern: app, match: .app, target: .direct, network: .udp)
+        let insert = StoreEdit.insertRule(narrowed, before: nil)
+        #expect(insert.apply(to: &store) == nil)
+        #expect(store.rules.count == 2)
+        // The same pattern and network again is still refused.
+        let again = Rule(pattern: app, match: .app, target: .direct, network: .udp)
+        #expect(StoreEdit.insertRule(again, before: nil).apply(to: &store) != nil)
+
+        let original = store
+        let removal = StoreEdit.removal(of: narrowed, in: store)
+        #expect(removal.apply(to: &store) == nil)
+        #expect(removal.inverse.apply(to: &store) == nil)
+        #expect(store.effectiveRules == original.effectiveRules)
+    }
+
     @Test func inverseSkipsWhatTheGUIChanged() {
         var store = store()
         let rule = Rule(pattern: "d.com", target: .direct)

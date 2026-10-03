@@ -58,7 +58,7 @@
         "target" : "direct"
       }
     ],
-    "schemaVersion" : 2,
+    "schemaVersion" : 3,
     "settings" : {
       "autoReconnect" : true,
       "connectOnLaunch" : false,

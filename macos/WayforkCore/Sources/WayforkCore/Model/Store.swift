@@ -5,8 +5,9 @@ public struct Store: Codable, Sendable, Hashable {
     /// 2 since F10: `"match": "app"` rules; the data of schema 1 is unchanged. F16's
     /// `groups` and `groupID` rules are additive without a bump (the F13 forward-only
     /// stance, docs/design/01-data-model.md): a build that predates them reports the
-    /// store as corrupt, which only a downgrade can cause.
-    public static let currentSchemaVersion = 2
+    /// store as corrupt, which only a downgrade can cause. 3 since F23: `Rule.network`;
+    /// older data is unchanged.
+    public static let currentSchemaVersion = 3
 
     public var schemaVersion: Int
     public var tunnels: [Tunnel]
@@ -98,9 +99,11 @@ public struct Store: Codable, Sendable, Hashable {
     /// Direct rules (F8 exceptions) in list order.
     public var exceptions: [Rule] { rules(for: .direct) }
 
-    /// Rules in matching order: the Direct group first (exceptions always win), then tunnels
+    /// Rules in section order: the Direct group first (exceptions always win), then tunnels
     /// in store order, then groups in store order (F16), each section's rules in list
-    /// order. Rules pointing at a tunnel or group that no longer exists come last.
+    /// order. Rules pointing at a tunnel or group that no longer exists come last. This is
+    /// the matching order except for F23 narrowed rules, which match ahead of the
+    /// unnarrowed rules of every exit (`RuleValidator`'s rank).
     public var effectiveRules: [Rule] {
         var ordered = exceptions
         for tunnel in tunnels {
@@ -201,7 +204,10 @@ public enum StoreCodec {
     static let migrations: [StoreMigration] = [
         // 1 → 2 (F10): nothing to rewrite — the bump only makes builds that do not know
         // `"match": "app"` refuse the file instead of failing on the first app rule.
-        StoreMigration(fromVersion: 1) { _ in }
+        StoreMigration(fromVersion: 1) { _ in },
+        // 2 → 3 (F23): nothing to rewrite — a build that predates `network` would send both
+        // transports wherever a narrowed rule points, so it must refuse the file.
+        StoreMigration(fromVersion: 2) { _ in },
     ]
 
     public static func encode(_ store: Store) throws -> Data {

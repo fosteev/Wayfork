@@ -33,6 +33,14 @@ public enum RulePattern {
         return ipPrefix(fromInput: raw) != nil ? .ip : .suffix
     }
 
+    /// F23, `wayforkctl rules add`: an absolute path ending in `.app` is an app rule, anything
+    /// else is inferred as `inferMatch` does. The popover's quick add never uses this.
+    public static func inferControlMatch(_ raw: String) -> RuleMatch {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("/"), trimmed.lowercased().hasSuffix(".app") { return .app }
+        return inferMatch(raw)
+    }
+
     /// Ranges an IP rule may not lie inside (F11): unroutable ones plus Wayfork's own. A
     /// wider rule that overlaps one is emitted minus the reserved part.
     public static let reservedRanges: [IPv4Prefix] = [

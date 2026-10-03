@@ -186,13 +186,24 @@ extension AppModel {
         if let message = translateFakeIP(&input, match: &inferred) {
             throw ControlError(.invalid, message)
         }
-        switch QuickAdd.evaluate(input: input, target: target, store: store) {
+        // F23: an absolute `.app` path is an app rule here (never in the popover); a network
+        // narrows app and IP rules only.
+        let match = inferred ?? RulePattern.inferControlMatch(input)
+        if params.network != nil, !(match == .app || match == .ip) {
+            throw ControlError(
+                .badRequest,
+                "--network applies to app and IP rules only; \(input) is a domain pattern")
+        }
+        switch QuickAdd.evaluate(
+            input: input, target: target, store: store, network: params.network, match: match)
+        {
         case .invalid(let message):
             throw ControlError(.invalid, message)
         case .add(let rule):
             return try await commit(
                 .insertRule(rule, before: nil),
-                description: "add \(rule.pattern) → \(controlExitName(target))", rule: rule,
+                description: "add \(rule.pattern)\(networkSuffix(rule.network)) → \(controlExitName(target))",
+                rule: rule,
                 params: params)
         case .update(let rule):
             guard let current = store.rules.first(where: { $0.id == rule.id }) else {
@@ -205,7 +216,7 @@ extension AppModel {
             return try await commit(
                 .replaceRule(from: current, to: rule),
                 description:
-                    "route \(rule.pattern) via \(controlExitName(target)) (was \(controlExitName(current.target)))",
+                    "route \(rule.pattern)\(networkSuffix(rule.network)) via \(controlExitName(target)) (was \(controlExitName(current.target)))",
                 rule: rule, params: params)
         }
     }
@@ -219,7 +230,7 @@ extension AppModel {
         let rule = try findRule(text)
         return try await commit(
             StoreEdit.removal(of: rule, in: store),
-            description: "remove \(rule.pattern) → \(controlExitName(rule.target))", rule: rule,
+            description: "remove \(rule.pattern)\(networkSuffix(rule.network)) → \(controlExitName(rule.target))", rule: rule,
             params: params)
     }
 
@@ -400,6 +411,10 @@ extension AppModel {
                 "\(text) matches \(matches.count) rules; use an id: "
                     + matches.map(\.id.uuidString).joined(separator: ", "))
         }
+    }
+
+    private func networkSuffix(_ network: RuleNetwork?) -> String {
+        network.map { " (\($0.rawValue.uppercased()) only)" } ?? ""
     }
 
     private func controlExitName(_ target: RuleTarget) -> String {

@@ -113,7 +113,9 @@ path. The app side is `AppModel+Control.swift`, which calls the existing `quickA
 - `failed`: the Can't reach rows (host, app, tries, reason, exit, last seen) and the
   per-exit counters (F19, F20) exactly as the app holds them.
 - `rules.list`: `id`, `pattern`, `match`, `via` (exit name, `direct` for exceptions),
-  `enabled`, `note`, `network` (F23; omitted when the rule covers both), in route order.
+  `enabled`, `note`, `network` (F23; omitted when the rule covers both), in section order
+  (Direct, tunnels, groups). That is the route order except that narrowed rules (F23) match
+  ahead of the unnarrowed ones of every exit ([03-routing.md](03-routing.md)).
 
 F23 on `rules add`: an absolute path ending in `.app` is an app rule (F10) — the popover's
 quick add still never infers one. `--network tcp|udp` narrows an app or IP rule

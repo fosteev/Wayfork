@@ -83,5 +83,12 @@ public struct RoutedExit: Sendable, Hashable, Identifiable {
     public var ruleSetFileName: String { "\(ruleSetTag).json" }
     public var ipRuleSetTag: String { "\(ruleSetTag)-ip" }
     public var ipRuleSetFileName: String { "\(ipRuleSetTag).json" }
+    /// F23: `rules-t-<id>-tcp` / `-udp`, route-only like the IP file.
+    public func narrowedRuleSetTag(_ network: RuleNetwork) -> String {
+        "\(ruleSetTag)-\(network.rawValue)"
+    }
+    public func narrowedRuleSetFileName(_ network: RuleNetwork) -> String {
+        "\(narrowedRuleSetTag(network)).json"
+    }
     public var isGroup: Bool { outboundTag.hasPrefix(TunnelGroup.outboundTagPrefix) }
 }

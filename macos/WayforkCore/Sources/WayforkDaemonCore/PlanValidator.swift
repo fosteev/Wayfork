@@ -19,11 +19,12 @@ public enum PlanValidator {
         for (name, contents) in plan.singBox.ruleSets {
             guard
                 name == RunLayout.directRuleSet || name == RunLayout.directIPRuleSet
+                    || RunLayout.directNarrowedRuleSets.contains(name)
                     || ruleSetID(fromFileName: name).map(isTunnelID) == true
             else {
                 throw .planInvalid(
                     reason:
-                        "rule-set file name \"\(name)\" is not rules-t-<id>.json, rules-t-<id>-ip.json, their rules-g- twins, \(RunLayout.directRuleSet) or \(RunLayout.directIPRuleSet)"
+                        "rule-set file name \"\(name)\" is not rules-t-<id>.json, rules-t-<id>-ip.json, rules-t-<id>-tcp.json, rules-t-<id>-udp.json, their rules-g- twins, \(RunLayout.directRuleSet), \(RunLayout.directIPRuleSet), rules-direct-tcp.json or rules-direct-udp.json"
                 )
             }
             try checkSize(contents, name: name, allowEmpty: false)
@@ -98,13 +99,18 @@ public enum PlanValidator {
         }
     }
 
-    /// `rules-t-<id>.json`, `rules-t-<id>-ip.json` and their `rules-g-` twins (F16) → `<id>`.
+    /// `rules-t-<id>.json`, `rules-t-<id>-ip.json`, `-tcp.json` / `-udp.json` (F23) and their
+    /// `rules-g-` twins (F16) → `<id>`.
     public static func ruleSetID(fromFileName name: String) -> String? {
         guard let prefix = ["rules-t-", "rules-g-"].first(where: name.hasPrefix),
             name.hasSuffix(".json")
         else { return nil }
         var id = name.dropFirst(prefix.count).dropLast(".json".count)
-        if id.hasSuffix("-ip") { id = id.dropLast(3) }
+        if id.hasSuffix("-ip") {
+            id = id.dropLast(3)
+        } else if id.hasSuffix("-tcp") || id.hasSuffix("-udp") {
+            id = id.dropLast(4)
+        }
         return id.isEmpty ? nil : String(id)
     }
 

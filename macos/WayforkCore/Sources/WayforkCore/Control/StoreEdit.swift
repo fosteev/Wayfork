@@ -31,8 +31,11 @@ public enum StoreEdit: Codable, Sendable, Hashable {
             if store.rules.contains(where: { $0.id == rule.id }) {
                 return "rule \(rule.pattern) already exists"
             }
-            if store.rules.contains(where: { $0.pattern == rule.pattern && $0.match == rule.match }
-            ) {
+            // F23: a rule narrowed to another network is a sibling, not a duplicate.
+            if store.rules.contains(where: {
+                $0.pattern == rule.pattern && $0.match == rule.match
+                    && $0.network == rule.network
+            }) {
                 return "another rule for \(rule.pattern) exists"
             }
             let index =

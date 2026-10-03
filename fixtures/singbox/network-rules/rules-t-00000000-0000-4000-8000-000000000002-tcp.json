@@ -1,0 +1,15 @@
+{
+  "rules" : [
+    {
+      "process_path_regex" : [
+        "^/Applications/Slack\\.app/"
+      ]
+    },
+    {
+      "ip_cidr" : [
+        "203.0.113.0/24"
+      ]
+    }
+  ],
+  "version" : 3
+}

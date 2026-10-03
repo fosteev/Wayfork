@@ -15,10 +15,13 @@ let helpText = """
             addresses are replaced by server-N unless --raw (resolved server IPs are not).
       status                     tunnels, groups, rule count, last apply, pending change
       failed                     Can't reach rows and per-exit counters
-      rules [--via EXIT]         rules in route order
+      rules [--via EXIT]         rules in section order
 
     Change (needs the app; reverted unless confirmed):
-      rules add <pattern> --via EXIT [--confirm-within S] [--dry-run]
+      rules add <pattern> --via EXIT [--network tcp|udp] [--confirm-within S] [--dry-run]
+            <pattern>: a domain, an IPv4 address or subnet, or an absolute path ending in
+            .app (an app rule). --network narrows an app or IP rule to one transport;
+            a domain pattern with --network is a usage error.
       rules remove <pattern|id> [--confirm-within S] [--dry-run]
       log-level <level> [--confirm-within S]
       confirm                    keep the pending change
@@ -219,7 +222,7 @@ func runControl(_ command: String, _ arguments: ArraySlice<String>) throws {
 
 private func rulesRequest(_ arguments: ArraySlice<String>) throws -> ControlRequest {
     let args = try Arguments(
-        arguments, valued: ["--via", "--confirm-within"], flags: ["--dry-run"])
+        arguments, valued: ["--via", "--confirm-within", "--network"], flags: ["--dry-run"])
     let confirmWithin = try args.int("--confirm-within")
     let dryRun = args.has("--dry-run") ? true : nil
     switch args.positionals.first {
@@ -227,13 +230,28 @@ private func rulesRequest(_ arguments: ArraySlice<String>) throws -> ControlRequ
         return ControlRequest(method: .rulesList, params: ControlParams(via: args.value("--via")))
     case "add":
         guard args.positionals.count == 2, let via = args.value("--via") else {
-            throw Usage(description: "rules add <pattern> --via <tunnel|group|direct>")
+            throw Usage(
+                description: "rules add <pattern> --via <tunnel|group|direct> [--network tcp|udp]")
+        }
+        var network: RuleNetwork?
+        if let text = args.value("--network") {
+            guard let parsed = RuleNetwork(rawValue: text.lowercased()) else {
+                throw Usage(description: "--network needs tcp or udp, got \(text)")
+            }
+            let match = RulePattern.inferControlMatch(args.positionals[1])
+            guard match == .app || match == .ip else {
+                throw Usage(
+                    description:
+                        "--network applies to app and IP rules only; \(args.positionals[1]) is a domain pattern"
+                )
+            }
+            network = parsed
         }
         return ControlRequest(
             method: .rulesAdd,
             params: ControlParams(
                 pattern: args.positionals[1], via: via, confirmWithin: confirmWithin,
-                dryRun: dryRun))
+                dryRun: dryRun, network: network))
     case "remove":
         guard args.positionals.count == 2 else {
             throw Usage(description: "rules remove <pattern|id>")

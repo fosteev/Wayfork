@@ -1,6 +1,7 @@
 # TCP only / UDP only for app and IP rules — F23
 
-> Status: stage 1 approved 2026-10-03; next — stage 2 (M19 macOS). · created 2026-10-03 from issue #3 · macOS M19, Windows WM21
+> Status: stage 1 approved 2026-10-03; stage 2 (M19 macOS) accepted 2026-10-03; next — stage 3
+> (WM21 Windows). Manual checks and open calls: [network-rules.pending.md](network-rules.pending.md). · created 2026-10-03 from issue #3 · macOS M19, Windows WM21
 > (WM20 is reserved for the F22 Windows twin).
 
 ## Goal
@@ -42,13 +43,78 @@ IP exception per voice server (issue #3).
 
 ### 2. macOS — M19 · sonnet, high
 
-- [ ] Core: model, schema 3, validator, rule-set + config generator, plan file names
-- [ ] Golden variant `network-rules`, every other golden's sing-box output unchanged
-- [ ] App: inline popup, chip, `addRule`/`updateRule`, quick add untouched
-- [ ] ctl: `.app` paths, `--network`, `network` in `rules` output
-- [ ] Format, package tests, app build
+- [x] Core: model, schema 3, validator, rule-set + config generator, plan file names
+- [x] Golden variant `network-rules`, every other golden's sing-box output unchanged
+- [x] App: inline popup, chip, `addRule`/`updateRule`, quick add untouched — builds;
+      the app target has no unit tests and the look is not seen yet (user)
+- [x] ctl: `.app` paths, `--network`, `network` in `rules` output — usage errors run by
+      hand (exit 2); the app side (`controlAddRule`) is compiled, not run (no live app)
+- [x] Format, package tests, app build
 
 **Done when:** the prompt's DoD commands pass; plan-review accepted.
+
+**Решения (2026-10-03, по итогам сессии M19):**
+
+- **Files (S = `macos/WayforkCore/Sources`).** `Rule.swift`: `RuleNetwork`, `Rule.network`
+  with `didSet` on both `match` and `network` plus `Rule.normalizedNetwork(_:for:)`, so
+  initializer, decoder and later mutation all keep nil for domain kinds; `Store` schema 3
+  (no-op 2→3), `ExportDocument` 3. `RuleValidator`: `RuleKey` + network (duplicates);
+  shadowing rewritten as rank (direct both 0, direct narrowed 1, exit narrowed 2, exit
+  both 3) then section; four examples of 01-data-model.md are tests. `RuleSetGenerator`:
+  `renderNarrowed(rules:network:)` returns nil when empty, ordinary `render`/`renderIP`
+  skip narrowed rules, `directNarrowedTag/FileName`; `RoutedExit.narrowedRuleSetTag/
+  FileName`. `SingBoxConfigGenerator`: direct narrowed route rules right after
+  `rules-direct`, narrowed exit rules collected in the loops and inserted after the block
+  list (tunnels in store order, then groups, tcp before udp). `RuntimePlan.routedIDs`,
+  `PlanValidator` (+ `RunLayout.directNarrowedRuleSets`, `ruleSetID`).
+  `RuleEditing.normalize` and `QuickAdd.evaluate/isUpdate` take `network` (lookup by
+  pattern + network; default nil keeps the popover blind to narrowed rules) and
+  `QuickAdd.evaluate` an optional explicit `match`. ctl: `ControlParams.network`,
+  `ControlRuleInfo.network`, `RulePattern.inferControlMatch` (absolute path ending `.app`
+  → app rule; used by the CLI and the app so both agree), `--network` in help.
+  App: `AppModel+Rules` (`addRule(network:)`, `updateRule(network:)` keeps the rule's own
+  network unless given, new `setNetwork`), `AppModel+Control.controlAddRule`,
+  `RulesSettingsView` (`NetworkPicker`; new IP row carries `RuleEditState.network`).
+- **Contract for stage 3.** Golden `fixtures/singbox/network-rules`: files
+  `rules-direct-udp.json`, `rules-t-<home>-tcp.json` (process_path_regex object first, then
+  ip_cidr object); route order direct, direct-udp, home-tcp, work, home. All 21 older
+  `input.json` changed only in `"schemaVersion" : 3` (the golden input embeds the store);
+  their `sing-box.json` / rule files are untouched. `sing-box check` 1.13.19 passes on the
+  new variant (`singBoxAcceptsGeneratedConfigs` ran with the bundled binary).
+- **Deviations / calls the plan left open.**
+  - The chip of the board is the popup itself (C13: "Unnarrowed it reads TCP + UDP ...
+    narrowed it reads TCP only / UDP only — the chip on the board"), so no separate chip.
+    Both the closed label and the menu item read "TCP + UDP" (the board's menu says
+    "TCP and UDP"; one title per Picker item).
+  - Narrowed IP tunnel rules still carve their range out of `route_exclude_address`
+    (same as unnarrowed): otherwise a LAN range would never enter the TUN.
+  - `wayforkctl rules remove` has no `--network`; two rules with one pattern are
+    already "use an id" in `findRule`. Not in the design, so not added.
+  - `--network` with a domain pattern: usage error (exit 2) in the CLI by
+    `inferControlMatch`; the app additionally refuses (`badRequest`) after fake-IP
+    translation turns an address into a domain pattern.
+  - `AppRuleTests.storeSchemaTwo…` renamed `storeKeepsAppRulesAndMigratesFromOne`
+    (asserts 3 now). New tests in `NetworkRuleTests.swift`; plan names in
+    `PlanningTests`, `TrafficFormatTests`.
+- **Not checked.** Look and behaviour of the Rules page popup (user); `controlAddRule` and
+  `setNetwork` against a live app; an end-to-end Discord call (stage 4). No design doc was
+  edited.
+
+**Ревью (2026-10-03, приёмка M19).** Swift test 199 green, app Debug build OK,
+swift-format lint clean; fixture diff is exactly 21 × `schemaVersion` 2 → 3. Rank shadowing,
+route order and plan names checked against 03-routing.md. The carve-out of narrowed tunnel
+IP rules is right (a LAN range would otherwise never reach the TUN) and is now written down
+in 03-routing.md § Network-narrowed rules. An unknown `network` value (`"sctp"`) fails the
+rule decode like an unknown `match` does — the store is backed up as corrupt; lenient decoding
+to nil was rejected because it would silently widen a narrowed rule to both transports. The
+roadmap's "chip in rows" is Windows-only (W20); 02-ux.md already has the macOS popup as the
+indicator.
+Second pass: `StoreEdit.insertRule` refused a narrowed sibling of a both-networks rule
+(`rules add <app> --via direct --network udp` → "another rule exists"; reverting `rules remove`
+of such a rule lost it) — the guard now compares `network` too, test in `StoreEditTests`.
+`rules` lists in section order, not route order: docs softened (09-wayforkctl.md,
+`Store.effectiveRules`, help). Open: a new `wayforkctl rules add --network` against a pre-F23
+app gets an unnarrowed rule with exit 0 (reply's `rule.network` is not checked).
 
 ### 3. Windows — WM21 · sonnet, high · after stage 2
 
@@ -135,7 +201,14 @@ DoD: все пункты stage 2 отмечены. Проверка: `swift test
 - G/internal/core/explain.go:6 ExplainQuery + Network ("tcp"|"udp"|""), Explain :62 — правило с Network не совпадает с запросом другой сети; при пустом Network в CLI — два прогона, если ответы различаются, печатать {"tcp":…, "udp":…}. G/cmd/wayforkctl/main.go:285 explain — флаг --network.
 - Тесты: rule_set_generator_test, sing_box_config_generator_test (golden :396 подхватит network-rules сам), rule_validator_test, rule_editing_test, versioned_app_path_test, rules_page_test; Go: explain_test.go, validate/planjson тесты.
 
-Уже решено, не переспрашивать: всё из Decisions; вывод Dart-генератора побайтно равен golden от Swift; Windows `rules add` не появляется.
+По реальному коду (приёмка M19, 2026-10-03):
+- Golden `fixtures/singbox/network-rules`: route rules — direct (+ direct-ip), direct-udp (network udp), t-<B>-tcp (network tcp), затем обычные A, B. Порядок определений в `route.rule_set`: rules-direct, rules-direct-ip, rules-direct-tcp/udp (только непустые), [блок-лист], затем на каждый exit подряд: `<tag>`, `<tag>-ip`, `<tag>-tcp`, `<tag>-udp` (узкие — только непустые), туннели, потом группы. Узкие route-правила при этом стоят единым блоком после блок-листа.
+- Узкий файл: сначала объект `process_path_regex`, потом `ip_cidr` (с вычитанием reserved), каждый только если не пуст; обычные `<tag>.json` / `-ip.json` узкие правила пропускают.
+- Узкие IP-правила туннелей карвят `route_exclude_address` так же, как обычные (03-routing.md § Network-narrowed rules, абзац Carve-out) — в Dart carve (`sing_box_config_generator.dart` ~:444) по `network` не фильтровать.
+- Swift: затенение — ранг (direct both 0, direct narrowed 1, exit narrowed 2, exit both 3), затем порядок секций (туннели, потом группы); E затеняет R при `E.network == nil || E.network == R.network`. Дубли — по pattern+match+network+target. Неизвестное значение `network` в JSON — ошибка декодирования, как неизвестный `match`.
+- QuickAdd ищет существующее правило по pattern И network (по умолчанию nil); `RuleEditing.normalize` проверяет дубли с network.
+
+Уже решено, не переспрашивать: всё из Decisions; вывод Dart-генератора побайтно равен golden от Swift (golden `input.json` теперь с `schemaVersion` 3 у всех вариантов — Dart-тест должен принимать его; решения M19 — в конце раздела этапа 2); Windows `rules add` не появляется.
 
 Порядок:
 1. Модель + schema/export 3 + тесты.
@@ -159,5 +232,8 @@ DoD: все пункты stage 3 отмечены. Проверка (вывод 
   the golden's `sing-box check` in M19 confirms).
 - The heal duplicate merge (uncommitted, 2026-10-03) uses target + key; WM21 adds network.
   Until then two narrowed rules for one app cannot exist on Windows anyway (no UI).
+- Pre-existing, not F23: group IP rules are never carved out of `route_exclude_address`
+  (`SingBoxConfigGenerator` carves routed tunnels only), so a group IP rule inside a LAN
+  range never reaches the TUN.
 - Windows `connections` labels from `dns.reverse_mapping` (issue #3, "Also noticed") are
   not part of F23.

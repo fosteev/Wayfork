@@ -38,7 +38,7 @@
         "tunnelID" : "00000000-0000-4000-8000-000000000002"
       }
     ],
-    "schemaVersion" : 2,
+    "schemaVersion" : 3,
     "settings" : {
       "autoReconnect" : true,
       "blockList" : {

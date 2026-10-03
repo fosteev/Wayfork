@@ -39,11 +39,15 @@ public struct ControlParams: Codable, Sendable, Hashable {
     /// Seconds; nil → `ControlDeadline.defaultSeconds`, 0 → commit immediately.
     public var confirmWithin: Int?
     public var dryRun: Bool?
+    /// `rules.add` (F23): narrows an app or IP rule to one transport.
+    public var network: RuleNetwork?
 
     public init(
         pattern: String? = nil, via: String? = nil, level: LogLevel? = nil,
-        tunnel: String? = nil, confirmWithin: Int? = nil, dryRun: Bool? = nil
+        tunnel: String? = nil, confirmWithin: Int? = nil, dryRun: Bool? = nil,
+        network: RuleNetwork? = nil
     ) {
+        self.network = network
         self.pattern = pattern
         self.via = via
         self.level = level
@@ -169,8 +173,11 @@ public struct ControlRuleInfo: Codable, Sendable, Hashable {
     public var via: String
     public var enabled: Bool
     public var note: String?
+    /// F23; omitted when the rule covers both transports.
+    public var network: RuleNetwork?
 
     public init(_ rule: Rule, via: String) {
+        network = rule.network
         id = rule.id
         pattern = rule.pattern
         match = rule.match

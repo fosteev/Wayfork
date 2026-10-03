@@ -11,6 +11,13 @@ public enum RuleSetGenerator {
     /// Tag and file of the Direct IP rule-set (F11).
     public static let directIPTag = "rules-direct-ip"
     public static let directIPFileName = "rules-direct-ip.json"
+    /// Tag and file of the Direct rule-set narrowed to one transport (F23).
+    public static func directNarrowedTag(_ network: RuleNetwork) -> String {
+        "rules-direct-\(network.rawValue)"
+    }
+    public static func directNarrowedFileName(_ network: RuleNetwork) -> String {
+        "\(directNarrowedTag(network)).json"
+    }
 
     /// Built-in exceptions: names that must never leave the local network (F8).
     public static let builtInDirectSuffixes = [
@@ -18,7 +25,8 @@ public enum RuleSetGenerator {
     ]
     public static let builtInDirectDomains = ["localhost"]
 
-    /// Two rule-set files per tunnel (domains + apps, IPs) plus the two Direct files: file
+    /// Two rule-set files per tunnel (domains + apps, IPs) plus the two Direct files, and
+    /// (F23) a `-tcp` / `-udp` file per exit and network that has a narrowed rule: file
     /// name → JSON text. Every tunnel in `tunnels` gets its files, even with no rules, and
     /// the Direct files are always present, so the main config stays unchanged when rules
     /// come and go.
@@ -41,15 +49,43 @@ public enum RuleSetGenerator {
             let rules = activeRules[exit.id] ?? []
             files[exit.ruleSetFileName] = render(rules: rules)
             files[exit.ipRuleSetFileName] = renderIP(rules: rules)
+            for network in RuleNetwork.allCases {
+                if let text = renderNarrowed(rules: rules, network: network) {
+                    files[exit.narrowedRuleSetFileName(network)] = text
+                }
+            }
+        }
+        for network in RuleNetwork.allCases {
+            if let text = renderNarrowed(rules: exceptions, network: network) {
+                files[directNarrowedFileName(network)] = text
+            }
         }
         return files
+    }
+
+    /// F23: the app and IP rules narrowed to `network`, route-only like the `-ip` files:
+    /// a `process_path_regex` rule and an `ip_cidr` rule (same reserved-range subtraction as
+    /// `renderIP`), each only when non-empty. Nil when there is no such rule, so the caller
+    /// emits neither the file nor its route rule.
+    public static func renderNarrowed(rules: [Rule], network: RuleNetwork) -> String? {
+        let narrowed = rules.filter { $0.network == network }
+        let paths = narrowed.filter(\.isApp).map { RulePattern.appPathRegex($0.pattern) }
+        let ranges = narrowed.filter(\.isIP)
+            .compactMap { IPv4Prefix($0.pattern) }
+            .flatMap { $0.subtracting(all: RulePattern.reservedRanges) }
+            .map(\.description)
+        var ruleObjects: [[String: Any]] = []
+        if !paths.isEmpty { ruleObjects.append(["process_path_regex": paths]) }
+        if !ranges.isEmpty { ruleObjects.append(["ip_cidr": ranges]) }
+        guard !ruleObjects.isEmpty else { return nil }
+        return JSONText.render(["version": version, "rules": ruleObjects])
     }
 
     /// `…-ip.json` (F11): the group's IP rules as one `ip_cidr` rule, each range minus the
     /// reserved ranges a wide pattern may overlap. Never referenced by DNS rules — there
     /// sing-box would match `ip_cidr` against the answer and skip the domain rules.
     public static func renderIP(rules: [Rule]) -> String {
-        let ranges = rules.filter(\.isIP)
+        let ranges = rules.filter { $0.isIP && $0.network == nil }
             .compactMap { IPv4Prefix($0.pattern) }
             .flatMap { $0.subtracting(all: RulePattern.reservedRanges) }
             .map(\.description)
@@ -77,7 +113,7 @@ public enum RuleSetGenerator {
         var domainSuffix = suffixes
         var domainRegex: [String] = []
         var processPathRegex: [String] = []
-        for rule in rules {
+        for rule in rules where rule.network == nil {
             switch rule.match {
             case .exact:
                 domain.append(rule.pattern)

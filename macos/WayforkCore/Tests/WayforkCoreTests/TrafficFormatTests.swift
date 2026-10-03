@@ -89,7 +89,8 @@ import Testing
             config: "{}",
             ruleSets: [
                 "rules-t-bbb.json": "", "rules-t-aaa.json": "", "rules-t-aaa-ip.json": "",
-                "rules-direct.json": "", "rules-direct-ip.json": "",
+                "rules-direct.json": "", "rules-direct-ip.json": "", "rules-t-aaa-tcp.json": "",
+                "rules-t-ccc-udp.json": "", "rules-direct-udp.json": "",
             ]),
         openVPN: [], autoReconnect: true, logLevel: .info, overrideSystemDNS: true)
     #expect(plan.routedTunnelIDs == ["aaa", "bbb"])

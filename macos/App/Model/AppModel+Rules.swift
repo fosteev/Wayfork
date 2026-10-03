@@ -31,17 +31,19 @@ extension AppModel {
 
     /// Adds a rule at the end of a group. Returns an error message or nil.
     @discardableResult
-    func addRule(pattern input: String, match: RuleMatch, target: RuleTarget) -> String? {
+    func addRule(
+        pattern input: String, match: RuleMatch, target: RuleTarget, network: RuleNetwork? = nil
+    ) -> String? {
         var input = input
         var match = match
         if let message = translateFakeIP(&input, match: &match) { return message }
         switch RuleEditing.normalize(
-            input, match: match, target: target, store: store, excluding: nil)
+            input, match: match, target: target, store: store, excluding: nil, network: network)
         {
         case .failure(let failure):
             return RuleEditing.message(for: failure)
         case .success(let pattern):
-            let rule = Rule(pattern: pattern, match: match, target: target)
+            let rule = Rule(pattern: pattern, match: match, target: target, network: network)
             update { store in
                 store.rules.insert(rule, at: store.endIndexOfGroup(target))
             }
@@ -49,15 +51,21 @@ extension AppModel {
         }
     }
 
-    /// Edits pattern and match of an existing rule. Returns an error message or nil.
+    /// Edits pattern and match of an existing rule; its network stays unless `network` is
+    /// given (F23; dropped by the model when the new match is a domain kind). Returns an
+    /// error message or nil.
     @discardableResult
-    func updateRule(id: UUID, pattern input: String, match: RuleMatch) -> String? {
+    func updateRule(
+        id: UUID, pattern input: String, match: RuleMatch, network: RuleNetwork?? = .none
+    ) -> String? {
         var input = input
         var match = match
         if let message = translateFakeIP(&input, match: &match) { return message }
         guard let rule = store.rules.first(where: { $0.id == id }) else { return nil }
+        let newNetwork = network ?? rule.network
         switch RuleEditing.normalize(
-            input, match: match, target: rule.target, store: store, excluding: id)
+            input, match: match, target: rule.target, store: store, excluding: id,
+            network: newNetwork)
         {
         case .failure(let failure):
             return RuleEditing.message(for: failure)
@@ -66,9 +74,28 @@ extension AppModel {
                 guard let index = store.rules.firstIndex(where: { $0.id == id }) else { return }
                 store.rules[index].pattern = pattern
                 store.rules[index].match = match
+                store.rules[index].network = newNetwork
             }
             return nil
         }
+    }
+
+    /// F23: narrows an app or IP rule to one transport, or back to both with nil. Returns an
+    /// error message when the same rule already exists with that network.
+    @discardableResult
+    func setNetwork(id: UUID, _ network: RuleNetwork?) -> String? {
+        guard let rule = store.rules.first(where: { $0.id == id }) else { return nil }
+        if case .failure(let failure) = RuleEditing.normalize(
+            rule.pattern, match: rule.match, target: rule.target, store: store, excluding: id,
+            network: network)
+        {
+            return RuleEditing.message(for: failure)
+        }
+        update { store in
+            guard let index = store.rules.firstIndex(where: { $0.id == id }) else { return }
+            store.rules[index].network = network
+        }
+        return nil
     }
 
     func setRuleEnabled(id: UUID, _ enabled: Bool) {

@@ -23,6 +23,12 @@ public enum RuleMatch: String, Codable, Sendable, CaseIterable {
     public var isIP: Bool { self == .ip }
 }
 
+/// F23: the transport an app or IP rule is narrowed to. A rule without one covers both.
+public enum RuleNetwork: String, Codable, Sendable, CaseIterable {
+    case tcp
+    case udp
+}
+
 /// Where a rule sends its traffic (F8): a tunnel, a group (F16), or `direct` for an
 /// exception.
 public enum RuleTarget: Sendable, Hashable {
@@ -57,10 +63,24 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
     /// Normalized by `RulePattern.normalize`: lowercase, punycode, no trailing dot for
     /// domains; an absolute bundle path for `app`; a canonical address / CIDR for `ip`.
     public var pattern: String
-    public var match: RuleMatch
+    public var match: RuleMatch {
+        didSet { network = Rule.normalizedNetwork(network, for: match) }
+    }
     public var target: RuleTarget
     public var isEnabled: Bool
     public var note: String?
+    /// F23: narrows an app or IP rule to TCP or UDP; nil covers both. Always nil for the
+    /// domain kinds, which feed DNS (docs/design/01-data-model.md).
+    public var network: RuleNetwork? {
+        didSet { network = Rule.normalizedNetwork(network, for: match) }
+    }
+
+    /// `network` as the model allows it: only app and IP rules keep one.
+    public static func normalizedNetwork(_ network: RuleNetwork?, for match: RuleMatch)
+        -> RuleNetwork?
+    {
+        match.isApp || match.isIP ? network : nil
+    }
 
     /// The tunnel this rule routes to; nil for an exception or a group rule.
     public var tunnelID: UUID? { target.tunnelID }
@@ -79,7 +99,8 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
         match: RuleMatch = .suffix,
         target: RuleTarget,
         isEnabled: Bool = true,
-        note: String? = nil
+        note: String? = nil,
+        network: RuleNetwork? = nil
     ) {
         self.id = id
         self.pattern = pattern
@@ -87,6 +108,7 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
         self.target = target
         self.isEnabled = isEnabled
         self.note = note
+        self.network = Rule.normalizedNetwork(network, for: match)
     }
 
     public init(
@@ -95,21 +117,22 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
         match: RuleMatch = .suffix,
         tunnelID: UUID,
         isEnabled: Bool = true,
-        note: String? = nil
+        note: String? = nil,
+        network: RuleNetwork? = nil
     ) {
         self.init(
             id: id, pattern: pattern, match: match, target: .tunnel(tunnelID),
-            isEnabled: isEnabled, note: note)
+            isEnabled: isEnabled, note: note, network: network)
     }
 
-    // MARK: - JSON (schema 1; `"match": "app"` needs schema 2; `groupID` is additive, F16)
+    // MARK: - JSON (schema 1; `"match": "app"` needs schema 2, `network` schema 3; `groupID` is additive, F16)
 
     // A tunnel rule carries `tunnelID`, a group rule `groupID`; an exception carries
     // `"target": "direct"` and neither. A rule with none is invalid
     // (docs/design/01-data-model.md, F8 / F16).
 
     private enum CodingKeys: String, CodingKey {
-        case id, pattern, match, tunnelID, groupID, target, isEnabled, note
+        case id, pattern, match, tunnelID, groupID, target, isEnabled, note, network
     }
 
     private static let directTargetName = "direct"
@@ -121,6 +144,8 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
         match = try container.decode(RuleMatch.self, forKey: .match)
         isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
         note = try container.decodeIfPresent(String.self, forKey: .note)
+        network = Rule.normalizedNetwork(
+            try container.decodeIfPresent(RuleNetwork.self, forKey: .network), for: match)
         let targetName = try container.decodeIfPresent(String.self, forKey: .target)
         if let targetName {
             guard targetName == Rule.directTargetName else {
@@ -155,5 +180,6 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
         }
         try container.encode(isEnabled, forKey: .isEnabled)
         try container.encodeIfPresent(note, forKey: .note)
+        try container.encodeIfPresent(network, forKey: .network)
     }
 }
