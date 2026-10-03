@@ -98,8 +98,16 @@ abstract final class VersionedAppPath {
   /// the previous `app-<ver>` around after an update. Rules whose path has no
   /// versioned folder component, or whose parent cannot be listed (MSIX's
   /// `WindowsApps` without admin rights), are left alone; the widened [regex]
-  /// matches them anyway. Returns [store] itself when nothing changed, so a
-  /// caller's `update` sees a no-op.
+  /// matches them anyway.
+  ///
+  /// App rules that then point at the same app ([key]) with the same target
+  /// are merged into the first of them: two rules written for older builds
+  /// both heal to the newest one and would otherwise linger as duplicates
+  /// that the rule editor itself refuses to create. The merged rule is
+  /// enabled when any of them was and keeps the first note found.
+  ///
+  /// Returns [store] itself when nothing changed, so a caller's `update` sees
+  /// a no-op.
   static Store heal(Store store, AppFiles files) {
     List<Rule>? healedRules;
     for (var index = 0; index < store.rules.length; index++) {
@@ -110,7 +118,37 @@ abstract final class VersionedAppPath {
       healedRules ??= [...store.rules];
       healedRules[index] = rule.copyWith(pattern: healedPath);
     }
-    return healedRules == null ? store : store.copyWith(rules: healedRules);
+    final merged = _mergeDuplicates(healedRules ?? store.rules);
+    if (merged == null && healedRules == null) return store;
+    return store.copyWith(rules: merged ?? healedRules);
+  }
+
+  /// [rules] with every app rule that repeats an earlier one (same target,
+  /// same [key]) folded into that earlier rule, or null when none repeats.
+  static List<Rule>? _mergeDuplicates(List<Rule> rules) {
+    final result = <Rule>[];
+    final keptIndex = <(RuleTarget, String), int>{};
+    var merged = false;
+    for (final rule in rules) {
+      if (!rule.match.isApp) {
+        result.add(rule);
+        continue;
+      }
+      final identity = (rule.target, key(rule.pattern));
+      final earlier = keptIndex[identity];
+      if (earlier == null) {
+        keptIndex[identity] = result.length;
+        result.add(rule);
+        continue;
+      }
+      merged = true;
+      final kept = result[earlier];
+      result[earlier] = kept.copyWith(
+        isEnabled: kept.isEnabled || rule.isEnabled,
+        note: kept.note ?? rule.note,
+      );
+    }
+    return merged ? result : null;
   }
 
   /// The newest existing sibling build of [path] ([path] itself included),

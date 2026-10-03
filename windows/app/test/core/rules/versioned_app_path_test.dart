@@ -317,5 +317,86 @@ void main() {
       final healed = VersionedAppPath.heal(store, files);
       expect(identical(healed, store), isTrue);
     });
+
+    test('merges rules for two older builds that heal to the same one', () {
+      const older =
+          r'C:\Users\Alex\AppData\Local\Discord\app-1.0.9250\Discord.exe';
+      const newest =
+          r'C:\Users\Alex\AppData\Local\Discord\app-1.0.9260\Discord.exe';
+      final files = FakeAppFiles()
+        ..addDirectory(parent, 'app-1.0.9260')
+        ..addFile(newest, DateTime(2024, 1, 2));
+      final tunnel = RuleTargetTunnel('00000000-0000-0000-0000-000000000001');
+      final domain = Rule(pattern: 'discord.com', target: tunnel);
+      final first = Rule(
+        pattern: older,
+        match: RuleMatch.app,
+        target: tunnel,
+        isEnabled: false,
+      );
+      final second = Rule(
+        pattern: missing,
+        match: RuleMatch.app,
+        target: tunnel,
+        note: 'voice',
+      );
+      final store = Store(rules: [first, domain, second]);
+      final healed = VersionedAppPath.heal(store, files);
+      expect(healed.rules, hasLength(2));
+      expect(healed.rules[0].id, first.id);
+      expect(healed.rules[0].pattern, newest);
+      expect(healed.rules[0].isEnabled, isTrue);
+      expect(healed.rules[0].note, 'voice');
+      expect(healed.rules[1], domain);
+    });
+
+    test('merges duplicates that are already healed', () {
+      const newest =
+          r'C:\Users\Alex\AppData\Local\Discord\app-1.0.9260\Discord.exe';
+      final files = FakeAppFiles()
+        ..addDirectory(parent, 'app-1.0.9260')
+        ..addFile(newest, DateTime(2024, 1, 2));
+      final first = Rule(
+        pattern: newest,
+        match: RuleMatch.app,
+        target: const RuleTargetDirect(),
+      );
+      final store = Store(
+        rules: [
+          first,
+          Rule(
+            pattern: newest,
+            match: RuleMatch.app,
+            target: const RuleTargetDirect(),
+          ),
+        ],
+      );
+      final healed = VersionedAppPath.heal(store, files);
+      expect(healed.rules, [first]);
+    });
+
+    test('keeps the same app with different targets apart', () {
+      const newest =
+          r'C:\Users\Alex\AppData\Local\Discord\app-1.0.9260\Discord.exe';
+      final files = FakeAppFiles()
+        ..addDirectory(parent, 'app-1.0.9260')
+        ..addFile(newest, DateTime(2024, 1, 2));
+      final store = Store(
+        rules: [
+          Rule(
+            pattern: newest,
+            match: RuleMatch.app,
+            target: const RuleTargetDirect(),
+          ),
+          Rule.tunnel(
+            pattern: newest,
+            match: RuleMatch.app,
+            tunnelID: '00000000-0000-0000-0000-000000000001',
+          ),
+        ],
+      );
+      final healed = VersionedAppPath.heal(store, files);
+      expect(identical(healed, store), isTrue);
+    });
   });
 }

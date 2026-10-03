@@ -1041,15 +1041,21 @@ final class AppModel extends ChangeNotifier {
   }
 
   /// F10 on Windows: an app rule whose `.exe` moved to a new versioned build
-  /// (Squirrel, MSIX) is repointed at the newest existing sibling. A no-op
-  /// when nothing needs it.
+  /// (Squirrel, MSIX) is repointed at the newest existing sibling, and app
+  /// rules that end up duplicating each other are merged. A no-op when
+  /// nothing needs it.
   Future<void> _healAppRules() async {
     final before = _store;
     await update((store) => VersionedAppPath.heal(store, _appFiles));
     if (identical(_store, before)) return;
     for (final rule in before.rules) {
       final healed = _store.rules.firstWhereOrNull((r) => r.id == rule.id);
-      if (healed != null && healed.pattern != rule.pattern) {
+      if (healed == null) {
+        logs.app(
+          LogLevel.info,
+          'app rule merged as a duplicate: ${rule.pattern}',
+        );
+      } else if (healed.pattern != rule.pattern) {
         logs.app(
           LogLevel.info,
           'app rule healed: ${rule.pattern} → ${healed.pattern}',
