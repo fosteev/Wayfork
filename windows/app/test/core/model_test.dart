@@ -92,7 +92,7 @@ void main() {
   test('store refuses a newer schema', () {
     expect(
       () => StoreCodec.decode('{"schemaVersion":99,"tunnels":[],"rules":[]}'),
-      throwsA(const StoreCodecException.newerSchema(found: 99, supported: 2)),
+      throwsA(const StoreCodecException.newerSchema(found: 99, supported: 3)),
     );
   });
 
@@ -173,6 +173,28 @@ void main() {
         '{"format":"other","version":1,"exportedAt":"2026-08-25T12:00:00Z","includesSecrets":false,"tunnels":[],"rules":[],"settings":{}}',
       ),
       throwsA(const ExportDocumentException.unknownFormat('other')),
+    );
+  });
+
+  test('export documents: version 2 still decodes, 4 is refused (F23)', () {
+    const body =
+        '"exportedAt":"2026-08-25T12:00:00Z","includesSecrets":false,'
+        '"tunnels":[],"rules":[],"settings":{}';
+    final older = ExportDocument.decode(
+      '{"format":"wayfork-export","version":2,$body}',
+    );
+    expect(older.version, 2);
+    expect(
+      () => ExportDocument.decode(
+        '{"format":"wayfork-export","version":4,$body}',
+      ),
+      throwsA(const ExportDocumentException.newerVersion(4)),
+    );
+    expect(
+      StoreCodec.decode(
+        '{"schemaVersion":2,"tunnels":[],"rules":[],"settings":{}}',
+      ).schemaVersion,
+      3,
     );
   });
 
@@ -269,11 +291,11 @@ void main() {
     );
   });
 
-  test('schema one migrates to two and app rules survive', () {
+  test('schema one migrates to current and app rules survive', () {
     final migrated = StoreCodec.decode(
       '{"schemaVersion":1,"tunnels":[],"rules":[],"settings":{}}',
     );
-    expect(migrated.schemaVersion, 2);
+    expect(migrated.schemaVersion, 3);
     final store = Fixtures.store(
       rules: [
         Rule.tunnel(
@@ -284,9 +306,37 @@ void main() {
       ],
     );
     final text = StoreCodec.encode(store);
-    expect(text, contains('"schemaVersion" : 2'));
+    expect(text, contains('"schemaVersion" : 3'));
     expect(text, contains('"match" : "app"'));
     expect(StoreCodec.decode(text), store);
+  });
+
+  test('rule network round-trips, normalizes and rejects unknown values', () {
+    final udp = Rule.tunnel(
+      pattern: '/Applications/Discord.app',
+      match: RuleMatch.app,
+      tunnelID: Fixtures.workID,
+      network: RuleNetwork.udp,
+    );
+    expect(udp.toJson()['network'], 'udp');
+    expect(Rule.fromJson(udp.toJson()), udp);
+    expect(udp.copyWith(network: null).network, isNull);
+    expect(
+      udp.copyWith(pattern: '/Applications/Other.app').network,
+      RuleNetwork.udp,
+    );
+    expect(udp.copyWith(match: RuleMatch.suffix).network, isNull);
+    final domain = Rule.tunnel(
+      pattern: 'example.com',
+      tunnelID: Fixtures.workID,
+      network: RuleNetwork.tcp,
+    );
+    expect(domain.network, isNull);
+    expect(domain.toJson().containsKey('network'), isFalse);
+    expect(
+      () => Rule.fromJson({...udp.toJson(), 'network': 'sctp'}),
+      throwsFormatException,
+    );
   });
 
   test('two-tunnels input model re-encodes byte for byte', () {

@@ -1,5 +1,6 @@
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wayfork/app/model/app_alert.dart';
 import 'package:wayfork/app/ui/app_navigation.dart';
@@ -315,6 +316,64 @@ void main() {
     expect(view.performed, [
       const AppAction.revealFile(r'C:\Program Files\Example\example.exe'),
     ]);
+  });
+
+  testWidgets('an app rule shows its network chip and edits the network', (
+    tester,
+  ) async {
+    final sample = SampleStore();
+    final app = await boot(
+      tester,
+      store: sample.store.copyWith(
+        rules: [
+          Rule(
+            pattern: r'C:\Program Files\Example\example.exe',
+            match: RuleMatch.app,
+            target: const RuleTargetDirect(),
+            network: RuleNetwork.udp,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpWidget(page(app, AppNavigator()).widget);
+    await tester.pumpAndSettle();
+    expect(find.text('UDP only'), findsOneWidget, reason: 'the row chip');
+
+    await tester.tap(find.text('example'), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    expect(find.byType(RuleEditor), findsOneWidget);
+    // The editor replaced the row; its field shows the current network.
+    await tester.tap(find.text('UDP only'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('TCP only').last);
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(app.model.store.exceptions.single.network, RuleNetwork.tcp);
+    expect(find.text('TCP only'), findsOneWidget, reason: 'the row chip');
+    await tester.pump(const Duration(milliseconds: 100));
+  });
+
+  testWidgets('a new IP rule offers the network, a domain rule does not', (
+    tester,
+  ) async {
+    final app = await boot(tester);
+    await tester.pumpWidget(page(app, AppNavigator()).widget);
+    await tester.pumpAndSettle();
+
+    await openGroupMenu(tester, 1, 'Site');
+    expect(find.text('TCP and UDP'), findsNothing);
+    await tester.enterText(find.byType(RuleEditor), '203.0.113.0/24');
+    await tester.pumpAndSettle();
+    expect(find.text('TCP and UDP'), findsOneWidget);
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    final rule = app.model.store.rulesForTunnel(app.sample.work.id).last;
+    expect(rule.match, RuleMatch.ip);
+    expect(rule.network, isNull);
+    await tester.pump(const Duration(milliseconds: 100));
   });
 
   testWidgets('without tunnels the page asks for one', (tester) async {

@@ -902,6 +902,52 @@ Map<String, SingBoxInput> _configVariants({
     platform: platform,
     installDir: installDir,
   );
+  // F23: Discord's calls (UDP) direct, the rest through Work; narrowed rules
+  // of Home beat Work's rules for other patterns; the third Discord rule is
+  // shadowed by the Direct UDP one and must not reach any file.
+  variants['network-rules'] = _input(
+    base.copyWith(
+      rules: [
+        ...base.rules,
+        Rule.tunnel(
+          pattern: '/Applications/Discord.app',
+          match: RuleMatch.app,
+          tunnelID: Fixtures.workID,
+        ),
+        Rule(
+          pattern: '/Applications/Discord.app',
+          match: RuleMatch.app,
+          target: const RuleTargetDirect(),
+          network: RuleNetwork.udp,
+        ),
+        Rule.tunnel(
+          pattern: '/Applications/Discord.app',
+          match: RuleMatch.app,
+          tunnelID: Fixtures.homeID,
+          network: RuleNetwork.udp,
+        ),
+        Rule.tunnel(
+          pattern: '/Applications/Slack.app',
+          match: RuleMatch.app,
+          tunnelID: Fixtures.homeID,
+          network: RuleNetwork.tcp,
+        ),
+        Rule.tunnel(
+          pattern: '203.0.113.0/24',
+          match: RuleMatch.ip,
+          tunnelID: Fixtures.homeID,
+          network: RuleNetwork.tcp,
+        ),
+        Rule.tunnel(
+          pattern: '198.51.100.0/24',
+          match: RuleMatch.ip,
+          tunnelID: Fixtures.workID,
+        ),
+      ],
+    ),
+    platform: platform,
+    installDir: installDir,
+  );
   variants['system-dns'] = _input(
     base,
     systemDNS: const ['192.168.31.5', '8.8.8.8'],

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wayfork/core/model/rule.dart';
+import 'package:wayfork/core/model/tunnel_group.dart';
 import 'package:wayfork/core/platform.dart';
 import 'package:wayfork/core/singbox/rule_set_generator.dart';
 import 'package:wayfork/core/support/ipv4_prefix.dart';
@@ -132,6 +133,67 @@ void main() {
     ]);
     expect(files.values.every((text) => text.endsWith('\n')), isTrue);
   });
+
+  test(
+    'narrowed rules get route-only files and leave the plain ones alone',
+    () {
+      final rules = [
+        Rule.tunnel(
+          pattern: r'C:\Apps\Discord.exe',
+          match: RuleMatch.app,
+          tunnelID: Fixtures.workID,
+          network: RuleNetwork.udp,
+        ),
+        Rule.tunnel(
+          pattern: '203.0.113.0/24',
+          match: RuleMatch.ip,
+          tunnelID: Fixtures.workID,
+          network: RuleNetwork.udp,
+        ),
+        Rule.tunnel(
+          pattern: 'example.com',
+          tunnelID: Fixtures.workID,
+          network: RuleNetwork.udp,
+        ),
+        Rule.tunnel(
+          pattern: '198.51.100.0/24',
+          match: RuleMatch.ip,
+          tunnelID: Fixtures.workID,
+        ),
+      ];
+      // A domain rule never keeps a network.
+      expect(rules[2].network, isNull);
+      final files = RuleSetGenerator.generate(
+        tunnels: [Fixtures.work],
+        activeRules: {Fixtures.workID: rules},
+      );
+      final udp = _ruleObjects(
+        files[RoutedExit.tunnel(
+          Fixtures.work,
+        ).narrowedRuleSetFileName(RuleNetwork.udp)]!,
+      );
+      expect(udp, hasLength(2));
+      expect(udp[0].keys, ['process_path_regex']);
+      expect(udp[1]['ip_cidr'], ['203.0.113.0/24']);
+      expect(
+        files.containsKey(
+          RoutedExit.tunnel(
+            Fixtures.work,
+          ).narrowedRuleSetFileName(RuleNetwork.tcp),
+        ),
+        isFalse,
+      );
+      expect(
+        _ruleObjects(files[Fixtures.work.ruleSetFileName]!).single.keys,
+        isNot(contains('process_path_regex')),
+      );
+      expect(
+        _ruleObjects(files[Fixtures.work.ipRuleSetFileName]!).single['ip_cidr'],
+        ['198.51.100.0/24'],
+      );
+      expect(RuleSetGenerator.renderNarrowed(rules, RuleNetwork.tcp), isNull);
+    },
+  );
 }
 
 List<Map<String, Object?>> _ruleObjects(String text) {

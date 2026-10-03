@@ -1,6 +1,7 @@
 import 'package:collection/collection.dart';
 import 'package:wayfork/core/json_text.dart';
 import 'package:wayfork/core/model/local_proxy.dart';
+import 'package:wayfork/core/model/rule.dart';
 import 'package:wayfork/core/model/tunnel.dart';
 import 'package:wayfork/core/support/uuid.dart';
 
@@ -191,6 +192,12 @@ final class RoutedExit {
   String get ruleSetFileName => '$ruleSetTag.json';
   String get ipRuleSetTag => '$ruleSetTag-ip';
   String get ipRuleSetFileName => '$ipRuleSetTag.json';
+
+  /// F23: `rules-t-<id>-tcp` / `-udp`, route-only like the IP file.
+  String narrowedRuleSetTag(RuleNetwork network) =>
+      '$ruleSetTag-${network.jsonValue}';
+  String narrowedRuleSetFileName(RuleNetwork network) =>
+      '${narrowedRuleSetTag(network)}.json';
   bool get isGroup => outboundTag.startsWith(TunnelGroup.outboundTagPrefix);
 
   @override

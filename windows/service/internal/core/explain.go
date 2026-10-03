@@ -1,5 +1,7 @@
 package core
 
+import "reflect"
+
 // ExplainQuery selects exactly one field to explain by: a process path, a host, or an IP
 // (#2's `wayforkctl explain`; also the pipe's `explain` params — the server rejects a
 // query with zero or more than one field set).
@@ -7,6 +9,15 @@ type ExplainQuery struct {
 	ProcessPath string `json:"process,omitempty"`
 	Host        string `json:"host,omitempty"`
 	IP          string `json:"ip,omitempty"`
+	// Network narrows the question to one transport, "tcp" or "udp" (F23): a route rule with
+	// a `network` that does not list it is skipped. Empty asks without a transport, so a
+	// narrowed rule counts as if it matched.
+	Network string `json:"network,omitempty"`
+}
+
+// ValidNetwork reports whether the query's network is empty, "tcp" or "udp".
+func (q ExplainQuery) ValidNetwork() bool {
+	return q.Network == "" || q.Network == "tcp" || q.Network == "udp"
 }
 
 // HasOneField reports whether the query names exactly one of process, host, ip.
@@ -62,6 +73,9 @@ func (r ExplainResult) MarshalJSON() ([]byte, error) {
 func Explain(query ExplainQuery, rules []ExplainRule, selectorsByTag map[string]RuleSetSelectors, fallback string) ExplainResult {
 	matches := []ExplainMatch{}
 	for _, rule := range rules {
+		if !rule.coversNetwork(query.Network) {
+			continue
+		}
 		matched := false
 		for _, tag := range rule.Tags {
 			if selectorsByTag[tag].Matches(query.Host, query.IP, query.ProcessPath) {
@@ -74,4 +88,35 @@ func Explain(query ExplainQuery, rules []ExplainRule, selectorsByTag map[string]
 		}
 	}
 	return ExplainResult{Matches: matches, Fallback: fallback, Note: ExplainNote}
+}
+
+// coversNetwork reports whether the rule applies to a query with this network: an unnarrowed
+// rule always does, a narrowed one only when it lists it; an empty query network asks
+// without a transport and skips nothing.
+func (r ExplainRule) coversNetwork(network string) bool {
+	if network == "" || len(r.Network) == 0 {
+		return true
+	}
+	for _, covered := range r.Network {
+		if covered == network {
+			return true
+		}
+	}
+	return false
+}
+
+// ExplainBoth is the reply of `explain` without --network when the TCP and the UDP answers
+// differ (F23).
+type ExplainBoth struct {
+	TCP ExplainResult `json:"tcp"`
+	UDP ExplainResult `json:"udp"`
+}
+
+// CombineExplain returns the single answer when TCP and UDP agree (today's shape) and an
+// ExplainBoth otherwise.
+func CombineExplain(tcp, udp ExplainResult) any {
+	if reflect.DeepEqual(tcp, udp) {
+		return tcp
+	}
+	return ExplainBoth{TCP: tcp, UDP: udp}
 }

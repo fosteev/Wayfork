@@ -31,6 +31,10 @@ const (
 	DirectRuleSet = "rules-direct.json"
 	// DirectIPRuleSet contains direct IP exceptions.
 	DirectIPRuleSet = "rules-direct-ip.json"
+	// DirectTCPRuleSet and DirectUDPRuleSet contain direct app and IP exceptions narrowed to
+	// one transport (F23).
+	DirectTCPRuleSet = "rules-direct-tcp.json"
+	DirectUDPRuleSet = "rules-direct-udp.json"
 )
 
 // OpenVPNConfig returns the runtime OpenVPN config file name for id.

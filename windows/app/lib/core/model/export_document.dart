@@ -289,7 +289,7 @@ final class ExportDocument {
       );
 
   static const formatName = 'wayfork-export';
-  static const currentVersion = 2;
+  static const currentVersion = 3;
 
   final String format;
   final int version;

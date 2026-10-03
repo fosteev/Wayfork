@@ -226,4 +226,63 @@ void main() {
       const RuleEditingResult.success('bank.example.org'),
     );
   });
+
+  test('rule editing compares the network when looking for duplicates', () {
+    final sample = SampleStore();
+    final target = RuleTargetTunnel(sample.work.id);
+    final store = sample.store.copyWith(
+      rules: [
+        ...sample.store.rules,
+        Rule(
+          pattern: r'C:\Apps\Discord.exe',
+          match: RuleMatch.app,
+          target: target,
+          network: RuleNetwork.udp,
+        ),
+      ],
+    );
+    RuleEditingResult check(RuleNetwork? network) => RuleEditing.normalize(
+      r'C:\Apps\Discord.exe',
+      match: RuleMatch.app,
+      target: target,
+      store: store,
+      network: network,
+    );
+    expect(
+      check(RuleNetwork.udp),
+      const RuleEditingResult.failure(RuleEditingFailure.duplicate()),
+    );
+    expect(check(RuleNetwork.tcp), isA<RuleEditingSuccess>());
+    expect(check(null), isA<RuleEditingSuccess>());
+  });
+
+  test('quick add finds rules by pattern and network', () {
+    final sample = SampleStore();
+    final store = sample.store.copyWith(
+      rules: [
+        ...sample.store.rules,
+        Rule(
+          pattern: '203.0.113.0/24',
+          match: RuleMatch.ip,
+          target: RuleTargetTunnel(sample.work.id),
+          network: RuleNetwork.tcp,
+        ),
+      ],
+    );
+    expect(QuickAdd.isUpdate(input: '203.0.113.0/24', store: store), isFalse);
+    expect(
+      QuickAdd.isUpdate(
+        input: '203.0.113.0/24',
+        store: store,
+        network: RuleNetwork.tcp,
+      ),
+      isTrue,
+    );
+    final outcome = QuickAdd.evaluate(
+      input: '203.0.113.0/24',
+      target: const RuleTargetDirect(),
+      store: store,
+    );
+    expect(outcome, isA<QuickAddAdd>());
+  });
 }

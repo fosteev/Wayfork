@@ -101,7 +101,8 @@ abstract final class VersionedAppPath {
   /// matches them anyway.
   ///
   /// App rules that then point at the same app ([key]) with the same target
-  /// are merged into the first of them: two rules written for older builds
+  /// are merged into the first of them (a TCP-only and a UDP-only rule for one
+  /// app stay apart): two rules written for older builds
   /// both heal to the newest one and would otherwise linger as duplicates
   /// that the rule editor itself refuses to create. The merged rule is
   /// enabled when any of them was and keeps the first note found.
@@ -124,17 +125,17 @@ abstract final class VersionedAppPath {
   }
 
   /// [rules] with every app rule that repeats an earlier one (same target,
-  /// same [key]) folded into that earlier rule, or null when none repeats.
+  /// same [key], same F23 network) folded into that earlier rule, or null when none repeats.
   static List<Rule>? _mergeDuplicates(List<Rule> rules) {
     final result = <Rule>[];
-    final keptIndex = <(RuleTarget, String), int>{};
+    final keptIndex = <(RuleTarget, String, RuleNetwork?), int>{};
     var merged = false;
     for (final rule in rules) {
       if (!rule.match.isApp) {
         result.add(rule);
         continue;
       }
-      final identity = (rule.target, key(rule.pattern));
+      final identity = (rule.target, key(rule.pattern), rule.network);
       final earlier = keptIndex[identity];
       if (earlier == null) {
         keptIndex[identity] = result.length;

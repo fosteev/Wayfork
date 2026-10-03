@@ -246,6 +246,41 @@ void main() {
       directLAN.id,
     ]);
   });
+
+  test('network-narrowed rules: duplicates by network, shadowing by rank', () {
+    const discord = r'C:\Apps\Discord.exe';
+    Rule app(RuleTarget target, [RuleNetwork? network]) => Rule(
+      pattern: discord,
+      match: RuleMatch.app,
+      target: target,
+      network: network,
+    );
+    final work = RuleTargetTunnel(Fixtures.workID);
+    final home = RuleTargetTunnel(Fixtures.homeID);
+    final workBoth = app(work);
+    final workUdp = app(work, RuleNetwork.udp);
+    final workUdpAgain = app(work, RuleNetwork.udp);
+    final workTcp = app(work, RuleNetwork.tcp);
+    final homeUdp = app(home, RuleNetwork.udp);
+    final directUdp = app(const RuleTargetDirect(), RuleNetwork.udp);
+    final store = Fixtures.store(
+      rules: [workBoth, workUdp, workUdpAgain, workTcp, homeUdp, directUdp],
+    );
+    final issues = RuleValidator.validate(store);
+    // Same pattern, different network: not a duplicate; same network is.
+    expect(issues[workUdpAgain.id], [RuleIssue.duplicate(workUdp.id)]);
+    expect(issues[workTcp.id], isNull);
+    // Direct UDP outranks every UDP rule, even in a later section.
+    expect(issues[homeUdp.id], [RuleIssue.shadowed(directUdp.id)]);
+    expect(issues[workUdp.id], [RuleIssue.shadowed(directUdp.id)]);
+    expect(issues[directUdp.id], isNull);
+    // A both-networks rule is covered by no narrowed one.
+    expect(issues[workBoth.id], isNull);
+    // Narrowed exit rules rank above the both-networks one for the same
+    // network, so the narrowed Home rule cannot be shadowed by Work both.
+    final lone = Fixtures.store(rules: [workBoth, homeUdp]);
+    expect(RuleValidator.validate(lone)[homeUdp.id], isNull);
+  });
 }
 
 Rule _ipRule(String pattern, String tunnelID) =>

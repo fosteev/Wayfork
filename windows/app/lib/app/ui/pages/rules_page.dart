@@ -290,8 +290,12 @@ class _RuleGroup extends StatelessWidget {
           if (isAdding)
             RuleEditor(
               key: ValueKey('new-${_key(target)}'),
-              onSubmit: (pattern, match) =>
-                  model.addRule(pattern: pattern, match: match, target: target),
+              onSubmit: (pattern, match, network) => model.addRule(
+                pattern: pattern,
+                match: match,
+                target: target,
+                network: network,
+              ),
               onDone: onEditFinished,
               hint: 'Enter to add, Esc to discard',
             ),
@@ -548,8 +552,15 @@ class _RuleRowState extends State<_RuleRow> {
       return RuleEditor(
         initialText: rule.pattern,
         initialMatch: rule.match,
-        onSubmit: (pattern, match) =>
-            model.updateRule(rule.id, pattern: pattern, match: match),
+        initialNetwork: rule.network,
+        // An app rule's path is not typed: only its network is edited.
+        lockPattern: rule.isApp,
+        onSubmit: (pattern, match, network) => model.updateRule(
+          rule.id,
+          pattern: pattern,
+          match: match,
+          network: network,
+        ),
         onDone: widget.onEditFinished,
         hint: 'Enter to save, Esc to discard',
       );
@@ -637,7 +648,7 @@ class _RuleRowState extends State<_RuleRow> {
         child: FlyoutTarget(
           controller: _menu,
           child: GestureDetector(
-            onDoubleTap: rule.isApp ? null : () => widget.onEdit(rule.id),
+            onDoubleTap: () => widget.onEdit(rule.id),
             onSecondaryTapUp: (details) => _showMenu(details.globalPosition),
             child: Draggable<String>(
               data: rule.id,
@@ -676,15 +687,14 @@ class _RuleRowState extends State<_RuleRow> {
                   Navigator.of(context).pop();
                   widget.onAction(AppAction.revealFile(rule.pattern));
                 },
-              )
-            else
-              MenuFlyoutItem(
-                text: const Text('Edit'),
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  widget.onEdit(rule.id);
-                },
               ),
+            MenuFlyoutItem(
+              text: const Text('Edit'),
+              onPressed: () {
+                Navigator.of(context).pop();
+                widget.onEdit(rule.id);
+              },
+            ),
             MenuFlyoutSubItem(
               text: const Text('Move to'),
               // Press, not the default hover: the submenu has to be reachable
@@ -758,6 +768,13 @@ class _RuleRowState extends State<_RuleRow> {
     final critical = theme.resources.systemFillColorCritical;
     return [
       if (!widget.rule.isEnabled) const Chip('paused'),
+      if (widget.rule.network case final network?)
+        Chip(
+          _networkChip(network),
+          tooltip:
+              'Only ${network.jsonValue.toUpperCase()} traffic of this '
+              '${widget.rule.isApp ? 'app' : 'range'} is matched',
+        ),
       if (widget.rule.isApp && !_AppFile.exists(widget.rule.pattern))
         Chip(
           'not found',
@@ -818,11 +835,18 @@ class RuleEditor extends StatefulWidget {
     required this.hint,
     this.initialText = '',
     this.initialMatch = RuleMatch.suffix,
+    this.initialNetwork,
+    this.lockPattern = false,
     super.key,
   });
 
   /// Returns the model's message, or null when the rule went through.
-  final Future<String?> Function(String pattern, RuleMatch match) onSubmit;
+  final Future<String?> Function(
+    String pattern,
+    RuleMatch match,
+    RuleNetwork? network,
+  )
+  onSubmit;
 
   /// Called once the row is committed or discarded.
   final VoidCallback onDone;
@@ -830,6 +854,12 @@ class RuleEditor extends StatefulWidget {
   final String hint;
   final String initialText;
   final RuleMatch initialMatch;
+
+  /// F23: the rule's network; null = TCP and UDP.
+  final RuleNetwork? initialNetwork;
+
+  /// App rules: the path and match stay as they are, the network is edited.
+  final bool lockPattern;
 
   @override
   State<RuleEditor> createState() => _RuleEditorState();
@@ -839,6 +869,7 @@ class _RuleEditorState extends State<RuleEditor> {
   final _controller = TextEditingController();
   final _focus = FocusNode();
   late RuleMatch _match;
+  RuleNetwork? _network;
   String? _error;
 
   @override
@@ -846,6 +877,7 @@ class _RuleEditorState extends State<RuleEditor> {
     super.initState();
     _controller.text = widget.initialText;
     _match = widget.initialMatch;
+    _network = widget.initialNetwork;
     _focus.requestFocus();
   }
 
@@ -869,6 +901,7 @@ class _RuleEditorState extends State<RuleEditor> {
           selection: TextSelection.collapsed(offset: pattern.length),
         );
         _match = RulePattern.inferMatch(pattern);
+        _network = RuleNetwork.normalized(_network, _match);
         return;
       }
       _match = switch (RulePattern.inferMatch(text)) {
@@ -876,11 +909,16 @@ class _RuleEditorState extends State<RuleEditor> {
         RuleMatch.ip => RuleMatch.ip,
         _ => _match == RuleMatch.ip ? RuleMatch.suffix : _match,
       };
+      _network = RuleNetwork.normalized(_network, _match);
     });
   }
 
   Future<void> _submit() async {
-    final message = await widget.onSubmit(_controller.text, _match);
+    final message = await widget.onSubmit(
+      _controller.text,
+      _match,
+      RuleNetwork.normalized(_network, _match),
+    );
     if (!mounted) return;
     if (message == null) {
       widget.onDone();
@@ -907,31 +945,80 @@ class _RuleEditorState extends State<RuleEditor> {
                 const SizedBox(width: 10),
                 Expanded(
                   flex: 3,
-                  child: TextBox(
-                    controller: _controller,
-                    focusNode: _focus,
-                    placeholder: 'example.com or 10.0.0.0/24',
-                    onChanged: _onChanged,
-                    onSubmitted: (_) => unawaited(_submit()),
+                  // A read-only field opens no input connection, so Enter
+                  // would never reach onSubmitted. Bound on the field only:
+                  // Enter on the focused Network combo still opens it.
+                  child: CallbackShortcuts(
+                    bindings: {
+                      if (widget.lockPattern) ...{
+                        const SingleActivator(LogicalKeyboardKey.enter): () =>
+                            unawaited(_submit()),
+                        const SingleActivator(
+                          LogicalKeyboardKey.numpadEnter,
+                        ): () =>
+                            unawaited(_submit()),
+                      },
+                    },
+                    child: TextBox(
+                      controller: _controller,
+                      focusNode: _focus,
+                      readOnly: widget.lockPattern,
+                      placeholder: 'example.com or 10.0.0.0/24',
+                      onChanged: _onChanged,
+                      onSubmitted: (_) => unawaited(_submit()),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
                 SizedBox(
                   width: 110,
-                  child: ComboBox<RuleMatch>(
-                    isExpanded: true,
-                    value: _match,
-                    items: [
-                      for (final match in RuleMatch.typedCases)
-                        ComboBoxItem(
-                          value: match,
-                          child: Text(_matchTitle(match)),
+                  child: widget.lockPattern
+                      ? SecondaryText(_matchTitle(_match))
+                      : ComboBox<RuleMatch>(
+                          isExpanded: true,
+                          value: _match,
+                          items: [
+                            for (final match in RuleMatch.typedCases)
+                              ComboBoxItem(
+                                value: match,
+                                child: Text(_matchTitle(match)),
+                              ),
+                          ],
+                          onChanged: (match) => setState(() {
+                            _match = match ?? _match;
+                            _network = RuleNetwork.normalized(_network, _match);
+                          }),
                         ),
-                    ],
-                    onChanged: (match) =>
-                        setState(() => _match = match ?? _match),
-                  ),
                 ),
+                if (_match.isApp || _match.isIP) ...[
+                  const SizedBox(width: 10),
+                  Tooltip(
+                    message:
+                        'UDP carries calls, voice and games; TCP carries '
+                        'everything else.',
+                    child: SizedBox(
+                      width: 130,
+                      child: ComboBox<_NetworkChoice>(
+                        isExpanded: true,
+                        value: _NetworkChoice.of(_network),
+                        items: [
+                          for (final choice in _NetworkChoice.values)
+                            ComboBoxItem(
+                              value: choice,
+                              child: Text(choice.title),
+                            ),
+                        ],
+                        onChanged: (choice) {
+                          setState(() {
+                            if (choice != null) _network = choice.network;
+                          });
+                          // Enter commits the row; keep it reachable.
+                          _focus.requestFocus();
+                        },
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(width: 10),
                 Expanded(
                   flex: 2,
@@ -1122,3 +1209,21 @@ class _RecentStripState extends State<RecentStrip> {
     );
   }
 }
+
+/// The Network field's options (board W20). A real enum, not a nullable
+/// `RuleNetwork`, because a combo box reads a null value as "no selection".
+enum _NetworkChoice {
+  both('TCP and UDP', null),
+  tcp('TCP only', RuleNetwork.tcp),
+  udp('UDP only', RuleNetwork.udp);
+
+  const _NetworkChoice(this.title, this.network);
+
+  final String title;
+  final RuleNetwork? network;
+
+  static _NetworkChoice of(RuleNetwork? network) =>
+      values.firstWhere((choice) => choice.network == network);
+}
+
+String _networkChip(RuleNetwork network) => _NetworkChoice.of(network).title;

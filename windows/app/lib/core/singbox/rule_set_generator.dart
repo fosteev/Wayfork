@@ -18,6 +18,12 @@ abstract final class RuleSetGenerator {
   static const directIPTag = 'rules-direct-ip';
   static const directIPFileName = 'rules-direct-ip.json';
 
+  /// Tag and file of the Direct rule-set narrowed to one transport (F23).
+  static String directNarrowedTag(RuleNetwork network) =>
+      'rules-direct-${network.jsonValue}';
+  static String directNarrowedFileName(RuleNetwork network) =>
+      '${directNarrowedTag(network)}.json';
+
   /// Built-in exceptions: names that must never leave the local network.
   static const builtInDirectSuffixes = [
     '.local',
@@ -57,15 +63,58 @@ abstract final class RuleSetGenerator {
       final rules = activeRules[exit.id] ?? const [];
       files[exit.ruleSetFileName] = render(rules, platform: platform);
       files[exit.ipRuleSetFileName] = renderIP(rules);
+      for (final network in RuleNetwork.values) {
+        final text = renderNarrowed(rules, network, platform: platform);
+        if (text != null) files[exit.narrowedRuleSetFileName(network)] = text;
+      }
+    }
+    for (final network in RuleNetwork.values) {
+      final text = renderNarrowed(exceptions, network, platform: platform);
+      if (text != null) files[directNarrowedFileName(network)] = text;
     }
     return files;
+  }
+
+  /// F23: the app and IP rules narrowed to `network`, route-only like the
+  /// `-ip` files: a `process_path_regex` rule and an `ip_cidr` rule (same
+  /// reserved-range subtraction as [renderIP]), each only when non-empty.
+  /// Null when there is no such rule, so the caller emits neither the file nor
+  /// its route rule.
+  static String? renderNarrowed(
+    List<Rule> rules,
+    RuleNetwork network, {
+    WayforkPlatform platform = WayforkPlatform.windows,
+  }) {
+    final narrowed = rules.where((rule) => rule.network == network).toList();
+    final paths = [
+      for (final rule in narrowed.where((rule) => rule.isApp))
+        platform.appPathRegex(rule.pattern),
+    ];
+    final ranges = <String>[];
+    for (final rule in narrowed.where((rule) => rule.isIP)) {
+      final prefix = IPv4Prefix.parse(rule.pattern);
+      if (prefix == null) continue;
+      ranges.addAll(
+        prefix
+            .subtractingAll(RulePattern.reservedRanges)
+            .map((value) => value.toString()),
+      );
+    }
+    final ruleObjects = <Object?>[
+      if (paths.isNotEmpty) <String, Object?>{'process_path_regex': paths},
+      if (ranges.isNotEmpty) <String, Object?>{'ip_cidr': ranges},
+    ];
+    if (ruleObjects.isEmpty) return null;
+    return '${JsonText.render(<String, Object?>{'version': version, 'rules': ruleObjects})}\n';
   }
 
   /// IP rules live in route-only twins. Reserved ranges are carved from wide
   /// patterns so they cannot capture Wayfork or unroutable addresses.
   static String renderIP(List<Rule> rules) {
     final ranges = <String>[];
-    for (final rule in rules.where((rule) => rule.isIP)) {
+    for (final rule in rules.where(
+      (rule) => rule.isIP && rule.network == null,
+    )) {
       final prefix = IPv4Prefix.parse(rule.pattern);
       if (prefix == null) continue;
       ranges.addAll(
@@ -111,7 +160,7 @@ abstract final class RuleSetGenerator {
     final domainSuffix = [...suffixes];
     final domainRegex = <String>[];
     final processPathRegex = <String>[];
-    for (final rule in rules) {
+    for (final rule in rules.where((rule) => rule.network == null)) {
       switch (rule.match) {
         case RuleMatch.exact:
           domain.add(rule.pattern);

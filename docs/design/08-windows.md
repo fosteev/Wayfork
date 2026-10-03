@@ -444,8 +444,10 @@ against `fixtures/` from `test/core/`. The deltas from the Swift core, all delib
   rules, `rules-…-tcp/udp.json` from the Dart generator, `-tcp` / `-udp` accepted by
   `validate.go`, `RuleSetID` and `planjson.go`. `heal`'s duplicate merge uses
   target + `key` + `network`, so `Discord TCP` and `Discord UDP` under one exit stay two
-  rules. UI: a *Network* field in the *Edit rule* dialog for *the app* / *address range*,
-  a chip in the row (board W20). `wayforkctl explain --network` per
+  rules. UI: a *Network* field in the inline rule editor (`RuleEditor`) for *the app* /
+  *address range*, a chip in the row (board W20). App rows gained *Edit* (menu and
+  double-click): the editor keeps the path read-only and the match as a label, so only the
+  network changes. `wayforkctl explain --network` per
   [09-wayforkctl.md](09-wayforkctl.md).
 - **Importer.** On top of the macOS strip list ([04-tunnels.md](04-tunnels.md)) the Windows
   importer drops `comp-lzo`, `compress`, `comp-noadapt`, `allow-compression` (compression

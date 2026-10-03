@@ -35,10 +35,11 @@ func ValidatePlanWith(plan RuntimePlan, options ValidateOptions) *DaemonError {
 	}
 	for name, contents := range plan.SingBox.RuleSets {
 		id, isTunnelRuleSet := RuleSetID(name)
-		if name != DirectRuleSet && name != DirectIPRuleSet && (!isTunnelRuleSet || !IsTunnelID(id)) {
+		if name != DirectRuleSet && name != DirectIPRuleSet && name != DirectTCPRuleSet &&
+			name != DirectUDPRuleSet && (!isTunnelRuleSet || !IsTunnelID(id)) {
 			return ErrPlanInvalid(fmt.Sprintf(
-				"rule-set file name %q is not rules-t-<id>.json, rules-t-<id>-ip.json, their rules-g- twins, %s or %s",
-				name, DirectRuleSet, DirectIPRuleSet,
+				"rule-set file name %q is not rules-t-<id>.json, rules-t-<id>-ip.json, -tcp.json or -udp.json, their rules-g- twins, %s, %s, %s or %s",
+				name, DirectRuleSet, DirectIPRuleSet, DirectTCPRuleSet, DirectUDPRuleSet,
 			))
 		}
 		if err := validateText(contents, name, false); err != nil {
@@ -122,8 +123,8 @@ func ValidatePlanWith(plan RuntimePlan, options ValidateOptions) *DaemonError {
 	return nil
 }
 
-// RuleSetID extracts the tunnel or group ID from rules-t-<id>.json, rules-t-<id>-ip.json
-// and their rules-g- twins (F16).
+// RuleSetID extracts the tunnel or group ID from rules-t-<id>.json, rules-t-<id>-ip.json,
+// the F23 rules-t-<id>-tcp.json / -udp.json and their rules-g- twins (F16).
 func RuleSetID(fileName string) (string, bool) {
 	var prefix string
 	for _, candidate := range []string{"rules-t-", "rules-g-"} {
@@ -135,7 +136,12 @@ func RuleSetID(fileName string) (string, bool) {
 		return "", false
 	}
 	id := strings.TrimSuffix(strings.TrimPrefix(fileName, prefix), ".json")
-	id = strings.TrimSuffix(id, "-ip")
+	for _, suffix := range ruleSetSuffixes {
+		if strings.HasSuffix(id, suffix) {
+			id = strings.TrimSuffix(id, suffix)
+			break
+		}
+	}
 	if id == "" {
 		return "", false
 	}
@@ -159,4 +165,20 @@ func validateText(text, name string, allowEmpty bool) *DaemonError {
 		return ErrPlanInvalid(name + " contains a NUL byte")
 	}
 	return nil
+}
+
+// ruleSetSuffixes are the route-only twins of a tunnel's or group's domain rule-set: IP
+// ranges (F11) and the app and IP rules narrowed to one transport (F23).
+var ruleSetSuffixes = []string{"-ip", "-tcp", "-udp"}
+
+// isRouteOnlyRuleSet reports whether a rules-t-/rules-g- file name is one of the twins, not
+// the tunnel's or group's own domain rule-set.
+func isRouteOnlyRuleSet(name string) bool {
+	base := strings.TrimSuffix(name, ".json")
+	for _, suffix := range ruleSetSuffixes {
+		if strings.HasSuffix(base, suffix) {
+			return true
+		}
+	}
+	return false
 }

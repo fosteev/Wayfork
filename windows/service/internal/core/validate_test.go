@@ -26,6 +26,9 @@ func TestPlanValidation(t *testing.T) {
 		testPlan(nil, map[string]string{DirectRuleSet: "{}"}, "{}"),
 		testPlan([]OpenVPNRuntime{a}, map[string]string{IPRuleSet(idA): "{}"}, "{}"),
 		testPlan(nil, map[string]string{DirectIPRuleSet: "{}"}, "{}"),
+		// F23: narrowed twins.
+		testPlan(nil, map[string]string{DirectTCPRuleSet: "{}", DirectUDPRuleSet: "{}"}, "{}"),
+		testPlan([]OpenVPNRuntime{a}, map[string]string{"rules-t-" + idA + "-tcp.json": "{}", "rules-g-" + idA + "-udp.json": "{}"}, "{}"),
 		testPlan([]OpenVPNRuntime{a, b}, nil, "{}"),
 	}
 	for index, plan := range valid {
@@ -92,13 +95,15 @@ func TestRuleSetIDAndTunnelID(t *testing.T) {
 		IPRuleSet(idA):         idA,
 		"rules-t-x.json":       "x",
 		"rules-t-x-ip-ip.json": "x-ip",
+		"rules-t-x-tcp.json":   "x",
+		"rules-g-x-udp.json":   "x",
 	} {
 		id, ok := RuleSetID(name)
 		if !ok || id != want {
 			t.Errorf("RuleSetID(%q) = %q, %v; want %q", name, id, ok, want)
 		}
 	}
-	for _, name := range []string{"rules-t-.json", "rules-t--ip.json", "rules-direct.json", "t-" + idA + ".ovpn", "rules-t-" + idA} {
+	for _, name := range []string{"rules-t-.json", "rules-t--ip.json", "rules-t--tcp.json", "rules-direct.json", "t-" + idA + ".ovpn", "rules-t-" + idA} {
 		if _, ok := RuleSetID(name); ok {
 			t.Errorf("RuleSetID(%q) should fail", name)
 		}

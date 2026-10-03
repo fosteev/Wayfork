@@ -144,7 +144,12 @@ abstract final class RuleValidator {
       }
     }
 
-    final firstActive = <_RuleKey, ({String ruleID, int group})>{};
+    // Shadowing: an active rule is shadowed by an earlier one in the
+    // effective order with the same pattern and match whose network covers
+    // its own (F23). The order is a rank (Direct both 0, Direct narrowed 1,
+    // exit narrowed 2, exit both 3), then the section order; without narrowed
+    // rules that is the plain section order.
+    final active = <_PatternKey, List<_Candidate>>{};
     for (final rule in store.effectiveRules) {
       final activeGroup = isSectionActive(rule.target);
       final group = groupOrder[rule.target];
@@ -154,14 +159,28 @@ abstract final class RuleValidator {
           group == null) {
         continue;
       }
-      final key = _RuleKey(rule, null);
-      final earlier = firstActive[key];
-      if (earlier != null) {
-        if (earlier.group < group) {
-          (issues[rule.id] ??= []).add(RuleIssue.shadowed(earlier.ruleID));
+      final narrowed = rule.network != null;
+      final rank = rule.isException ? (narrowed ? 1 : 0) : (narrowed ? 2 : 3);
+      (active[_PatternKey(rule)] ??= []).add(
+        _Candidate(rule.id, rule.network, rank, group),
+      );
+    }
+    for (final candidates in active.values) {
+      for (final candidate in candidates) {
+        _Candidate? earlier;
+        for (final other in candidates) {
+          if (other.ruleID != candidate.ruleID &&
+              other.precedes(candidate) &&
+              (other.network == null || other.network == candidate.network)) {
+            earlier = other;
+            break;
+          }
         }
-      } else {
-        firstActive[key] = (ruleID: rule.id, group: group);
+        if (earlier != null) {
+          (issues[candidate.ruleID] ??= []).add(
+            RuleIssue.shadowed(earlier.ruleID),
+          );
+        }
       }
     }
 
@@ -284,20 +303,47 @@ abstract final class RuleValidator {
 }
 
 final class _RuleKey {
-  const _RuleKey._(this.pattern, this.match, this.target);
-  factory _RuleKey(Rule rule, RuleTarget? target) =>
-      _RuleKey._(rule.pattern, rule.match, target);
+  const _RuleKey._(this.pattern, this.match, this.network, this.target);
+  factory _RuleKey(Rule rule, RuleTarget target) =>
+      _RuleKey._(rule.pattern, rule.match, rule.network, target);
 
   final String pattern;
   final RuleMatch match;
-  final RuleTarget? target;
+  final RuleNetwork? network;
+  final RuleTarget target;
 
   @override
   bool operator ==(Object other) =>
       other is _RuleKey &&
       pattern == other.pattern &&
       match == other.match &&
+      network == other.network &&
       target == other.target;
   @override
-  int get hashCode => Object.hash(pattern, match, target);
+  int get hashCode => Object.hash(pattern, match, network, target);
+}
+
+final class _PatternKey {
+  _PatternKey(Rule rule) : pattern = rule.pattern, match = rule.match;
+
+  final String pattern;
+  final RuleMatch match;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _PatternKey && pattern == other.pattern && match == other.match;
+  @override
+  int get hashCode => Object.hash(pattern, match);
+}
+
+final class _Candidate {
+  const _Candidate(this.ruleID, this.network, this.rank, this.group);
+
+  final String ruleID;
+  final RuleNetwork? network;
+  final int rank;
+  final int group;
+
+  bool precedes(_Candidate other) =>
+      rank < other.rank || (rank == other.rank && group < other.group);
 }

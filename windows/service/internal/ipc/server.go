@@ -124,6 +124,10 @@ func (c *Conn) dispatch(ctx context.Context, message Message) {
 			c.reply(message.ID, nil, "explain needs exactly one of process, host, ip")
 			return
 		}
+		if !query.ValidNetwork() {
+			c.reply(message.ID, nil, "explain network must be tcp or udp")
+			return
+		}
 		result = c.handler.Explain(ctx, query)
 	default:
 		c.reply(message.ID, nil, "unknown method "+message.Method)

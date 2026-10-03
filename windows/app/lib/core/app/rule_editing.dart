@@ -88,16 +88,18 @@ final class RuleEditingFailed extends RuleEditingResult {
 /// Validation shared by the tray quick add and the inline rule editor
 /// (docs/design/02-ux.md, `rule.invalid`).
 abstract final class RuleEditing {
-  /// Normalizes [input] for [match] and rejects duplicates within [target]'s
-  /// group.
+  /// Normalizes [input] for [match] and rejects duplicates (same pattern,
+  /// match and F23 [network]) within [target]'s group.
   static RuleEditingResult normalize(
     String input, {
     required RuleMatch match,
     required RuleTarget target,
     required Store store,
     String? excluding,
+    RuleNetwork? network,
     WayforkPlatform platform = WayforkPlatform.windows,
   }) {
+    final wanted = RuleNetwork.normalized(network, match);
     final String pattern;
     try {
       pattern = RulePattern.normalize(input, match: match, platform: platform);
@@ -107,7 +109,8 @@ abstract final class RuleEditing {
     final duplicate = store.rules.any((rule) {
       if (rule.id == excluding ||
           rule.target != target ||
-          rule.match != match) {
+          rule.match != match ||
+          rule.network != wanted) {
         return false;
       }
       // Two versions of the same Squirrel/MSIX install are the same rule
@@ -198,11 +201,14 @@ final class QuickAddInvalid extends QuickAddOutcome {
 /// "Quick add").
 abstract final class QuickAdd {
   /// Match type is `suffix`; a `*` in the input switches to `wildcard`.
-  /// A direct target adds an exception (F8).
+  /// A direct target adds an exception (F8). F23: an existing rule is found by
+  /// pattern and [network], so the tray (no network) never touches a narrowed
+  /// rule.
   static QuickAddOutcome evaluate({
     required String input,
     required RuleTarget target,
     required Store store,
+    RuleNetwork? network,
   }) {
     final match = RulePattern.inferMatch(input);
     final String pattern;
@@ -212,20 +218,24 @@ abstract final class QuickAdd {
       return QuickAddOutcome.invalid(RuleEditing.patternMessage(error.kind));
     }
     for (final existing in store.rules) {
-      if (existing.pattern == pattern) {
+      if (existing.pattern == pattern && existing.network == network) {
         return QuickAddOutcome.update(
           existing.copyWith(target: target, match: match, isEnabled: true),
         );
       }
     }
     return QuickAddOutcome.add(
-      Rule(pattern: pattern, match: match, target: target),
+      Rule(pattern: pattern, match: match, target: target, network: network),
     );
   }
 
   /// True when the input names a rule that already exists (the button reads
   /// "Update").
-  static bool isUpdate({required String input, required Store store}) {
+  static bool isUpdate({
+    required String input,
+    required Store store,
+    RuleNetwork? network,
+  }) {
     final match = RulePattern.inferMatch(input);
     final String pattern;
     try {
@@ -233,7 +243,9 @@ abstract final class QuickAdd {
     } on RulePatternException {
       return false;
     }
-    return store.rules.any((rule) => rule.pattern == pattern);
+    return store.rules.any(
+      (rule) => rule.pattern == pattern && rule.network == network,
+    );
   }
 
   /// The normalized host when the clipboard looks like a URL or a hostname;

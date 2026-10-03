@@ -3,6 +3,7 @@ import 'package:wayfork/core/json_text.dart';
 import 'package:wayfork/core/model/settings.dart';
 import 'package:wayfork/core/model/store.dart';
 import 'package:wayfork/core/model/local_proxy.dart';
+import 'package:wayfork/core/model/rule.dart';
 import 'package:wayfork/core/model/tunnel.dart';
 import 'package:wayfork/core/model/tunnel_group.dart';
 import 'package:wayfork/core/platform.dart';
@@ -303,6 +304,29 @@ abstract final class SingBoxConfigGenerator {
         path: RuleSetGenerator.directIPFileName,
       ),
     ];
+    // F23: Direct rules narrowed to one transport, right behind the
+    // both-network ones.
+    for (final network in RuleNetwork.values.where(
+      (network) =>
+          RuleSetGenerator.renderNarrowed(
+            exceptions,
+            network,
+            platform: input.platform,
+          ) !=
+          null,
+    )) {
+      routeRules.add({
+        'rule_set': [RuleSetGenerator.directNarrowedTag(network)],
+        'network': [network.jsonValue],
+        'outbound': 'direct',
+      });
+      ruleSetRefs.add(
+        localRuleSet(
+          tag: RuleSetGenerator.directNarrowedTag(network),
+          path: RuleSetGenerator.directNarrowedFileName(network),
+        ),
+      );
+    }
     // F18: listed names are rejected after the exceptions and before every
     // tunnel rule-set, so the list wins whichever tunnel a rule would send
     // them to.
@@ -318,6 +342,32 @@ abstract final class SingBoxConfigGenerator {
         'format': 'binary',
         'path': blockList.path,
       });
+    }
+    // F23: narrowed tunnel and group rules go in here, after the block list
+    // and before the both-network rules, so they win over them whatever the
+    // section order.
+    final narrowedInsertIndex = routeRules.length;
+    final narrowedRouteRules = <Map<String, Object?>>[];
+    void addNarrowed(RoutedExit exit) {
+      for (final network in RuleNetwork.values) {
+        final text = RuleSetGenerator.renderNarrowed(
+          activeRules[exit.id] ?? const [],
+          network,
+          platform: input.platform,
+        );
+        if (text == null) continue;
+        narrowedRouteRules.add({
+          'rule_set': [exit.narrowedRuleSetTag(network)],
+          'network': [network.jsonValue],
+          'outbound': exit.outboundTag,
+        });
+        ruleSetRefs.add(
+          localRuleSet(
+            tag: exit.narrowedRuleSetTag(network),
+            path: exit.narrowedRuleSetFileName(network),
+          ),
+        );
+      }
     }
 
     for (final tunnel in routed) {
@@ -398,6 +448,7 @@ abstract final class SingBoxConfigGenerator {
       ruleSetRefs.add(
         localRuleSet(tag: tunnel.ipRuleSetTag, path: tunnel.ipRuleSetFileName),
       );
+      addNarrowed(RoutedExit.tunnel(tunnel));
     }
     for (final group in routedGroups) {
       final members = group.members
@@ -436,7 +487,9 @@ abstract final class SingBoxConfigGenerator {
       ruleSetRefs.add(
         localRuleSet(tag: group.ipRuleSetTag, path: group.ipRuleSetFileName),
       );
+      addNarrowed(RoutedExit.group(group));
     }
+    routeRules.insertAll(narrowedInsertIndex, narrowedRouteRules);
     routeRules.add({'ip_is_private': true, 'outbound': 'direct'});
 
     // Tunnel IP rules inside LAN ranges must enter the TUN. Direct IP rules do

@@ -3,6 +3,9 @@ part of 'app_model.dart';
 // Rule management (F2, F8): grouped by target (Direct or a tunnel), ordered
 // within the group.
 
+/// Marks an `updateRule` call that leaves the rule's F23 network alone.
+const _keepNetwork = Object();
+
 extension AppModelRules on AppModel {
   /// Quick add from the tray flyout. Returns an error message or null.
   Future<String?> quickAdd({
@@ -48,6 +51,7 @@ extension AppModelRules on AppModel {
     required String pattern,
     required RuleMatch match,
     required RuleTarget target,
+    RuleNetwork? network,
   }) async {
     final translated = _translateFakeIP(pattern, match);
     if (translated.message != null) return translated.message;
@@ -56,6 +60,7 @@ extension AppModelRules on AppModel {
       match: translated.match!,
       target: target,
       store: _store,
+      network: network,
     )) {
       case RuleEditingFailed(:final failure):
         return RuleEditing.message(failure);
@@ -64,6 +69,7 @@ extension AppModelRules on AppModel {
           pattern: pattern,
           match: translated.match!,
           target: target,
+          network: network,
         );
         await update((store) {
           final rules = [...store.rules];
@@ -74,30 +80,40 @@ extension AppModelRules on AppModel {
     }
   }
 
-  /// Edits pattern and match of an existing rule. Returns an error message
-  /// or null.
+  /// Edits pattern, match and (F23) network of an existing rule. Without
+  /// [network] the rule keeps its own; a domain match clears it. Returns an
+  /// error message or null.
   Future<String?> updateRule(
     String id, {
     required String pattern,
     required RuleMatch match,
+    Object? network = _keepNetwork,
   }) async {
     final translated = _translateFakeIP(pattern, match);
     if (translated.message != null) return translated.message;
     final rule = _store.rules.firstWhereOrNull((rule) => rule.id == id);
     if (rule == null) return null;
+    final newNetwork = identical(network, _keepNetwork)
+        ? rule.network
+        : network as RuleNetwork?;
     switch (RuleEditing.normalize(
       translated.input,
       match: translated.match!,
       target: rule.target,
       store: _store,
       excluding: id,
+      network: newNetwork,
     )) {
       case RuleEditingFailed(:final failure):
         return RuleEditing.message(failure);
       case RuleEditingSuccess(:final pattern):
         await _updateRule(
           id,
-          (rule) => rule.copyWith(pattern: pattern, match: translated.match),
+          (rule) => rule.copyWith(
+            pattern: pattern,
+            match: translated.match,
+            network: newNetwork,
+          ),
         );
         return null;
     }

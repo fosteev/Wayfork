@@ -398,5 +398,32 @@ void main() {
       final healed = VersionedAppPath.heal(store, files);
       expect(identical(healed, store), isTrue);
     });
+
+    test('keeps tcp and udp rules for one app apart', () {
+      const newest =
+          r'C:\Users\Alex\AppData\Local\Discord\app-1.0.9260\Discord.exe';
+      final files = FakeAppFiles()
+        ..addDirectory(parent, 'app-1.0.9260')
+        ..addFile(newest, DateTime(2024, 1, 2));
+      Rule narrowed(RuleNetwork? network) => Rule.tunnel(
+        pattern: newest,
+        match: RuleMatch.app,
+        tunnelID: '00000000-0000-0000-0000-000000000001',
+        network: network,
+      );
+      final store = Store(
+        rules: [
+          narrowed(RuleNetwork.tcp),
+          narrowed(RuleNetwork.udp),
+          narrowed(null),
+        ],
+      );
+      expect(identical(VersionedAppPath.heal(store, files), store), isTrue);
+      final merged = VersionedAppPath.heal(
+        Store(rules: [narrowed(RuleNetwork.udp), narrowed(RuleNetwork.udp)]),
+        files,
+      );
+      expect(merged.rules, hasLength(1));
+    });
   });
 }

@@ -16,7 +16,7 @@ func (p RuntimePlan) RoutedGroupIDs() []string { return p.routedIDs("rules-g-") 
 func (p RuntimePlan) routedIDs(prefix string) []string {
 	ids := []string{}
 	for name := range p.SingBox.RuleSets {
-		if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".json") || strings.HasSuffix(name, "-ip.json") {
+		if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".json") || isRouteOnlyRuleSet(name) {
 			continue
 		}
 		ids = append(ids, strings.TrimSuffix(strings.TrimPrefix(name, prefix), ".json"))
@@ -141,6 +141,9 @@ func (p SingBoxPlan) HasBlockList() bool { return len(p.BinaryRuleSetPaths()) > 
 type ExplainRule struct {
 	Outbound string
 	Tags     []string
+	// Network is the rule's `network` (F23): "tcp" or "udp" for a narrowed rule, nil for one
+	// that covers both.
+	Network []string
 }
 
 // RouteRules lists the config's `route.rules` entries that route by rule-set, in config
@@ -165,7 +168,14 @@ func (p SingBoxPlan) RouteRules() []ExplainRule {
 		if len(tags) == 0 {
 			continue
 		}
-		result = append(result, ExplainRule{Outbound: outbound, Tags: tags})
+		var network []string
+		networkRaw, _ := rule["network"].([]any)
+		for _, item := range networkRaw {
+			if value, ok := item.(string); ok {
+				network = append(network, value)
+			}
+		}
+		result = append(result, ExplainRule{Outbound: outbound, Tags: tags, Network: network})
 	}
 	return result
 }

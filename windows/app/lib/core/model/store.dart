@@ -42,7 +42,7 @@ final class Store {
           ).map((value) => TunnelGroup.fromJson(_map(value, 'group'))).toList(),
   );
 
-  static const currentSchemaVersion = 2;
+  static const currentSchemaVersion = 3;
   static final empty = Store();
 
   final int schemaVersion;
@@ -344,6 +344,8 @@ final class StoreCodecException implements Exception {
 abstract final class StoreCodec {
   static final List<StoreMigration> migrations = [
     StoreMigration(fromVersion: 1, apply: (_) {}),
+    // F23 added an optional rule field only.
+    StoreMigration(fromVersion: 2, apply: (_) {}),
   ];
 
   static String encode(Store store) => JsonCoding.encodePretty(store.toJson());

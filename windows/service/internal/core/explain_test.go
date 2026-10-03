@@ -116,3 +116,52 @@ func TestExplainResultMarshalJSONNeverEmitsNullMatches(t *testing.T) {
 		t.Errorf("wire = %s, want %s", data, want)
 	}
 }
+
+func TestRouteRulesReadsNetwork(t *testing.T) {
+	plan := SingBoxPlan{Config: `{"route":{"rules":[
+      {"outbound":"direct","rule_set":["rules-direct-udp"],"network":["udp"]},
+      {"outbound":"t-a","rule_set":["rules-app"]}]}}`}
+	want := []ExplainRule{
+		{Outbound: "direct", Tags: []string{"rules-direct-udp"}, Network: []string{"udp"}},
+		{Outbound: "t-a", Tags: []string{"rules-app"}},
+	}
+	if got := plan.RouteRules(); !reflect.DeepEqual(got, want) {
+		t.Errorf("RouteRules = %+v", got)
+	}
+}
+
+// Discord: UDP goes Direct, the rest through tunnel-a. A narrowed rule answers only the
+// query with its network (F23).
+func TestExplainSkipsRulesOfAnotherNetwork(t *testing.T) {
+	selectors := map[string]RuleSetSelectors{}
+	rules := []ExplainRule{
+		{Outbound: "direct", Tags: []string{"rules-direct-udp"}, Network: []string{"udp"}},
+		{Outbound: "t-tunnel-a", Tags: []string{"rules-direct-udp"}},
+	}
+	selectors["rules-direct-udp"] = RuleSetSelectors{DomainSuffix: StringSet{".discord.example": {}}}
+	query := ExplainQuery{Host: "voice.discord.example"}
+	query.Network = "tcp"
+	tcp := Explain(query, rules, selectors, "direct")
+	query.Network = "udp"
+	udp := Explain(query, rules, selectors, "direct")
+	query.Network = ""
+	unasked := Explain(query, rules, selectors, "direct")
+	if len(tcp.Matches) != 1 || tcp.Matches[0].Exit != "tunnel-a" {
+		t.Errorf("tcp = %+v", tcp.Matches)
+	}
+	if len(udp.Matches) != 2 || udp.Matches[0].Exit != "direct" {
+		t.Errorf("udp = %+v", udp.Matches)
+	}
+	if len(unasked.Matches) != 2 {
+		t.Errorf("no network = %+v", unasked.Matches)
+	}
+	if _, both := CombineExplain(tcp, udp).(ExplainBoth); !both {
+		t.Error("differing answers must come back as ExplainBoth")
+	}
+	if _, same := CombineExplain(tcp, tcp).(ExplainResult); !same {
+		t.Error("equal answers keep today's shape")
+	}
+	if (ExplainQuery{Network: "sctp"}).ValidNetwork() || !(ExplainQuery{Network: "udp"}).ValidNetwork() {
+		t.Error("ValidNetwork")
+	}
+}

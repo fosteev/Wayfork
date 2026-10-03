@@ -26,6 +26,29 @@ enum RuleMatch {
   }
 }
 
+/// F23: the transport an app or IP rule is narrowed to; null on a rule means both.
+enum RuleNetwork {
+  tcp('tcp'),
+  udp('udp');
+
+  const RuleNetwork(this.jsonValue);
+
+  final String jsonValue;
+
+  static RuleNetwork fromJson(Object? value) {
+    if (value is String) {
+      for (final network in values) {
+        if (network.jsonValue == value) return network;
+      }
+    }
+    throw FormatException('Unknown rule network: $value');
+  }
+
+  /// Domain rules feed DNS and are never narrowed: only app and IP rules keep a network.
+  static RuleNetwork? normalized(RuleNetwork? network, RuleMatch match) =>
+      match.isApp || match.isIP ? network : null;
+}
+
 sealed class RuleTarget {
   const RuleTarget();
 
@@ -107,6 +130,7 @@ final class Rule {
     required RuleTarget target,
     bool isEnabled = true,
     String? note,
+    RuleNetwork? network,
   }) => Rule._(
     id: _uuid(id ?? Uuid.generate(), 'id'),
     pattern: pattern,
@@ -114,6 +138,7 @@ final class Rule {
     target: target,
     isEnabled: isEnabled,
     note: note,
+    network: RuleNetwork.normalized(network, match),
   );
 
   factory Rule.tunnel({
@@ -123,6 +148,7 @@ final class Rule {
     required String tunnelID,
     bool isEnabled = true,
     String? note,
+    RuleNetwork? network,
   }) => Rule(
     id: id,
     pattern: pattern,
@@ -130,6 +156,7 @@ final class Rule {
     target: RuleTargetTunnel(tunnelID),
     isEnabled: isEnabled,
     note: note,
+    network: network,
   );
 
   const Rule._({
@@ -139,6 +166,7 @@ final class Rule {
     required this.target,
     required this.isEnabled,
     required this.note,
+    required this.network,
   });
 
   factory Rule.fromJson(Map<String, Object?> json) {
@@ -163,6 +191,9 @@ final class Rule {
       target: target,
       isEnabled: _requiredBool(json, 'isEnabled'),
       note: _optionalString(json, 'note'),
+      network: json['network'] == null
+          ? null
+          : RuleNetwork.fromJson(json['network']),
     );
   }
 
@@ -172,6 +203,9 @@ final class Rule {
   final RuleTarget target;
   final bool isEnabled;
   final String? note;
+
+  /// F23: tcp or udp for an app or IP rule narrowed to one transport; null = both.
+  final RuleNetwork? network;
 
   String? get tunnelID => target.tunnelID;
 
@@ -193,6 +227,7 @@ final class Rule {
       'target': 'direct',
     'isEnabled': isEnabled,
     if (note != null) 'note': note,
+    if (network != null) 'network': network!.jsonValue,
   };
 
   Rule copyWith({
@@ -202,6 +237,7 @@ final class Rule {
     RuleTarget? target,
     bool? isEnabled,
     Object? note = _unset,
+    Object? network = _unset,
   }) => Rule(
     id: id ?? this.id,
     pattern: pattern ?? this.pattern,
@@ -209,6 +245,9 @@ final class Rule {
     target: target ?? this.target,
     isEnabled: isEnabled ?? this.isEnabled,
     note: identical(note, _unset) ? this.note : note as String?,
+    network: identical(network, _unset)
+        ? this.network
+        : network as RuleNetwork?,
   );
 
   @override
@@ -219,10 +258,12 @@ final class Rule {
       match == other.match &&
       target == other.target &&
       isEnabled == other.isEnabled &&
-      note == other.note;
+      note == other.note &&
+      network == other.network;
 
   @override
-  int get hashCode => Object.hash(id, pattern, match, target, isEnabled, note);
+  int get hashCode =>
+      Object.hash(id, pattern, match, target, isEnabled, note, network);
 }
 
 const _unset = Object();

@@ -318,6 +318,7 @@ func TestPlanHelpersForGroupsProxiesAndTheBlockList(t *testing.T) {
 		`"rule_set":[{"type":"local","tag":"rules-direct","format":"source","path":"rules-direct.json"},{"type":"local","tag":"block-ads","format":"binary","path":"C:\\Program Files\\Wayfork\\rulesets\\block-ads.srs"}]}}`
 	plan := RuntimePlan{Version: PlanVersion, SingBox: SingBoxPlan{Config: config, RuleSets: map[string]string{
 		"rules-t-" + tunnelA + ".json": "{}", "rules-g-" + tunnelB + ".json": "{}", "rules-g-" + tunnelB + "-ip.json": "{}", DirectRuleSet: "{}",
+		"rules-t-" + tunnelA + "-tcp.json": "{}", "rules-g-" + tunnelB + "-udp.json": "{}", DirectUDPRuleSet: "{}",
 	}}}
 	if got := plan.RoutedTunnelIDs(); len(got) != 1 || got[0] != tunnelA {
 		t.Fatalf("routed tunnels = %v", got)
