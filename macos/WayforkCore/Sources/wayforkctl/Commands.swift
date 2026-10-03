@@ -215,9 +215,25 @@ func runControl(_ command: String, _ arguments: ArraySlice<String>) throws {
             withJSONObject: result,
             options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes, .fragmentsAllowed])
         FileHandle.standardOutput.write(data + Data("\n".utf8))
+        // An app that predates F23 drops the unknown `network` key and adds a rule for
+        // both networks; say so instead of exiting 0.
+        if request.method == .rulesAdd, let network = request.params.network,
+            networkOfAddedRule(result) != network.rawValue
+        {
+            fail(
+                "the app ignored --network (it predates F23) and the rule covers TCP and UDP; "
+                    + "run `wayforkctl revert` and update Wayfork", code: 1)
+        }
     case .failure(let error):
         fail("\(error.code.rawValue): \(error.message)", code: 1)
     }
+}
+
+/// `rule.network` of a `rules.add` reply, or nil when the reply has none.
+private func networkOfAddedRule(_ result: Any) -> String? {
+    guard let reply = result as? [String: Any], let rule = reply["rule"] as? [String: Any]
+    else { return nil }
+    return rule["network"] as? String
 }
 
 private func rulesRequest(_ arguments: ArraySlice<String>) throws -> ControlRequest {

@@ -113,8 +113,9 @@ Second pass: `StoreEdit.insertRule` refused a narrowed sibling of a both-network
 (`rules add <app> --via direct --network udp` → "another rule exists"; reverting `rules remove`
 of such a rule lost it) — the guard now compares `network` too, test in `StoreEditTests`.
 `rules` lists in section order, not route order: docs softened (09-wayforkctl.md,
-`Store.effectiveRules`, help). Open: a new `wayforkctl rules add --network` against a pre-F23
-app gets an unnarrowed rule with exit 0 (reply's `rule.network` is not checked).
+`Store.effectiveRules`, help). Closed 2026-10-03: a new `wayforkctl rules add --network`
+against a pre-F23 app (which drops the key and adds a rule for both networks) now checks the
+reply's `rule.network`, prints the reply and exits 1 with a hint to `wayforkctl revert`.
 
 ### 3. Windows — WM21 · sonnet, high · after stage 2
 
