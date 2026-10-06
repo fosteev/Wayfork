@@ -1193,12 +1193,12 @@ final class AppModel extends ChangeNotifier {
     }
     _lastPlan = result.plan;
     final openVPN = result.plan.openVPN.length;
-    final vless = result.routedTunnels.length - openVPN;
+    final native = result.routedTunnels.length - openVPN;
     final effective = systemDNS.effectiveServers(override);
     logs.app(
       LogLevel.info,
       'apply: plan ${_short(result.plan.planHash)} ($openVPN openvpn, '
-      '$vless vless, ${StatusText.activeRuleCount(_store)} rules; system '
+      '$native native, ${StatusText.activeRuleCount(_store)} rules; system '
       'dns ${effective.isEmpty ? 'none' : effective.join(' ')}, gateway '
       '${systemDNS.router ?? 'none'})',
     );
@@ -1281,10 +1281,7 @@ final class AppModel extends ChangeNotifier {
   Future<void> recomputeMissingSecrets() async {
     final missing = <String>{};
     for (final tunnel in _store.tunnels) {
-      final key = SecretKey(
-        tunnel.kind.isOpenVPN ? SecretKind.ovpn : SecretKind.uuid,
-        tunnel.id,
-      );
+      final key = SecretKey(requiredSecretKind(tunnel.kind), tunnel.id);
       String? value;
       try {
         value = await _secrets.read(key);

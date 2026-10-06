@@ -60,6 +60,17 @@ public enum SecretKey: Sendable, Hashable {
             .password(tunnelID),
         ]
     }
+
+    /// The secret a tunnel cannot run without. Exhaustive on purpose: a new tunnel kind must
+    /// pick its slot here instead of silently falling through to another kind's.
+    public static func required(for tunnel: Tunnel) -> SecretKey {
+        switch tunnel.kind {
+        case .openVPN: .ovpn(tunnel.id)
+        case .vless, .vmess: .uuid(tunnel.id)
+        case .wireGuard: .privateKey(tunnel.id)
+        case .shadowsocks, .trojan: .password(tunnel.id)
+        }
+    }
 }
 
 public enum SecretStoreError: Error, Equatable, Sendable {

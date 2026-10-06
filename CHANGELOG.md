@@ -6,6 +6,12 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- WireGuard, Shadowsocks and Trojan tunnels were shown as "Not ready · … missing" (and
+  could not be switched on) although their secret was stored; the readiness check looked
+  in the wrong Keychain/secret slot. Fixed on macOS and Windows (#4).
+
 ## [0.10.0] — 2026-10-03
 
 TCP only / UDP only for app and IP rules (F23, issue #3) on both platforms, and the

@@ -199,3 +199,55 @@ private func temporaryDirectory() -> URL {
     #expect(loaded.vmessUUIDs[vmessID] == "00000000-0000-4000-8000-000000000044")
     #expect(loaded.vlessUUIDs.isEmpty)
 }
+
+@Test func requiredSecretSlotMatchesEveryTunnelKind() {
+    let id = UUID()
+    func tunnel(_ kind: TunnelKind) -> Tunnel { Tunnel(id: id, name: "T", slot: 0, kind: kind) }
+    let kinds: [(TunnelKind, SecretKey)] = [
+        (
+            .openVPN(
+                OpenVPNMeta(
+                    remotes: [Remote(host: "vpn.example.com", port: 1194, proto: "udp")],
+                    needsCredentials: false, needsKeyPassphrase: false, configHash: "abc")),
+            .ovpn(id)
+        ),
+        (
+            .vless(
+                VLESSMeta(
+                    server: "h.example.com", port: 443, flow: "", security: .tls,
+                    sni: "h.example.com", fingerprint: "chrome")),
+            .uuid(id)
+        ),
+        (
+            .vmess(
+                VMessMeta(
+                    server: "vmess.example.net", port: 443, security: "auto",
+                    tlsSecurity: .tls)),
+            .uuid(id)
+        ),
+        (
+            .wireGuard(
+                WireGuardMeta(
+                    addresses: ["10.9.0.2/32"],
+                    peers: [
+                        WireGuardPeer(
+                            host: "wg.example.net", port: 51820,
+                            publicKey: "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=",
+                            hasPresharedKey: false, allowedIPs: ["0.0.0.0/0"])
+                    ])),
+            .privateKey(id)
+        ),
+        (
+            .shadowsocks(
+                ShadowsocksMeta(server: "ss.example.net", port: 8388, method: "aes-256-gcm")),
+            .password(id)
+        ),
+        (
+            .trojan(TrojanMeta(server: "trojan.example.net", port: 443, security: .tls)),
+            .password(id)
+        ),
+    ]
+    for (kind, expected) in kinds {
+        #expect(SecretKey.required(for: tunnel(kind)) == expected)
+    }
+}

@@ -881,10 +881,10 @@ final class AppModel {
         }
         lastPlan = result.plan
         let openVPN = result.plan.openVPN.count
-        let vless = result.routedTunnels.count - openVPN
+        let native = result.routedTunnels.count - openVPN
         logs.app(
             .info,
-            "apply: plan \(result.plan.planHash.prefix(8)) (\(openVPN) openvpn, \(vless) vless, \(StatusText.activeRuleCount(store)) rules; system dns \(systemDNS.effectiveServers(override: override).isEmpty ? "none" : systemDNS.effectiveServers(override: override).joined(separator: " ")), gateway \(systemDNS.router ?? "none"))"
+            "apply: plan \(result.plan.planHash.prefix(8)) (\(openVPN) openvpn, \(native) native, \(StatusText.activeRuleCount(store)) rules; system dns \(systemDNS.effectiveServers(override: override).isEmpty ? "none" : systemDNS.effectiveServers(override: override).joined(separator: " ")), gateway \(systemDNS.router ?? "none"))"
         )
         do {
             let reply = try await client.apply(result.plan)
@@ -940,7 +940,7 @@ final class AppModel {
     func recomputeMissingSecrets() {
         var missing: Set<UUID> = []
         for tunnel in store.tunnels {
-            let key: SecretKey = tunnel.kind.isOpenVPN ? .ovpn(tunnel.id) : .uuid(tunnel.id)
+            let key = SecretKey.required(for: tunnel)
             if (try? secrets.read(key)) ?? nil == nil {
                 missing.insert(tunnel.id)
             }

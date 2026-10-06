@@ -1,6 +1,7 @@
 import 'package:wayfork/core/json_text.dart';
 import 'package:wayfork/core/model/export_document.dart';
 import 'package:wayfork/core/model/store.dart';
+import 'package:wayfork/core/model/tunnel.dart';
 import 'package:wayfork/core/support/uuid.dart';
 
 enum SecretKind {
@@ -15,6 +16,15 @@ enum SecretKind {
   const SecretKind(this.jsonValue);
   final String jsonValue;
 }
+
+/// The secret a tunnel cannot work without. Exhaustive on purpose: a new kind
+/// must pick its key here instead of silently falling through.
+SecretKind requiredSecretKind(TunnelKind kind) => switch (kind) {
+  TunnelKindOpenVPN() => SecretKind.ovpn,
+  TunnelKindVLESS() || TunnelKindVMess() => SecretKind.uuid,
+  TunnelKindWireGuard() => SecretKind.privateKey,
+  TunnelKindShadowsocks() || TunnelKindTrojan() => SecretKind.password,
+};
 
 final class SecretKey {
   SecretKey(this.kind, String tunnelID)
