@@ -6,6 +6,11 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-10-07
+
+A fix for tunnels imported from WireGuard, Shadowsocks and Trojan configs (issue #4) on
+both platforms; everything else as in 0.10.0.
+
 ### Fixed
 
 - WireGuard, Shadowsocks and Trojan tunnels were shown as "Not ready · … missing" (and
