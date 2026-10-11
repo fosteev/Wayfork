@@ -7,6 +7,22 @@ licences. Exact versions and checksums are pinned in
 [scripts/versions.env](scripts/versions.env); the corresponding source code is available
 at the links below for the pinned version.
 
+The full licence texts are in [licenses/](licenses/), copied verbatim from upstream at the
+pinned versions, and ship with every build next to this file: `Wayfork.app/Contents/Resources/licenses/`
+on macOS, `<install folder>\licenses\` on Windows.
+
+| Component | Licence text |
+|---|---|
+| sing-box | `licenses/sing-box.txt` (notice and extra term; full GPL-3.0 text in `LICENSE`) |
+| OpenVPN, LZO | `licenses/openvpn-COPYING.txt`, `licenses/openvpn-COPYRIGHT.GPL.txt` (GPL-2.0 text) |
+| OpenSSL | `licenses/openssl.txt` |
+| LZ4 | `licenses/lz4.txt` |
+| pkcs11-helper | `licenses/pkcs11-helper.txt` |
+| ovpn-dco | `licenses/ovpn-dco-win.txt` |
+| oisd block list | GPL-3.0, same text as `LICENSE` |
+| `golang.org/x/sys` | `licenses/golang-x-sys.txt` |
+| `golang.zx2c4.com/wireguard/windows` | `licenses/wireguard-windows.txt` |
+
 ## sing-box
 
 - Shipped as: `sing-box` (macOS), `sing-box.exe` with embedded wintun (Windows)

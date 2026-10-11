@@ -253,6 +253,11 @@ try {
         Copy-Item -LiteralPath $driverDir -Destination (Join-Path $payload 'drivers\ovpn-dco') -Recurse -Force
         # F18: the compiled block list, referenced by the service at <install>\rulesets\block-ads.srs.
         Copy-Item -LiteralPath $rulesetsDir -Destination (Join-Path $payload 'rulesets') -Recurse -Force
+        # Licence texts for Wayfork and the bundled third-party components, at <install>\licenses.
+        $licensesStage = Join-Path $payload 'licenses'
+        [void](New-Item -ItemType Directory -Path $licensesStage -Force)
+        Copy-Item -LiteralPath (Join-Path $root 'LICENSE'), (Join-Path $root 'THIRD_PARTY_NOTICES.md') -Destination $licensesStage -Force
+        Copy-Item -Path (Join-Path $root 'licenses\*.txt') -Destination $licensesStage -Force
 
         Log "Building the service ($architecture)"
         $ldflags = "-s -w -X wayfork/service/internal/service.Version=$Version"
