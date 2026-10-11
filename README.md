@@ -354,4 +354,9 @@ prototypes, [variant-b.html](docs/design/prototype/variant-b.html) and
 
 ## License
 
-TBD
+Copyright (C) 2026 Andrey Fosteev. Wayfork is free software, licensed under the
+[GNU General Public License v3.0 or later](LICENSE).
+
+Release builds bundle third-party binaries (sing-box, OpenVPN and its libraries, the
+ovpn-dco driver) and the oisd block list under their own licences — see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
