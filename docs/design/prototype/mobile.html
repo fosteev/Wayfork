@@ -289,7 +289,7 @@ svg.sp.a polyline { stroke:var(--amber); } svg.sp.a circle { fill:var(--amber); 
 <h1>Wayfork for phones</h1>
 <div class="lang" role="group" aria-label="Screen language"><button type="button" id="lang-en" data-lang="en" aria-pressed="true">Screens in English</button><button type="button" id="lang-ru" data-lang="ru" aria-pressed="false">Русский</button></div>
 <div class="intro">
-  <p>A first sketch of the mobile client, drawn before the Features phase so we can argue about the shape instead of a list. Android is drawn in full (Flutter, Material 3), iPhone only where it behaves differently. Names, sites and numbers are examples.</p>
+  <p>A first sketch of the mobile client, drawn before the Features phase so we can argue about the shape instead of a list. Android is drawn in full (Flutter, Material 3), iPhone only where it behaves differently; the iPhone app comes after the Android release and its end-to-end run (MM9). Names, sites and numbers are examples.</p>
   <p>The model on a phone: the OS gives one VPN connection; inside it sing-box sends each site to a tunnel or straight out, exactly as on the Mac. Every tunnel kind sing-box carries natively works. OpenVPN does not.</p>
 </div>
 
@@ -301,7 +301,7 @@ svg.sp.a polyline { stroke:var(--amber); } svg.sp.a circle { fill:var(--amber); 
       <li>Home opens with one big on/off and the same summary sentence as the Mac popover. Tunnel cards keep status, latency and sparkline; Recent keeps “Route via”. <span class="tag">P1</span></li>
       <li>Routing a site you are looking at should not need typing: Wayfork is a <b>Share target</b>. Share a page from the browser and pick a tunnel. <span class="tag">S3</span></li>
       <li>Tunnels arrive by <b>QR code</b> (what VPN panels show), by a link already on the clipboard, by subscription URL or file. A tunnel can be shown as a QR to move it to another phone. <span class="tag">T2–T4</span></li>
-      <li>A backup from the Mac or Windows imports as is. OpenVPN tunnels come in as <b>Desktop only</b>: listed, greyed, their sites go as usual on the phone. <span class="tag">S1, T1</span></li>
+      <li>A backup from the Mac or Windows imports as is. OpenVPN tunnels come in as <b>Desktop only</b>: listed, greyed, their sites go as usual on the phone, as if they had no rule: through the default tunnel when there is one, otherwise direct. <span class="tag">S1, T1</span></li>
       <li>Android keeps app rules (by package) and TCP/UDP only. iPhone has no app rules; the Apps filter is not there at all. <span class="tag">S4, I3</span></li>
       <li>Outside the app: a persistent notification with rates and Turn off, a Quick Settings tile, and Android's Always-on VPN for start at boot. <span class="tag">X1</span></li>
       <li>First run is four steps: add a tunnel, pick sites, allow the VPN, try it. <span class="tag">F1–F4</span></li>
@@ -316,11 +316,12 @@ svg.sp.a polyline { stroke:var(--amber); } svg.sp.a circle { fill:var(--amber); 
       <li><b>Local proxy port</b> (F17), <b>wayforkctl</b> (F21), <b>system resolver override</b> (F12): no use or no hook on a phone. All phone DNS already goes through the VPN.</li>
       <li>Full log viewer: More › Logs shows Problems only, plus Share diagnostics.</li>
     </ul>
-    <h3 style="margin-top:16px">Open questions</h3>
+    <h3 style="margin-top:16px">Decided 2026-10-15 (MB0, awaiting review)</h3>
     <ul>
-      <li>Are a desktop-only tunnel's sites “as usual”, or do they go via the default tunnel when there is one? Drawn: as usual.</li>
-      <li>iPhone at all, given App Store rules for VPN apps (organisation account) and removals from the Russian store? TestFlight-only is the realistic floor.</li>
-      <li>Sync with the desktop app, or backup files only? Drawn: backup files and per-tunnel QR.</li>
+      <li>A desktop-only tunnel's sites go as usual, as if they had no rule: the default tunnel when there is one, otherwise direct. A desktop-only default tunnel means no default on the phone.</li>
+      <li>Android first; iPhone after the Android end-to-end run (MM9), TestFlight only. The I boards stay as the outline.</li>
+      <li>No live sync: backup files and per-tunnel QR only.</li>
+      <li>Russian on the phone now; the desktop apps get it later as a feature of their own.</li>
     </ul>
   </div>
 </div>
@@ -635,7 +636,7 @@ svg.sp.a polyline { stroke:var(--amber); } svg.sp.a circle { fill:var(--amber); 
           <p class="sm12">OpenVPN files (.ovpn) work in the Mac and Windows apps only.</p>
         </div>
       </div>
-      <figcaption><b>T2 · Add a tunnel.</b> When the clipboard holds a link, it is offered on top (Android shows its own “Wayfork pasted from your clipboard” toast; that is fine). The parsers are the shared Go core, so a link is refused for the same reasons as on the Mac.</figcaption>
+      <figcaption><b>T2 · Add a tunnel.</b> When the clipboard holds a link, it is offered on top (Android shows its own “Wayfork pasted from your clipboard” toast; that is fine). The parsers are the shared Dart core, so a link is refused for the same reasons as on the Mac.</figcaption>
     </figure>
 
     <figure>
@@ -860,8 +861,8 @@ svg.sp.a polyline { stroke:var(--amber); } svg.sp.a circle { fill:var(--amber); 
 
 <!-- ======================= I · iPhone ======================= -->
 <section class="board">
-  <h2>I · iPhone <small>only the differences</small></h2>
-  <p class="lead">Same screens and words in iOS controls. What changes: no app rules and no app names, the VPN lives in a Network Extension with about 50 MB of memory, and turning on at boot is iOS's Connect On Demand.</p>
+  <h2>I · iPhone <small>only the differences · later, after MM9</small></h2>
+  <p class="lead">Not in the first release: the iPhone app follows the Android end-to-end run (MM9; MB0, 2026-10-15). Same screens and words in iOS controls. What changes: no app rules and no app names, the VPN lives in a Network Extension with about 50 MB of memory, and turning on at boot is iOS's Connect On Demand.</p>
   <div class="bd">
 
     <figure>
