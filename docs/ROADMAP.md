@@ -3,7 +3,8 @@
 Work proceeds strictly phase by phase. A phase is closed only after explicit maintainer
 approval; the next phase is not started before that.
 
-The Windows client has its own track: [ROADMAP-windows.md](ROADMAP-windows.md).
+The Windows client has its own track: [ROADMAP-windows.md](ROADMAP-windows.md). The phone
+client (draft) has [ROADMAP-mobile.md](ROADMAP-mobile.md).
 
 | Phase | Deliverable | Status |
 |---|---|---|

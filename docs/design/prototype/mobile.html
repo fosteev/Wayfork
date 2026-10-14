@@ -1,0 +1,1077 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wayfork mobile prototype</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
+<!--
+Mobile client · first sketch (2026-10-14), before Features. Nothing here is approved; the
+visible "Decisions drawn here" list on the page is what the maintainer is asked to steer.
+Android frames are Material 3 (Flutter); iOS frames show only where the platform differs.
+-->
+<style>
+/* Board page: light, like the other prototypes. Phones carry their own palette. */
+:root {
+  color-scheme: light;
+  --page:#eef0f4; --ink:#1d2129; --ink2:#575e6c; --rule:#d3d8e1; --board:#dfe3ea; --mark:#2b5bd7;
+  /* Material 3, seed #2b5bd7 — light */
+  --m-surface:#fbf8ff; --m-sc:#efedf6; --m-sch:#e6e5ef; --m-on:#1b1b21; --m-on2:#46474f;
+  --m-outline:#767680; --m-ov:#c6c6d0; --m-pri:#2b5bd7; --m-onpri:#ffffff; --m-pc:#dbe1ff;
+  --m-onpc:#00174b; --m-sec:#dce2f9; --m-onsec:#141b2c; --m-errc:#ffdad6; --m-onerrc:#410002;
+  --green:#1b873a; --amber:#a96500; --red:#c5221f;
+  --font-m: Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-i: -apple-system, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+body { margin:0; padding-block:32px 80px; padding-inline:40px; background:var(--page); color:var(--ink);
+  font-family:var(--font-i); font-size:14px; line-height:20px; -webkit-font-smoothing:antialiased; }
+h1 { font-size:26px; line-height:32px; font-weight:700; margin:0 0 8px; text-wrap:balance; }
+h2 { font-size:17px; line-height:22px; font-weight:600; margin:0; text-wrap:balance; }
+h2 small { font-weight:400; color:var(--ink2); font-size:14px; }
+.intro { max-width:780px; color:var(--ink2); }
+.intro p { margin:0 0 10px; }
+.cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:12px 32px; max-width:1180px; margin-top:18px; }
+.cols > div { min-width:0; }
+.cols h3 { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink2); margin:0 0 6px; }
+.cols ol, .cols ul { margin:0; padding-left:20px; }
+.cols li { margin:0 0 6px; }
+.tag { font:600 11px/1 var(--font-i); color:var(--mark); background:#e3e9fb; border-radius:4px; padding:2px 5px; vertical-align:1px; white-space:nowrap; }
+.board { margin-top:40px; display:flex; flex-direction:column; gap:14px; }
+.bd { background:var(--board); border-radius:10px; padding:24px; display:flex; flex-wrap:wrap; gap:28px; align-items:flex-start; }
+figure { margin:0; display:flex; flex-direction:column; gap:10px; width:358px; max-width:100%; }
+figcaption { font-size:12.5px; line-height:17px; color:var(--ink2); }
+figcaption b { color:var(--ink); }
+.lead { max-width:780px; color:var(--ink2); margin:0; }
+
+/* ---------- Android phone (Material 3) ---------- */
+.ph { width:344px; height:724px; border:7px solid #15161a; border-radius:42px; background:var(--m-surface); color:var(--m-on);
+  overflow:hidden; display:flex; flex-direction:column; font-family:var(--font-m); font-size:14px; line-height:20px;
+  position:relative; box-shadow:0 12px 30px rgba(20,26,45,.18); flex:none; }
+.ph.dk { --m-surface:#121318; --m-sc:#1e1f25; --m-sch:#292a30; --m-on:#e3e1e9; --m-on2:#c6c6d0; --m-outline:#90909a;
+  --m-ov:#46464f; --m-pri:#b3c5ff; --m-onpri:#002a77; --m-pc:#1b4398; --m-onpc:#dbe1ff; --m-sec:#3f4759; --m-onsec:#dce2f9;
+  --m-errc:#93000a; --m-onerrc:#ffdad6; --green:#6dd58c; --amber:#f0b35a; --red:#ffb4ab; }
+svg.i { width:20px; height:20px; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+.sb { height:30px; flex:none; display:flex; align-items:center; justify-content:space-between; padding:2px 20px 0 24px; font-size:12.5px; font-weight:500; }
+.sb .r { display:flex; gap:5px; align-items:center; }
+.sb svg.i { width:14px; height:14px; }
+.top { display:flex; align-items:center; gap:14px; padding:6px 16px 6px; min-height:52px; flex:none; }
+.top h3 { font-size:22px; line-height:28px; font-weight:400; margin:0; flex:1; min-width:0; }
+.top.sm h3 { font-size:20px; }
+.bod { flex:1; min-height:0; overflow:hidden; padding:0 12px 12px; display:flex; flex-direction:column; gap:10px; }
+.nav { flex:none; display:grid; grid-template-columns:repeat(4,1fr); background:var(--m-sc); padding:10px 0 2px; }
+.nav div { display:flex; flex-direction:column; align-items:center; gap:3px; font-size:12px; font-weight:500; color:var(--m-on2); }
+.nav .pl { width:56px; height:30px; border-radius:15px; display:grid; place-items:center; position:relative; }
+.nav .on { color:var(--m-on); }
+.nav .on .pl { background:var(--m-sec); color:var(--m-onsec); }
+.nav .pl i { position:absolute; top:2px; right:10px; width:8px; height:8px; border-radius:50%; background:var(--red); }
+.gest { flex:none; height:18px; display:grid; place-items:center; background:var(--m-sc); }
+.gest.s { background:transparent; }
+.gest::after { content:""; width:104px; height:4px; border-radius:2px; background:var(--m-on); opacity:.4; }
+
+.pw { background:var(--m-pc); color:var(--m-onpc); border-radius:24px; padding:16px 16px 14px; display:flex; flex-direction:column; gap:6px; }
+.pw .rw { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.pw b { font-size:22px; line-height:28px; font-weight:500; }
+.pw p { margin:0; }
+.pw .rt { font-size:13px; opacity:.8; font-variant-numeric:tabular-nums; }
+.pw.off { background:var(--m-sch); color:var(--m-on); }
+.pw.err { background:var(--m-errc); color:var(--m-onerrc); }
+.sw { width:52px; height:32px; border-radius:16px; background:var(--m-pri); position:relative; flex:none; box-sizing:border-box; }
+.sw::after { content:""; position:absolute; top:4px; right:4px; width:24px; height:24px; border-radius:50%; background:var(--m-onpri); }
+.sw.off { background:var(--m-sch); border:2px solid var(--m-outline); }
+.sw.off::after { left:6px; right:auto; top:6px; width:16px; height:16px; background:var(--m-outline); }
+.sw.dis { opacity:.38; }
+.sw.big { transform:scale(1.15); transform-origin:right center; }
+
+.sh { display:flex; justify-content:space-between; align-items:baseline; gap:8px; font-size:14px; font-weight:500; color:var(--m-on2); padding:4px 6px 0; }
+.sh small { font-size:12px; font-weight:400; }
+.lst { border-radius:20px; overflow:hidden; display:flex; flex-direction:column; gap:2px; flex:none; }
+.it { background:var(--m-sc); display:flex; align-items:center; gap:12px; padding:10px 14px; min-height:44px; }
+.it.dim { opacity:.55; }
+.t { flex:1; min-width:0; }
+.t b { display:block; font-weight:500; font-size:15px; line-height:20px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.t small { display:block; font-size:12.5px; line-height:17px; color:var(--m-on2); font-variant-numeric:tabular-nums; }
+.t small.er { color:var(--red); }
+.dot { width:10px; height:10px; border-radius:50%; background:var(--green); flex:none; }
+.dot.gy { background:var(--m-outline); }
+.dot.rd { background:var(--red); }
+.dot.hf { background:linear-gradient(90deg,var(--amber) 50%,transparent 50%); box-shadow:inset 0 0 0 1.5px var(--amber); }
+.dot.sq { border-radius:3px; background:var(--m-pri); }
+.lat { text-align:right; font-size:14px; font-weight:500; font-variant-numeric:tabular-nums; line-height:16px; white-space:nowrap; }
+.lat small { font-size:10px; font-weight:400; }
+.lat.g { color:var(--green); } .lat.a { color:var(--amber); } .lat.r { color:var(--red); } .lat.n { color:var(--m-on2); }
+svg.sp { width:52px; height:20px; display:block; margin-top:2px; fill:none; stroke-width:1.6; stroke-linejoin:round; }
+svg.sp.g polyline { stroke:var(--green); } svg.sp.g circle { fill:var(--green); }
+svg.sp.a polyline { stroke:var(--amber); } svg.sp.a circle { fill:var(--amber); }
+.bdg { font-size:11px; line-height:16px; font-weight:500; padding:0 6px; border-radius:6px; background:var(--m-pri); color:var(--m-onpri); margin-left:6px; vertical-align:1px; }
+.bdg.tn { background:var(--m-sec); color:var(--m-onsec); }
+.mem { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--m-on2); padding-left:22px; font-variant-numeric:tabular-nums; }
+.mem .t2 { flex:1; }
+.mem .ok { color:var(--m-pri); font-weight:500; }
+.ap { width:30px; height:30px; border-radius:9px; display:grid; place-items:center; color:#fff; font-weight:700; font-size:13px; flex:none; }
+.ap.sm { width:24px; height:24px; border-radius:7px; font-size:11px; }
+.gl { width:30px; height:30px; border-radius:50%; display:grid; place-items:center; background:var(--m-sec); color:var(--m-onsec); flex:none; }
+.gl svg.i { width:18px; height:18px; }
+.chip { border:1px solid var(--m-outline); border-radius:8px; height:30px; padding:0 10px; font-size:13px; font-weight:500; display:inline-flex; gap:4px; align-items:center; white-space:nowrap; color:var(--m-on); box-sizing:border-box; }
+.chip.f { background:var(--m-sec); color:var(--m-onsec); border-color:transparent; }
+.chip svg.i { width:16px; height:16px; }
+.chips { display:flex; gap:8px; flex-wrap:wrap; }
+.btn { border-radius:20px; height:40px; padding:0 22px; display:inline-flex; align-items:center; justify-content:center; gap:8px; font-weight:500; font-size:14px; background:var(--m-pri); color:var(--m-onpri); white-space:nowrap; box-sizing:border-box; }
+.btn svg.i { width:18px; height:18px; }
+.btn.tn { background:var(--m-sec); color:var(--m-onsec); }
+.btn.tx { background:none; color:var(--m-pri); padding:0 12px; }
+.btn.ol { background:none; border:1px solid var(--m-outline); color:var(--m-pri); }
+.btn.sm { height:32px; padding:0 14px; font-size:13px; }
+.btn.wd { width:100%; }
+.btns { display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+.fab { position:absolute; right:16px; bottom:98px; height:56px; border-radius:16px; background:var(--m-pc); color:var(--m-onpc); display:flex; align-items:center; gap:10px; padding:0 20px 0 16px; font-weight:500; box-shadow:0 3px 8px rgba(0,0,0,.22); }
+.scrim { position:absolute; inset:0; background:rgba(0,0,0,.34); }
+.sheet { position:absolute; left:0; right:0; bottom:0; background:var(--m-sc); border-radius:28px 28px 0 0; padding:10px 20px 30px; display:flex; flex-direction:column; gap:12px; }
+.sheet::before { content:""; width:32px; height:4px; border-radius:2px; background:var(--m-outline); align-self:center; opacity:.5; }
+.sheet h4, .pg h4 { margin:0; font-size:20px; line-height:26px; font-weight:400; }
+.sheet p, .pg p { margin:0; color:var(--m-on2); font-size:13.5px; line-height:19px; }
+.fld { border:1px solid var(--m-outline); border-radius:6px; padding:13px 14px; position:relative; font-size:15px; }
+.fld label { position:absolute; top:-9px; left:10px; font-size:12px; line-height:16px; background:var(--m-sc); padding:0 4px; color:var(--m-on2); }
+.fld.pgb label { background:var(--m-surface); }
+.fld.foc { border:2px solid var(--m-pri); padding:12px 13px; }
+.fld.foc label { color:var(--m-pri); }
+.fld .hn { color:var(--m-on2); }
+.fld .cur { display:inline-block; width:2px; height:18px; background:var(--m-pri); vertical-align:-3px; }
+.seg { display:flex; border:1px solid var(--m-outline); border-radius:20px; overflow:hidden; height:36px; }
+.seg span { flex:1; display:flex; align-items:center; justify-content:center; gap:4px; font-size:12.5px; font-weight:500; border-left:1px solid var(--m-outline); white-space:nowrap; }
+.seg span:first-child { border-left:0; }
+.seg .on { background:var(--m-sec); color:var(--m-onsec); }
+.seg svg.i { width:14px; height:14px; }
+.opt { display:flex; align-items:center; gap:14px; padding:7px 2px; }
+.rad { width:20px; height:20px; border-radius:50%; border:2px solid var(--m-on2); box-sizing:border-box; flex:none; }
+.rad.on { border-color:var(--m-pri); background:radial-gradient(circle,var(--m-pri) 0 4.5px,transparent 5px); }
+.snk { position:absolute; left:12px; right:12px; bottom:94px; background:#303036; color:#f2f0f6; border-radius:6px; padding:12px 14px; display:flex; justify-content:space-between; gap:10px; font-size:14px; box-shadow:0 3px 8px rgba(0,0,0,.25); }
+.snk b { color:#b3c5ff; font-weight:500; }
+.srch { height:48px; border-radius:24px; background:var(--m-sch); display:flex; align-items:center; gap:12px; padding:0 16px; color:var(--m-on2); flex:none; }
+.gh { display:flex; align-items:center; gap:8px; padding:6px 6px 2px; font-weight:500; font-size:14px; }
+.gh .t { font-weight:500; }
+.gh small { color:var(--m-on2); font-weight:400; font-size:12.5px; }
+.gh .add { color:var(--m-pri); font-size:13px; white-space:nowrap; }
+.ban { border-radius:16px; padding:12px 14px; background:var(--m-errc); color:var(--m-onerrc); display:flex; gap:10px; font-size:13px; line-height:18px; }
+.ban.info { background:var(--m-sec); color:var(--m-onsec); }
+.pg { flex:1; min-height:0; padding:4px 20px 16px; display:flex; flex-direction:column; gap:14px; }
+.steps { display:flex; gap:6px; }
+.steps i { flex:1; height:4px; border-radius:2px; background:var(--m-ov); }
+.steps i.on { background:var(--m-pri); }
+.hero { display:grid; place-items:center; width:72px; height:72px; border-radius:22px; background:var(--m-pc); color:var(--m-onpc); }
+.hero svg.i { width:38px; height:38px; stroke-width:1.8; }
+.sp1 { flex:1; }
+.mut { color:var(--m-on2); }
+.sm12 { font-size:12px; line-height:16px; }
+.ok { color:var(--green); }
+.rt2 { font-variant-numeric:tabular-nums; }
+.dlg { position:absolute; left:22px; right:22px; top:200px; background:var(--m-sch); border-radius:28px; padding:22px 22px 14px; display:flex; flex-direction:column; gap:14px; box-shadow:0 8px 24px rgba(0,0,0,.25); }
+.dlg h5 { margin:0; font-size:22px; line-height:28px; font-weight:400; text-align:center; }
+.dlg p { margin:0; color:var(--m-on2); font-size:14px; line-height:20px; }
+.dlg .ic { align-self:center; color:var(--m-pri); }
+.dlg .ic svg.i { width:26px; height:26px; }
+.key { display:inline-flex; vertical-align:-2px; }
+.key svg.i { width:15px; height:15px; }
+.ln { display:flex; gap:10px; align-items:flex-start; font-size:13.5px; line-height:19px; }
+.ln svg.i { width:18px; height:18px; margin-top:1px; }
+
+/* camera, browser and shade frames: fixed looks */
+.cam { position:absolute; inset:0; background:radial-gradient(ellipse at 40% 35%,#4b4e57,#1a1b20 70%); }
+.cam .vf { position:absolute; left:62px; top:190px; width:206px; height:206px; border-radius:24px; box-shadow:0 0 0 999px rgba(0,0,0,.45); }
+.cam .vf::before { content:""; position:absolute; inset:-3px; border:3px solid #fff; border-radius:26px;
+  -webkit-mask:linear-gradient(#000 0 0) top left/40px 40px no-repeat,linear-gradient(#000 0 0) top right/40px 40px no-repeat,linear-gradient(#000 0 0) bottom left/40px 40px no-repeat,linear-gradient(#000 0 0) bottom right/40px 40px no-repeat;
+          mask:linear-gradient(#000 0 0) top left/40px 40px no-repeat,linear-gradient(#000 0 0) top right/40px 40px no-repeat,linear-gradient(#000 0 0) bottom left/40px 40px no-repeat,linear-gradient(#000 0 0) bottom right/40px 40px no-repeat; }
+.cam .qr { position:absolute; inset:34px; background:
+  conic-gradient(from 90deg at 2px 2px,#0000 90deg,#e9e9ee 0) 0 0/12px 12px, #2a2c33; opacity:.55; border-radius:4px; }
+.cam .tx { position:absolute; left:0; right:0; top:120px; text-align:center; color:#fff; font-size:15px; }
+.cam .bar { position:absolute; top:36px; left:16px; right:16px; display:flex; justify-content:space-between; color:#fff; }
+.web { position:absolute; inset:30px 0 0; background:#fff; padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
+.web .url { height:36px; border-radius:18px; background:#eceef2; display:flex; align-items:center; padding:0 14px; color:#3b3e45; font-size:13px; }
+.web i { display:block; height:10px; border-radius:5px; background:#e3e5ea; }
+.web .ttl { height:22px; width:80%; background:#d4d7de; border-radius:6px; }
+.shade { position:absolute; inset:0; background:linear-gradient(#2a2d38,#16171c); color:#e6e4ec; padding:40px 14px 0; display:flex; flex-direction:column; gap:12px; font-family:var(--font-m); }
+.shade .clk { font-size:40px; line-height:44px; font-weight:400; padding:0 6px; }
+.shade .dt { font-size:13px; color:#c3c2cc; padding:0 6px; margin-top:-8px; }
+.qs { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.tile { border-radius:22px; padding:12px 14px; background:#33353e; display:flex; gap:10px; align-items:center; min-height:46px; box-sizing:border-box; }
+.tile b { display:block; font-weight:500; font-size:14px; line-height:18px; }
+.tile small { display:block; font-size:12px; line-height:16px; opacity:.8; }
+.tile.on { background:#b3c5ff; color:#002a77; }
+.ntf { background:#2b2d35; border-radius:24px; padding:14px 16px; display:flex; flex-direction:column; gap:6px; }
+.ntf .hd { display:flex; gap:8px; align-items:center; font-size:12px; color:#c3c2cc; }
+.ntf b { font-size:14.5px; font-weight:500; }
+.ntf .rt { font-size:13px; color:#c3c2cc; font-variant-numeric:tabular-nums; }
+.ntf .ac { display:flex; gap:8px; margin-top:4px; }
+.ntf .ac span { background:#3f4250; border-radius:16px; padding:6px 14px; font-size:13px; font-weight:500; }
+
+/* ---------- iPhone (only where it differs) ---------- */
+.ip { width:344px; height:724px; border:7px solid #15161a; border-radius:50px; overflow:hidden; display:flex; flex-direction:column;
+  background:#f2f2f7; color:#000; font-family:var(--font-i); font-size:15px; line-height:20px; position:relative; box-shadow:0 12px 30px rgba(20,26,45,.18); flex:none;
+  --tint:#0a60ff; --sec:#6c6c72; --sep:#d1d1d6; --card:#ffffff; --g:#248a3d; --r:#d70015; }
+.ip .sb2 { height:44px; flex:none; display:flex; align-items:center; justify-content:space-between; padding:6px 26px 0 30px; font-size:14px; font-weight:600; }
+.ip .sb2 .r { display:flex; gap:5px; align-items:center; }
+.ip .sb2 svg.i { width:14px; height:14px; }
+.vpn { font-size:10px; font-weight:700; border:1.5px solid #000; border-radius:4px; padding:0 3px; line-height:13px; }
+.ip h3 { font-size:30px; line-height:36px; font-weight:700; margin:4px 18px 8px; }
+.ip .bod2 { flex:1; min-height:0; overflow:hidden; padding:0 16px; display:flex; flex-direction:column; gap:6px; }
+.ip .gp { background:var(--card); border-radius:12px; overflow:hidden; }
+.ip .cl { display:flex; align-items:center; gap:12px; padding:9px 14px; min-height:28px; }
+.ip .cl + .cl { box-shadow:inset 46px 0 0 var(--card), inset 0 0.5px 0 var(--sep); }
+.ip .cl .t b { font-weight:400; font-size:15.5px; }
+.ip .cl .t small { color:var(--sec); font-size:12.5px; }
+.ip .hdr { font-size:12.5px; color:var(--sec); text-transform:uppercase; letter-spacing:.02em; padding:12px 14px 2px; display:flex; justify-content:space-between; }
+.ip .ftr { font-size:12.5px; line-height:16px; color:var(--sec); padding:2px 14px 6px; }
+.ip .isw { width:50px; height:30px; border-radius:15px; background:#34c759; position:relative; flex:none; }
+.ip .isw::after { content:""; position:absolute; top:2px; right:2px; width:26px; height:26px; border-radius:50%; background:#fff; box-shadow:0 2px 4px rgba(0,0,0,.2); }
+.ip .lnk { color:var(--tint); }
+.ip .dot { background:var(--g); }
+.ip .lat.g { color:var(--g); }
+.ip .tab { flex:none; display:grid; grid-template-columns:repeat(4,1fr); background:rgba(249,249,251,.94); box-shadow:inset 0 0.5px 0 var(--sep); padding:7px 0 24px; }
+.ip .tab div { display:flex; flex-direction:column; align-items:center; gap:2px; font-size:10.5px; font-weight:500; color:#8e8e93; }
+.ip .tab .on { color:var(--tint); }
+.ip .tab svg.i { width:24px; height:24px; }
+.ialert { position:absolute; left:46px; right:46px; top:250px; background:rgba(242,242,247,.97); border-radius:14px; text-align:center; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,.25); }
+.ialert .tx { padding:18px 16px 16px; display:flex; flex-direction:column; gap:4px; }
+.ialert b { font-size:16px; line-height:21px; }
+.ialert p { margin:0; font-size:13px; line-height:17px; }
+.ialert .bt { display:grid; grid-template-columns:1fr 1fr; box-shadow:inset 0 0.5px 0 #b9b9be; }
+.ialert .bt span { padding:11px 0; color:var(--tint); font-size:16px; }
+.ialert .bt span + span { box-shadow:inset 0.5px 0 0 #b9b9be; font-weight:600; }
+
+.lang { display:inline-flex; margin:4px 0 16px; border:1px solid var(--rule); border-radius:8px; overflow:hidden; background:#fff; }
+.lang button { font:500 13px/1 var(--font-i); padding:8px 14px; border:0; background:none; color:var(--ink2); cursor:pointer; }
+.lang button + button { border-left:1px solid var(--rule); }
+.lang button[aria-pressed="true"] { background:var(--mark); color:#fff; }
+.lang button:focus-visible { outline:2px solid var(--mark); outline-offset:-2px; }
+@media (max-width:700px) {
+  body { padding-inline:16px; padding-block:20px 48px; }
+  .bd { padding:0; background:none; gap:32px; }
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3.2 3.6 3.2 14.4 0 18M12 3c-3.2 3.6-3.2 14.4 0 18"/></symbol>
+  <symbol id="i-fork" viewBox="0 0 24 24"><path d="M12 21v-8M12 13c0-4.5-6-4-6-9.5M12 13c0-4.5 6-4 6-9.5"/><circle cx="12" cy="21" r="0.6"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.3-4.3"/></symbol>
+  <symbol id="i-qr" viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2.5v2.5H14zM17.5 17.5H20V20h-2.5zM14 20h1M20 14v1"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v4h4"/></symbol>
+  <symbol id="i-sub" viewBox="0 0 24 24"><path d="M5 5h14M5 10h14M5 15h9M5 20h9M18 15v6M15 18h6"/></symbol>
+  <symbol id="i-desk" viewBox="0 0 24 24"><path d="M3 4h18v12H3zM8 20h8M12 16v4"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+  <symbol id="i-retry" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></symbol>
+  <symbol id="i-apps" viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4.5"/><path d="M11.2 11.8L20 3M16.5 6.5l3 3"/></symbol>
+  <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.7 16a5 5 0 0 1 6.6 0"/><circle cx="12" cy="19.5" r="0.8"/></symbol>
+  <symbol id="i-bat" viewBox="0 0 24 24"><path d="M3 7h16v10H3zM21 10v4"/><path d="M5 9h9v6H5z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-block" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3.5l9.5 16.5h-19zM12 10v4.5M12 17.2v.3"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8M6.3 6.8a8 8 0 1 0 11.4 0"/></symbol>
+  <symbol id="i-paste" viewBox="0 0 24 24"><path d="M9 4h6v3H9zM9 5.5H6V21h12V5.5h-3"/></symbol>
+  <symbol id="i-bars" viewBox="0 0 24 24"><path d="M5 20v-4M10 20v-8M15 20v-11M20 20V5"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="M8.2 10.8l7.6-4.1M8.2 13.2l7.6 4.1"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h9"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5h4"/></symbol>
+  <symbol id="i-flash" viewBox="0 0 24 24"><path d="M13 3L5 13h6l-1 8 8-10h-6z"/></symbol>
+  <symbol id="i-bt" viewBox="0 0 24 24"><path d="M7 7l10 10-5 4V3l5 4L7 17"/></symbol>
+</svg>
+
+<h1>Wayfork for phones</h1>
+<div class="lang" role="group" aria-label="Screen language"><button type="button" id="lang-en" data-lang="en" aria-pressed="true">Screens in English</button><button type="button" id="lang-ru" data-lang="ru" aria-pressed="false">Русский</button></div>
+<div class="intro">
+  <p>A first sketch of the mobile client, drawn before the Features phase so we can argue about the shape instead of a list. Android is drawn in full (Flutter, Material 3), iPhone only where it behaves differently. Names, sites and numbers are examples.</p>
+  <p>The model on a phone: the OS gives one VPN connection; inside it sing-box sends each site to a tunnel or straight out, exactly as on the Mac. Every tunnel kind sing-box carries natively works. OpenVPN does not.</p>
+</div>
+
+<div class="cols">
+  <div>
+    <h3>Decisions drawn here</h3>
+    <ol>
+      <li>Four tabs: <b>Home</b> (the popover), <b>Sites</b> (Rules), <b>Tunnels</b>, <b>More</b> (General, diagnostics). <span class="tag">P1–P5</span></li>
+      <li>Home opens with one big on/off and the same summary sentence as the Mac popover. Tunnel cards keep status, latency and sparkline; Recent keeps “Route via”. <span class="tag">P1</span></li>
+      <li>Routing a site you are looking at should not need typing: Wayfork is a <b>Share target</b>. Share a page from the browser and pick a tunnel. <span class="tag">S3</span></li>
+      <li>Tunnels arrive by <b>QR code</b> (what VPN panels show), by a link already on the clipboard, by subscription URL or file. A tunnel can be shown as a QR to move it to another phone. <span class="tag">T2–T4</span></li>
+      <li>A backup from the Mac or Windows imports as is. OpenVPN tunnels come in as <b>Desktop only</b>: listed, greyed, their sites go as usual on the phone. <span class="tag">S1, T1</span></li>
+      <li>Android keeps app rules (by package) and TCP/UDP only. iPhone has no app rules; the Apps filter is not there at all. <span class="tag">S4, I3</span></li>
+      <li>Outside the app: a persistent notification with rates and Turn off, a Quick Settings tile, and Android's Always-on VPN for start at boot. <span class="tag">X1</span></li>
+      <li>First run is four steps: add a tunnel, pick sites, allow the VPN, try it. <span class="tag">F1–F4</span></li>
+      <li>Russian from day one (switch above; captions stay English). It needs plural forms (1 сайт, 3 сайта, 6 сайтов), never declines a tunnel name the user typed (“Нидерланды: нет подключения”, not a case form), and formats numbers the Russian way (1,9 МБ/с). The desktop apps have no localisation yet. <span class="tag">all</span></li>
+    </ol>
+  </div>
+  <div>
+    <h3>Not on the phone</h3>
+    <ul>
+      <li><b>OpenVPN</b>: no per-tunnel processes on iOS, one TUN on both. Possible later only as an embedded OpenVPN 3 core; that is research, not a feature.</li>
+      <li><b>VLESS over XHTTP</b>: needs its own xray process, same reason.</li>
+      <li><b>Local proxy port</b> (F17), <b>wayforkctl</b> (F21), <b>system resolver override</b> (F12): no use or no hook on a phone. All phone DNS already goes through the VPN.</li>
+      <li>Full log viewer: More › Logs shows Problems only, plus Share diagnostics.</li>
+    </ul>
+    <h3 style="margin-top:16px">Open questions</h3>
+    <ul>
+      <li>Are a desktop-only tunnel's sites “as usual”, or do they go via the default tunnel when there is one? Drawn: as usual.</li>
+      <li>iPhone at all, given App Store rules for VPN apps (organisation account) and removals from the Russian store? TestFlight-only is the realistic floor.</li>
+      <li>Sync with the desktop app, or backup files only? Drawn: backup files and per-tunnel QR.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ======================= P · Home ======================= -->
+<section class="board">
+  <h2>P · Home <small>the popover, one tap from anywhere</small></h2>
+  <div class="bd">
+
+    <figure>
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="i"><use href="#i-key"/></svg><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <div class="top"><h3>Wayfork</h3></div>
+        <div class="bod">
+          <div class="pw">
+            <div class="rw"><b>On</b><span class="sw big"></span></div>
+            <p>14 sites via 3 tunnels, the rest as usual</p>
+            <span class="rt">↓ 2.4 MB/s ↑ 180 KB/s</span>
+          </div>
+          <div class="sh">Tunnels</div>
+          <div class="lst">
+            <div class="it"><span class="dot"></span><div class="t"><b>Netherlands</b><small>Connected · ↓ 1.9 MB/s ↑ 120 KB/s · 6 sites</small></div>
+              <div><div class="lat g">48<small> ms</small></div><svg class="sp g" viewBox="0 0 54 20"><polyline points="0,11 5,12 10,10 15,11 20,13 25,10 30,11 35,9 40,12 45,10 52,10"/><circle cx="52" cy="10" r="2"/></svg></div></div>
+            <div class="it"><span class="dot"></span><div class="t"><b>Home</b><small>Connected · Idle · 3 sites</small></div>
+              <div><div class="lat g">31<small> ms</small></div><svg class="sp g" viewBox="0 0 54 20"><polyline points="0,13 5,13 10,12 15,14 20,13 25,13 30,12 35,13 40,13 45,12 52,13"/><circle cx="52" cy="13" r="2"/></svg></div></div>
+            <div class="it" style="flex-wrap:wrap;row-gap:4px"><span class="dot sq"></span><div class="t"><b>Europe<span class="bdg tn">Group</span></b><small>Fastest · ↓ 420 KB/s · using Germany · 5 sites</small></div>
+              <div><div class="lat g">62<small> ms</small></div><svg class="sp g" viewBox="0 0 54 20"><polyline points="0,8 5,10 10,9 15,12 20,10 25,11 30,8 35,10 40,9 45,11 52,9"/><circle cx="52" cy="9" r="2"/></svg></div>
+              <div style="flex-basis:100%;display:flex;flex-direction:column;gap:2px">
+                <div class="mem"><span class="dot" style="width:7px;height:7px"></span><span class="t2">Germany</span><span class="ok">✓ in use</span><span>62 ms</span></div>
+                <div class="mem"><span class="dot" style="width:7px;height:7px"></span><span class="t2">Finland</span><span>88 ms</span></div>
+              </div></div>
+            <div class="it"><span class="gl"><svg class="i"><use href="#i-shield"/></svg></span><div class="t"><b>Not via any tunnel</b><small>4 sites</small></div><svg class="i mut"><use href="#i-chev"/></svg></div>
+          </div>
+          <div class="sh">Recent — went direct, last 5 min <small>3 of 9</small></div>
+          <div class="lst">
+            <div class="it"><span class="ap sm" style="background:#1a73e8">C</span><div class="t"><b>medium.com</b><small>Chrome</small></div><span class="chip">Route <svg class="i"><use href="#i-down"/></svg></span></div>
+            <div class="it"><span class="ap sm" style="background:#5865f2">D</span><div class="t"><b>discord.com</b><small>Discord</small></div><span class="chip">Route <svg class="i"><use href="#i-down"/></svg></span></div>
+          </div>
+        </div>
+        <div class="nav"><div class="on"><span class="pl"><svg class="i"><use href="#i-home"/></svg></span>Home</div><div><span class="pl"><svg class="i"><use href="#i-globe"/></svg></span>Sites</div><div><span class="pl"><svg class="i"><use href="#i-fork"/></svg></span>Tunnels</div><div><span class="pl"><svg class="i"><use href="#i-more"/></svg></span>More</div></div>
+        <div class="gest"></div>
+      </div>
+      <figcaption><b>P1 · On, only these sites.</b> The power card is the only big thing; the switch starts and stops the VPN. Cards are the Mac popover's, one per line. The screen scrolls; Recent continues below the fold. Tapping a card opens the tunnel (T5).</figcaption>
+    </figure>
+
+    <figure>
+      <div class="ph dk">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="i"><use href="#i-key"/></svg><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <div class="top"><h3>Wayfork</h3></div>
+        <div class="bod">
+          <div class="pw">
+            <div class="rw"><b>On</b><span class="sw big"></span></div>
+            <p>Everything goes via Netherlands, 8 sites via other tunnels</p>
+            <span class="rt">↓ 3.1 MB/s ↑ 240 KB/s</span>
+          </div>
+          <div class="sh">Tunnels</div>
+          <div class="lst">
+            <div class="it"><span class="dot"></span><div class="t"><b>Netherlands<span class="bdg">Default</span></b><small>Connected · ↓ 2.6 MB/s ↑ 190 KB/s · 2 sites</small></div>
+              <div><div class="lat g">48<small> ms</small></div><svg class="sp g" viewBox="0 0 54 20"><polyline points="0,11 5,12 10,10 15,11 20,13 25,10 30,11 35,9 40,12 45,10 52,10"/><circle cx="52" cy="10" r="2"/></svg></div></div>
+            <div class="it"><span class="dot"></span><div class="t"><b>Home</b><small>Connected · ↓ 510 KB/s ↑ 50 KB/s · 3 sites</small></div>
+              <div><div class="lat a">140<small> ms</small></div><svg class="sp a" viewBox="0 0 54 20"><polyline points="0,14 5,13 10,12 15,10 20,11 25,8 30,9 35,6 40,8 45,5 52,6"/><circle cx="52" cy="6" r="2"/></svg></div></div>
+            <div class="it"><span class="gl"><svg class="i"><use href="#i-shield"/></svg></span><div class="t"><b>Not via any tunnel</b><small>5 sites · stay on your normal connection</small></div><svg class="i mut"><use href="#i-chev"/></svg></div>
+          </div>
+          <div class="sh">Recent — went via Netherlands, last 5 min <small>3 of 22</small></div>
+          <div class="lst">
+            <div class="it"><span class="ap sm" style="background:#21a038">S</span><div class="t"><b>online.sberbank.ru</b><small>SberBank Online</small></div><span class="chip">Route <svg class="i"><use href="#i-down"/></svg></span></div>
+            <div class="it"><span class="ap sm" style="background:#1a73e8">C</span><div class="t"><b>ozon.ru</b><small>Chrome</small></div><span class="chip">Route <svg class="i"><use href="#i-down"/></svg></span></div>
+            <div class="it"><span class="ap sm" style="background:#ff4f12">Y</span><div class="t"><b>music.yandex.ru</b><small>Yandex Music</small></div><span class="chip">Route <svg class="i"><use href="#i-down"/></svg></span></div>
+          </div>
+        </div>
+        <div class="nav"><div class="on"><span class="pl"><svg class="i"><use href="#i-home"/></svg></span>Home</div><div><span class="pl"><svg class="i"><use href="#i-globe"/></svg></span>Sites</div><div><span class="pl"><svg class="i"><use href="#i-fork"/></svg></span>Tunnels</div><div><span class="pl"><svg class="i"><use href="#i-more"/></svg></span>More</div></div>
+        <div class="gest"></div>
+      </div>
+      <figcaption><b>P2 · On, everything via a default tunnel (F8), dark.</b> The mode people pick when most of the web needs the VPN. Recent then lists what went via the default, so “Route ▾” offers <i>Not via any tunnel</i> first: banks and local shops are the usual fix.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <div class="top"><h3>Wayfork</h3></div>
+        <div class="bod">
+          <div class="pw off">
+            <div class="rw"><b>Off</b><span class="sw big off"></span></div>
+            <p>Nothing goes through a tunnel. Turn on to send your 14 sites through their tunnels; everything else stays as it is.</p>
+          </div>
+          <div class="sh">Tunnels</div>
+          <div class="lst">
+            <div class="it dim"><span class="dot gy"></span><div class="t"><b>Netherlands</b><small>Not running · 6 sites</small></div></div>
+            <div class="it dim"><span class="dot gy"></span><div class="t"><b>Home</b><small>Not running · 3 sites</small></div></div>
+            <div class="it dim"><span class="dot gy" style="border-radius:3px"></span><div class="t"><b>Europe<span class="bdg tn">Group</span></b><small>Not running · 5 sites</small></div></div>
+            <div class="it dim"><span class="gl"><svg class="i"><use href="#i-shield"/></svg></span><div class="t"><b>Not via any tunnel</b><small>4 sites</small></div></div>
+          </div>
+        </div>
+        <div class="nav"><div class="on"><span class="pl"><svg class="i"><use href="#i-home"/></svg></span>Home</div><div><span class="pl"><svg class="i"><use href="#i-globe"/></svg></span>Sites</div><div><span class="pl"><svg class="i"><use href="#i-fork"/></svg></span>Tunnels</div><div><span class="pl"><svg class="i"><use href="#i-more"/></svg></span>More</div></div>
+        <div class="gest"></div>
+      </div>
+      <figcaption><b>P3 · Off.</b> The Mac's off sentence, word for word. No key icon in the status bar, no numbers, no Recent. Turning on from here (or from the tile, X1) asks Android for VPN permission only the first time.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="i"><use href="#i-key"/></svg><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <div class="top"><h3>Wayfork</h3></div>
+        <div class="bod">
+          <div class="pw err">
+            <div class="rw"><b>Netherlands can't connect</b><span class="sw big"></span></div>
+            <p>2 of 3 tunnels up, the rest as usual. Its 6 sites go as usual until it is back.</p>
+          </div>
+          <div class="sh">Tunnels</div>
+          <div class="lst">
+            <div class="it" style="flex-wrap:wrap;row-gap:8px"><span class="dot rd"></span><div class="t"><b>Netherlands</b><small class="er">Can't connect · The server didn't answer</small></div>
+              <div class="btns" style="flex-basis:100%;padding-left:22px;justify-content:flex-start"><span class="btn sm tn">Fix…</span><span class="btn sm ol"><svg class="i"><use href="#i-retry"/></svg>Retry</span></div></div>
+            <div class="it"><span class="dot hf"></span><div class="t"><b>Home</b><small>Connecting… · 2nd try</small></div><div class="lat n">—</div></div>
+            <div class="it"><span class="dot sq"></span><div class="t"><b>Europe<span class="bdg tn">Group</span></b><small>Fastest · ↓ 420 KB/s · using Germany · 5 sites</small></div>
+              <div><div class="lat g">62<small> ms</small></div><svg class="sp g" viewBox="0 0 54 20"><polyline points="0,8 5,10 10,9 15,12 20,10 25,11 30,8 35,10 40,9 45,11 52,9"/><circle cx="52" cy="9" r="2"/></svg></div></div>
+          </div>
+          <div class="ban info"><svg class="i"><use href="#i-wifi"/></svg><span>You switched from Wi-Fi to mobile data 20 s ago. Tunnels reconnect on their own; this usually takes a few seconds.</span></div>
+        </div>
+        <div class="nav"><div class="on"><span class="pl"><svg class="i"><use href="#i-home"/></svg></span>Home</div><div><span class="pl"><svg class="i"><use href="#i-globe"/></svg></span>Sites</div><div><span class="pl"><svg class="i"><use href="#i-fork"/></svg></span>Tunnels</div><div><span class="pl"><svg class="i"><use href="#i-more"/></svg></span>More</div></div>
+        <div class="gest"></div>
+      </div>
+      <figcaption><b>P4 · Can't connect.</b> Same wording and the same Fix… / Retry as variant C. New for phones: network changes are normal here (Wi-Fi ↔ mobile, lift, metro), so a short-lived note explains a reconnect instead of a red alarm.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <div class="top"><h3>Wayfork</h3></div>
+        <div class="bod">
+          <div class="pw off">
+            <div class="rw"><b>Off</b><span class="sw big off dis"></span></div>
+            <p>Add a tunnel to turn Wayfork on.</p>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:0 12px">
+            <span class="hero"><svg class="i"><use href="#i-fork"/></svg></span>
+            <b style="font-size:20px;font-weight:500;line-height:26px">Add a VPN you already have</b>
+            <span class="mut" style="font-size:14px">A VLESS, Trojan, Shadowsocks, VMess or WireGuard link, the QR code from your VPN panel, or a subscription URL. Then tell Wayfork which sites go through it; the rest of your traffic is not touched.</span>
+            <div style="display:flex;flex-direction:column;gap:8px;width:100%;margin-top:6px">
+              <span class="btn wd"><svg class="i"><use href="#i-qr"/></svg>Scan QR code</span>
+              <span class="btn wd tn"><svg class="i"><use href="#i-paste"/></svg>Paste link</span>
+              <span class="btn wd tx"><svg class="i"><use href="#i-desk"/></svg>Import a backup from your computer</span>
+            </div>
+          </div>
+        </div>
+        <div class="nav"><div class="on"><span class="pl"><svg class="i"><use href="#i-home"/></svg></span>Home</div><div><span class="pl"><svg class="i"><use href="#i-globe"/></svg></span>Sites</div><div><span class="pl"><svg class="i"><use href="#i-fork"/></svg></span>Tunnels</div><div><span class="pl"><svg class="i"><use href="#i-more"/></svg></span>More</div></div>
+        <div class="gest"></div>
+      </div>
+      <figcaption><b>P5 · No tunnels yet</b> (after the guide was skipped). The Mac's empty state with phone-shaped inputs. OpenVPN is not in the sentence; an .ovpn picked anyway gets the message from T3.</figcaption>
+    </figure>
+
+  </div>
+</section>
+
+<!-- ======================= S · Sites ======================= -->
+<section class="board">
+  <h2>S · Sites <small>Rules, grouped by tunnel as in variant B/C</small></h2>
+  <div class="bd">
+
+    <figure>
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="i"><use href="#i-key"/></svg><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <div class="top"><h3>Sites</h3><svg class="i"><use href="#i-search"/></svg></div>
+        <div class="bod">
+          <div class="chips"><span class="chip f"><svg class="i"><use href="#i-check"/></svg>All</span><span class="chip">Apps</span><span class="chip">Addresses</span><span class="chip">Blocked</span></div>
+          <div class="gh"><span class="dot"></span><span class="t">Netherlands</span><small>6 sites</small><span class="sp1"></span><span class="add">+ Add site</span></div>
+          <div class="lst">
+            <div class="it"><div class="t"><b>chatgpt.com</b><small>and subdomains</small></div></div>
+            <div class="it"><div class="t"><b>claude.ai</b><small>and subdomains</small></div></div>
+            <div class="it"><span class="ap sm" style="background:#2aabee">T</span><div class="t"><b>Telegram</b><small>the app · all traffic</small></div></div>
+            <div class="it"><div class="t"><b class="mut" style="font-weight:400;font-size:14px">3 more</b></div><svg class="i mut"><use href="#i-down"/></svg></div>
+          </div>
+          <div class="gh"><span class="dot sq"></span><span class="t">Europe</span><small>5 sites</small><span class="sp1"></span><span class="add">+ Add site</span></div>
+          <div class="lst">
+            <div class="it"><div class="t"><b>instagram.com</b><small>and subdomains</small></div></div>
+            <div class="it"><div class="t"><b>linkedin.com</b><small>and subdomains</small></div></div>
+          </div>
+          <div class="gh"><span class="gl" style="width:22px;height:22px"><svg class="i" style="width:14px;height:14px"><use href="#i-shield"/></svg></span><span class="t">Not via any tunnel</span><small>4 sites</small></div>
+          <div class="lst">
+            <div class="it"><div class="t"><b>gosuslugi.ru</b><small>and subdomains</small></div></div>
+          </div>
+          <div class="gh" style="opacity:.6"><span class="dot gy"></span><span class="t">Work</span><small>OpenVPN · desktop only · 3 sites go as usual</small></div>
+        </div>
+        <div class="fab"><svg class="i"><use href="#i-plus"/></svg>Add site</div>
+        <div class="nav"><div><span class="pl"><svg class="i"><use href="#i-home"/></svg></span>Home</div><div class="on"><span class="pl"><svg class="i"><use href="#i-globe"/></svg></span>Sites</div><div><span class="pl"><svg class="i"><use href="#i-fork"/></svg></span>Tunnels</div><div><span class="pl"><svg class="i"><use href="#i-more"/></svg></span>More</div></div>
+        <div class="gest"></div>
+      </div>
+      <figcaption><b>S1 · Sites.</b> Groups per tunnel, match kind in the variant C words. Swipe a row to delete, long-press to move it to another tunnel. The Work group came from a Mac backup: kept so a later export carries it back, greyed, not editable here. Filter chips replace the Mac's sidebar sections.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="i"><use href="#i-key"/></svg><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <div class="top"><h3>Sites</h3><svg class="i"><use href="#i-search"/></svg></div>
+        <div class="bod"><div class="chips"><span class="chip f"><svg class="i"><use href="#i-check"/></svg>All</span><span class="chip">Apps</span><span class="chip">Addresses</span></div>
+          <div class="gh"><span class="dot"></span><span class="t">Netherlands</span><small>6 sites</small></div>
+          <div class="lst"><div class="it"><div class="t"><b>chatgpt.com</b><small>and subdomains</small></div></div><div class="it"><div class="t"><b>claude.ai</b><small>and subdomains</small></div></div></div>
+        </div>
+        <div class="scrim"></div>
+        <div class="sheet">
+          <h4>Add a site</h4>
+          <div class="fld foc"><label>Site</label>notion.so<span class="cur"></span></div>
+          <div class="seg"><span class="on"><svg class="i"><use href="#i-check"/></svg>and subdomains</span><span>exactly this</span><span>pattern</span></div>
+          <p>Goes through</p>
+          <div style="display:flex;flex-direction:column">
+            <div class="opt"><span class="rad on"></span><span class="t"><b style="font-weight:400">Netherlands</b></span><span class="lat g" style="font-size:13px">48 ms</span></div>
+            <div class="opt"><span class="rad"></span><span class="t"><b style="font-weight:400">Home</b></span><span class="lat g" style="font-size:13px">31 ms</span></div>
+            <div class="opt"><span class="rad"></span><span class="t"><b style="font-weight:400">Europe · group</b></span><span class="lat g" style="font-size:13px">62 ms</span></div>
+            <div class="opt"><span class="rad"></span><span class="t"><b style="font-weight:400">Not via any tunnel</b></span></div>
+          </div>
+          <div class="btns"><span class="btn tx">Cancel</span><span class="btn">Add</span></div>
+        </div>
+      </div>
+      <figcaption><b>S2 · Add a site.</b> One sheet for the Mac's quick add and the Add site menu. The keyboard is up in real life and covers the bottom half, so the tunnel list stays short and the last-used tunnel is preselected.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="i"><use href="#i-key"/></svg><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <div class="web"><div class="url">medium.com/@anna/why-split-tunnels-8f2c</div><div class="ttl"></div><i style="width:95%"></i><i style="width:88%"></i><i style="width:92%"></i><i style="width:60%"></i><i style="width:90%"></i><i style="width:84%"></i></div>
+        <div class="scrim"></div>
+        <div class="sheet">
+          <div style="display:flex;gap:12px;align-items:center"><span class="hero" style="width:40px;height:40px;border-radius:12px"><svg class="i" style="width:22px;height:22px"><use href="#i-fork"/></svg></span><div class="t"><b style="font-size:16px">Route medium.com</b><small class="mut">Shared from Chrome · went direct a moment ago</small></div></div>
+          <p>Send medium.com and its subdomains through</p>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span class="btn wd tn" style="justify-content:space-between"><span>Netherlands</span><span class="rt2">48 ms</span></span>
+            <span class="btn wd tn" style="justify-content:space-between"><span>Home</span><span class="rt2">31 ms</span></span>
+            <span class="btn wd tn" style="justify-content:space-between"><span>Europe · group</span><span class="rt2">62 ms</span></span>
+          </div>
+          <p class="sm12">Then reload the page: the browser may keep using its old connection for a minute.</p>
+          <div class="btns"><span class="btn tx">Cancel</span></div>
+        </div>
+      </div>
+      <figcaption><b>S3 · Share from the browser.</b> The phone-only way to add a rule: Share › Wayfork on any page. The registrable domain is taken from the URL, as Recent does on the Mac (F15). One tap adds the rule and closes; the reload hint is the same one the Mac guide shows.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="i"><use href="#i-key"/></svg><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <div class="top"><h3>Sites</h3><svg class="i"><use href="#i-search"/></svg></div>
+        <div class="bod">
+          <div class="chips"><span class="chip">All</span><span class="chip f"><svg class="i"><use href="#i-check"/></svg>Apps</span><span class="chip">Addresses</span></div>
+          <p class="mut sm12" style="margin:0 4px">An app sends all its traffic through the tunnel you pick, whatever site it opens.</p>
+          <div class="lst">
+            <div class="it"><span class="ap" style="background:#2aabee">T</span><div class="t"><b>Telegram</b><small>all traffic</small></div><span class="chip">Netherlands <svg class="i"><use href="#i-down"/></svg></span></div>
+            <div class="it"><span class="ap" style="background:#5865f2">D</span><div class="t"><b>Discord</b><small>TCP only · voice stays direct</small></div><span class="chip">Europe <svg class="i"><use href="#i-down"/></svg></span></div>
+            <div class="it"><span class="ap" style="background:#d6249f">I</span><div class="t"><b>Instagram</b><small>all traffic</small></div><span class="chip">Europe <svg class="i"><use href="#i-down"/></svg></span></div>
+            <div class="it"><span class="ap" style="background:#21a038">S</span><div class="t"><b>SberBank Online</b><small>all traffic</small></div><span class="chip">Not via any <svg class="i"><use href="#i-down"/></svg></span></div>
+          </div>
+          <div class="sh">Other apps</div>
+          <div class="lst">
+            <div class="it"><span class="ap" style="background:#ff0033">Y</span><div class="t"><b>YouTube</b><small>by its sites</small></div><span class="chip">+ Route</span></div>
+            <div class="it"><span class="ap" style="background:#1db954">S</span><div class="t"><b>Spotify</b><small>by its sites</small></div><span class="chip">+ Route</span></div>
+          </div>
+        </div>
+        <div class="nav"><div><span class="pl"><svg class="i"><use href="#i-home"/></svg></span>Home</div><div class="on"><span class="pl"><svg class="i"><use href="#i-globe"/></svg></span>Sites</div><div><span class="pl"><svg class="i"><use href="#i-fork"/></svg></span>Tunnels</div><div><span class="pl"><svg class="i"><use href="#i-more"/></svg></span>More</div></div>
+        <div class="gest"></div>
+      </div>
+      <figcaption><b>S4 · Apps, Android only (F10 + F23).</b> The phone knows every installed app, so instead of a file picker it is a list with a tunnel chip per app. TCP only / UDP only sits in the row's menu. Needs the <i>query all packages</i> permission, which Google Play reviews; a GitHub APK has no such review.</figcaption>
+    </figure>
+
+  </div>
+</section>
+
+<!-- ======================= T · Tunnels ======================= -->
+<section class="board">
+  <h2>T · Tunnels <small>add by QR, link, subscription or file</small></h2>
+  <div class="bd">
+
+    <figure>
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="i"><use href="#i-key"/></svg><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <div class="top"><h3>Tunnels</h3></div>
+        <div class="bod">
+          <div class="lst">
+            <div class="it"><span class="dot"></span><div class="t"><b>Netherlands</b><small>Connected · VLESS · 6 sites</small></div><div class="lat g">48<small> ms</small></div><span class="sw"></span></div>
+            <div class="it"><span class="dot"></span><div class="t"><b>Home</b><small>Connected · WireGuard · 3 sites</small></div><div class="lat g">31<small> ms</small></div><span class="sw"></span></div>
+            <div class="it"><span class="dot"></span><div class="t"><b>Germany</b><small>Connected · Trojan · in Europe</small></div><div class="lat g">62<small> ms</small></div><span class="sw"></span></div>
+            <div class="it"><span class="dot"></span><div class="t"><b>Finland</b><small>Connected · Shadowsocks · in Europe</small></div><div class="lat g">88<small> ms</small></div><span class="sw"></span></div>
+          </div>
+          <div class="sh">Groups</div>
+          <div class="lst">
+            <div class="it"><span class="dot sq"></span><div class="t"><b>Europe</b><small>Fastest · using Germany · 5 sites</small></div><svg class="i mut"><use href="#i-chev"/></svg></div>
+          </div>
+          <div class="sh">Desktop only</div>
+          <div class="lst">
+            <div class="it dim"><span class="dot gy"></span><div class="t"><b>Work</b><small>OpenVPN · from your Mac backup · 3 sites go as usual</small></div></div>
+          </div>
+          <p class="mut sm12" style="margin:0 6px">OpenVPN runs in the Mac and Windows apps only. Wayfork keeps this tunnel and its sites so your next backup still has them.</p>
+        </div>
+        <div class="fab"><svg class="i"><use href="#i-plus"/></svg>Add tunnel</div>
+        <div class="nav"><div><span class="pl"><svg class="i"><use href="#i-home"/></svg></span>Home</div><div><span class="pl"><svg class="i"><use href="#i-globe"/></svg></span>Sites</div><div class="on"><span class="pl"><svg class="i"><use href="#i-fork"/></svg></span>Tunnels</div><div><span class="pl"><svg class="i"><use href="#i-more"/></svg></span>More</div></div>
+        <div class="gest"></div>
+      </div>
+      <figcaption><b>T1 · Tunnels.</b> Settings › Tunnels as a list: status, protocol, latency, enable switch. No sparkline here; it lives on Home and in the tunnel (T5).</figcaption>
+    </figure>
+
+    <figure>
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="i"><use href="#i-key"/></svg><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <div class="top"><h3>Tunnels</h3></div>
+        <div class="bod"><div class="lst"><div class="it"><span class="dot"></span><div class="t"><b>Netherlands</b><small>Connected · VLESS · 6 sites</small></div></div><div class="it"><span class="dot"></span><div class="t"><b>Home</b><small>Connected · WireGuard · 3 sites</small></div></div></div></div>
+        <div class="scrim"></div>
+        <div class="sheet">
+          <h4>Add a tunnel</h4>
+          <div class="it" style="border-radius:16px;background:var(--m-pc);color:var(--m-onpc)"><svg class="i"><use href="#i-paste"/></svg><div class="t"><b>Use the link you copied</b><small style="color:inherit;opacity:.8">trojan://…@de-1.example.net · Germany 2</small></div><span class="btn sm">Add</span></div>
+          <div class="lst">
+            <div class="it"><svg class="i"><use href="#i-qr"/></svg><div class="t"><b>Scan QR code</b><small>From your VPN panel or another phone</small></div></div>
+            <div class="it"><svg class="i"><use href="#i-link"/></svg><div class="t"><b>Paste a link</b><small>vless://, vmess://, trojan://, ss://</small></div></div>
+            <div class="it"><svg class="i"><use href="#i-sub"/></svg><div class="t"><b>Subscription URL</b><small>A list of servers, pick the ones to add</small></div></div>
+            <div class="it"><svg class="i"><use href="#i-file"/></svg><div class="t"><b>Choose a file</b><small>WireGuard .conf or a Wayfork backup</small></div></div>
+          </div>
+          <p class="sm12">OpenVPN files (.ovpn) work in the Mac and Windows apps only.</p>
+        </div>
+      </div>
+      <figcaption><b>T2 · Add a tunnel.</b> When the clipboard holds a link, it is offered on top (Android shows its own “Wayfork pasted from your clipboard” toast; that is fine). The parsers are the shared Go core, so a link is refused for the same reasons as on the Mac.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="ph">
+        <div class="cam">
+          <div class="bar"><svg class="i"><use href="#i-x"/></svg><svg class="i"><use href="#i-flash"/></svg></div>
+          <div class="tx">Point at the QR code<br>in your VPN panel</div>
+          <div class="vf"><div class="qr"></div></div>
+        </div>
+        <div class="sheet" style="padding-bottom:34px">
+          <div style="display:flex;gap:12px;align-items:center"><span class="gl" style="background:var(--m-pc);color:var(--m-onpc)"><svg class="i"><use href="#i-check"/></svg></span><div class="t"><b>Found a VLESS tunnel</b><small class="mut">nl-2.example.net · Reality</small></div></div>
+          <div class="fld"><label>Name</label>Netherlands 2</div>
+          <div class="btns"><span class="btn tx">Scan again</span><span class="btn">Add</span></div>
+        </div>
+      </div>
+      <figcaption><b>T3 · Scan QR.</b> Most panels (3x-ui, Marzban, Hiddify) show a QR next to the link; on a phone that is the shortest path. A subscription QR opens the server checklist instead. The name comes from the link's remark, editable.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="i"><use href="#i-key"/></svg><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <div class="top sm"><svg class="i"><use href="#i-back"/></svg><h3>Netherlands</h3><svg class="i"><use href="#i-share"/></svg></div>
+        <div class="bod">
+          <div class="pw" style="background:var(--m-sc);color:var(--m-on)">
+            <div class="rw"><span><span class="dot" style="display:inline-block;margin-right:8px"></span><b style="font-size:16px">Connected</b></span><span class="lat g" style="font-size:22px;line-height:28px">48<small style="font-size:12px"> ms</small></span></div>
+            <svg class="sp g" viewBox="0 0 54 20" style="width:100%;height:56px" preserveAspectRatio="none"><polyline points="0,11 5,12 10,10 15,11 20,13 25,10 30,11 35,9 40,12 45,10 52,10" vector-effect="non-scaling-stroke"/></svg>
+            <span class="rt mut">↓ 1.9 MB/s ↑ 120 KB/s · last 2 min: min 44, max 57 ms</span>
+          </div>
+          <div class="lst">
+            <div class="it"><div class="t"><b>Sites</b><small>6 sites and 1 app</small></div><svg class="i mut"><use href="#i-chev"/></svg></div>
+            <div class="it"><div class="t"><b>Everything else</b><small>Sites without a rule go through this tunnel</small></div><span class="sw off"></span></div>
+            <div class="it"><div class="t"><b>DNS</b><small>From the tunnel</small></div><svg class="i mut"><use href="#i-chev"/></svg></div>
+            <div class="it"><div class="t"><b>Server</b><small>nl.example.net:443 · VLESS · Reality</small></div></div>
+            <div class="it"><div class="t"><b>Imported Oct 12, 2026</b><small>from a link</small></div></div>
+            <div class="it"><svg class="i"><use href="#i-qr"/></svg><div class="t"><b>Show as QR code</b><small>Add this tunnel on another phone</small></div></div>
+          </div>
+          <span class="btn tx" style="color:var(--red);align-self:flex-start">Delete tunnel</span>
+        </div>
+        <div class="gest s"></div>
+      </div>
+      <figcaption><b>T5 · A tunnel.</b> The Mac's expanded row as a page. “Show as QR code” and Share (top right) hand the tunnel to another device; both carry the secret, so they ask for the phone's screen lock first, like Export with secrets.</figcaption>
+    </figure>
+
+  </div>
+</section>
+
+<!-- ======================= M · More ======================= -->
+<section class="board">
+  <h2>M · More <small>General, diagnostics, backup</small></h2>
+  <div class="bd">
+
+    <figure>
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="i"><use href="#i-key"/></svg><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <div class="top"><h3>More</h3></div>
+        <div class="bod">
+          <div class="lst">
+            <div class="it"><span class="gl" style="background:var(--m-errc);color:var(--m-onerrc)"><svg class="i"><use href="#i-warn"/></svg></span><div class="t"><b>Can't reach</b><small>3 sites failed in the last 10 min</small></div><svg class="i mut"><use href="#i-chev"/></svg></div>
+            <div class="it"><span class="gl"><svg class="i"><use href="#i-bars"/></svg></span><div class="t"><b>Connections by exit</b><small>What went where right now</small></div><svg class="i mut"><use href="#i-chev"/></svg></div>
+            <div class="it"><span class="gl"><svg class="i"><use href="#i-block"/></svg></span><div class="t"><b>Block lists</b><small>Ads and trackers · 2 lists</small></div><svg class="i mut"><use href="#i-chev"/></svg></div>
+          </div>
+          <div class="lst">
+            <div class="it"><div class="t"><b>Turn on with the phone</b><small>Android's Always-on VPN · open settings</small></div><svg class="i mut"><use href="#i-chev"/></svg></div>
+            <div class="it"><div class="t"><b>Reconnect tunnels on their own</b></div><span class="sw"></span></div>
+            <div class="it"><div class="t"><b>Notify me when a tunnel stops working</b></div><span class="sw"></span></div>
+            <div class="it"><div class="t"><b>DNS for sites outside tunnels</b><small>Same as the phone</small></div><svg class="i mut"><use href="#i-chev"/></svg></div>
+          </div>
+          <div class="lst">
+            <div class="it"><div class="t"><b>Backup</b><small>Export or import, same file as the Mac and Windows apps</small></div><svg class="i mut"><use href="#i-chev"/></svg></div>
+            <div class="it"><div class="t"><b>Problems log</b><small>Share diagnostics…</small></div><svg class="i mut"><use href="#i-chev"/></svg></div>
+            <div class="it"><div class="t"><b>About</b><small>Wayfork 0.11.0 · sing-box 1.13.19</small></div></div>
+          </div>
+        </div>
+        <div class="nav"><div><span class="pl"><svg class="i"><use href="#i-home"/></svg></span>Home</div><div><span class="pl"><svg class="i"><use href="#i-globe"/></svg></span>Sites</div><div><span class="pl"><svg class="i"><use href="#i-fork"/></svg></span>Tunnels</div><div class="on"><span class="pl"><svg class="i"><use href="#i-more"/></svg><i></i></span>More</div></div>
+        <div class="gest"></div>
+      </div>
+      <figcaption><b>M1 · More.</b> Settings › General plus the diagnostics screens. The red dot on the tab is Can't reach having something, the phone's version of the Mac's menu bar badge. The Mac's helper and login items have no phone counterpart; Always-on VPN is Android's own switch, so we only link to it.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="i"><use href="#i-key"/></svg><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <div class="top sm"><svg class="i"><use href="#i-back"/></svg><h3>Can't reach</h3></div>
+        <div class="bod">
+          <p class="mut" style="margin:0 4px;font-size:13.5px;line-height:19px">Sites that failed in the last 10 minutes. If one is blocked on your network, send it through a tunnel.</p>
+          <div class="lst">
+            <div class="it" style="flex-wrap:wrap;row-gap:6px"><span class="ap sm" style="background:#1a73e8">C</span><div class="t"><b>rutracker.org</b><small>Chrome · went direct · 14 timeouts</small></div><span class="chip f">Route <svg class="i"><use href="#i-down"/></svg></span></div>
+            <div class="it" style="flex-wrap:wrap;row-gap:6px"><span class="ap sm" style="background:#5865f2">D</span><div class="t"><b>gateway.discord.gg</b><small>Discord · went direct · 6 resets</small></div><span class="chip f">Route <svg class="i"><use href="#i-down"/></svg></span></div>
+            <div class="it" style="flex-wrap:wrap;row-gap:6px"><span class="ap sm" style="background:#2aabee">T</span><div class="t"><b>149.154.167.51</b><small>Telegram · via Netherlands · 3 timeouts</small></div><span class="chip">Retry tunnel</span></div>
+          </div>
+          <div class="ban info"><svg class="i"><use href="#i-clock"/></svg><span>A site that failed through a tunnel points at the tunnel, not the site: Wayfork offers to retry or test the tunnel instead of a rule.</span></div>
+        </div>
+        <div class="gest s"></div>
+      </div>
+      <figcaption><b>M2 · Can't reach (F19).</b> The Mac screen as a list; Route adds the same rule Recent does. App names come from the connection owner, which Android reports and iOS does not; on iPhone the rows have the site only.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="ph">
+        <div class="shade">
+          <div class="clk">9:41</div>
+          <div class="dt">Wednesday, 14 October</div>
+          <div class="qs">
+            <div class="tile"><svg class="i"><use href="#i-wifi"/></svg><div><b>Internet</b><small>Home-5G</small></div></div>
+            <div class="tile on"><svg class="i"><use href="#i-fork"/></svg><div><b>Wayfork</b><small>On · 3 tunnels</small></div></div>
+            <div class="tile"><svg class="i"><use href="#i-bt"/></svg><div><b>Bluetooth</b><small>Off</small></div></div>
+            <div class="tile"><svg class="i"><use href="#i-flash"/></svg><div><b>Flashlight</b><small>Off</small></div></div>
+          </div>
+          <div class="ntf">
+            <div class="hd"><svg class="i" style="width:14px;height:14px"><use href="#i-fork"/></svg>Wayfork · now<span class="sp1"></span><svg class="i" style="width:14px;height:14px"><use href="#i-key"/></svg></div>
+            <b>On — 14 sites via 3 tunnels</b>
+            <span class="rt">↓ 2.4 MB/s ↑ 180 KB/s · Netherlands 48 ms</span>
+            <div class="ac"><span>Turn off</span><span>Open</span></div>
+          </div>
+          <div class="ntf">
+            <div class="hd"><svg class="i" style="width:14px;height:14px"><use href="#i-fork"/></svg>Wayfork · 2 min ago</div>
+            <b>Netherlands stopped working</b>
+            <span class="rt">Its 6 sites go as usual until it is back.</span>
+            <div class="ac"><span>Retry</span></div>
+          </div>
+        </div>
+      </div>
+      <figcaption><b>X1 · Outside the app.</b> Android needs a persistent notification while the VPN runs; it carries the summary, the rates and Turn off, so it is useful and not just a rule. The Quick Settings tile is the phone's menu bar icon: tap to turn on or off, long-press to open Home.</figcaption>
+    </figure>
+
+  </div>
+</section>
+
+<!-- ======================= F · First run ======================= -->
+<section class="board">
+  <h2>F · First run <small>F22 in four steps</small></h2>
+  <div class="bd">
+
+    <figure>
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <div class="pg">
+          <div class="steps"><i class="on"></i><i></i><i></i><i></i></div>
+          <span class="btn tx" style="align-self:flex-end;margin-right:-12px">Skip</span>
+          <span class="hero"><svg class="i"><use href="#i-fork"/></svg></span>
+          <h4 style="font-size:26px;line-height:32px">Add a VPN you already have</h4>
+          <p style="font-size:15px;line-height:21px">Wayfork sends the sites you choose through it. Everything else on this phone stays on your normal connection.</p>
+          <div class="lst" style="margin-top:6px">
+            <div class="it"><svg class="i"><use href="#i-qr"/></svg><div class="t"><b>Scan QR code</b><small>From your VPN panel</small></div></div>
+            <div class="it"><svg class="i"><use href="#i-paste"/></svg><div class="t"><b>Paste a link</b><small>vless://, vmess://, trojan://, ss://</small></div></div>
+            <div class="it"><svg class="i"><use href="#i-sub"/></svg><div class="t"><b>Subscription URL</b></div></div>
+            <div class="it"><svg class="i"><use href="#i-desk"/></svg><div class="t"><b>A backup from your computer</b><small>Brings your tunnels and sites</small></div></div>
+          </div>
+          <span class="sp1"></span>
+          <p class="sm12"><b>Where do I get this?</b> From whoever runs your VPN: their panel or bot shows a link and a QR code. An OpenVPN file will not work on a phone.</p>
+        </div>
+        <div class="gest s"></div>
+      </div>
+      <figcaption><b>F1 · Add a tunnel.</b> The Mac guide's step 3, first here, since a phone has no helper to approve. A backup import skips to F3 with everything filled.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <div class="pg">
+          <div class="steps"><i class="on"></i><i class="on"></i><i></i><i></i></div>
+          <h4 style="font-size:24px;line-height:30px;margin-top:22px">Which sites go through Netherlands?</h4>
+          <div class="fld foc pgb"><label>Site</label><span class="hn">Site to route, e.g. example.com</span></div>
+          <div class="chips"><span class="chip">chatgpt.com <svg class="i"><use href="#i-x"/></svg></span><span class="chip">youtube.com <svg class="i"><use href="#i-x"/></svg></span><span class="chip">instagram.com <svg class="i"><use href="#i-x"/></svg></span></div>
+          <div style="display:flex;flex-direction:column;gap:2px;margin-top:6px">
+            <div class="opt" style="align-items:flex-start"><span class="rad on" style="margin-top:2px"></span><div class="t"><b style="font-weight:400;white-space:normal">Only these sites</b><small class="mut">The rest of the phone's traffic is not touched</small></div></div>
+            <div class="opt" style="align-items:flex-start"><span class="rad" style="margin-top:2px"></span><div class="t"><b style="font-weight:400;white-space:normal">Everything through Netherlands, except these</b><small class="mut">For when most of the web needs the VPN</small></div></div>
+          </div>
+          <span class="sp1"></span>
+          <div class="btns"><span class="btn tx">Back</span><span class="btn">Continue</span></div>
+        </div>
+        <div class="gest s"></div>
+      </div>
+      <figcaption><b>F2 · Pick sites.</b> Same as the Mac step 4: no preset list, one radio pair for F8. Apps are not asked here; they are one tap away in Sites later.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <div class="pg">
+          <div class="steps"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+          <h4 style="font-size:24px;line-height:30px;margin-top:22px">Allow the VPN connection</h4>
+          <p style="font-size:15px;line-height:21px">Android asks once. Wayfork runs a single VPN connection on this phone and decides inside it where each site goes.</p>
+          <div class="ln"><svg class="i ok"><use href="#i-check"/></svg><span>Your tunnels and sites stay on this phone.</span></div>
+          <div class="ln"><svg class="i ok"><use href="#i-check"/></svg><span>Another VPN app will be turned off: Android runs one at a time.</span></div>
+        </div>
+        <div class="scrim"></div>
+        <div class="dlg">
+          <span class="ic"><svg class="i"><use href="#i-key"/></svg></span>
+          <h5>Connection request</h5>
+          <p>Wayfork wants to set up a VPN connection that allows it to monitor network traffic. Only accept if you trust the source.</p>
+          <div class="btns"><span class="btn tx">Cancel</span><span class="btn tx">OK</span></div>
+        </div>
+        <div class="gest s"></div>
+      </div>
+      <figcaption><b>F3 · Allow the VPN.</b> The system dialog's wording is scary and fixed, so the screen under it explains first. The “one VPN at a time” line replaces the Mac's “another VPN app is still on” failure frame: on a phone it is certain, not a guess.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="ph">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="i"><use href="#i-key"/></svg><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <div class="pg">
+          <div class="steps"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div>
+          <h4 style="font-size:24px;line-height:30px;margin-top:22px">Try it</h4>
+          <div class="lst"><div class="it"><span class="dot"></span><div class="t"><b>Netherlands</b><small>Connected · Idle · 3 sites</small></div><div class="lat g">48<small> ms</small></div></div></div>
+          <span class="btn ol wd">Open chatgpt.com</span>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px">
+            <div class="ln"><svg class="i ok"><use href="#i-check"/></svg><span>Opened chatgpt.com — it went through Netherlands</span></div>
+            <div class="ln"><svg class="i ok"><use href="#i-check"/></svg><span>ya.ru went direct, as it should</span></div>
+          </div>
+          <span class="sp1"></span>
+          <p class="sm12">Wayfork lives in the notification shade and in Quick Settings: swipe down and add the Wayfork tile to turn it on or off without opening the app.</p>
+          <span class="btn wd">Done</span>
+        </div>
+        <div class="gest s"></div>
+      </div>
+      <figcaption><b>F4 · Try it.</b> The Mac step 6 proof (tunnel counter up after the open, a Recent host direct). The last lesson is where Wayfork lives, like the menu bar pointer on the Mac.</figcaption>
+    </figure>
+
+  </div>
+</section>
+
+<!-- ======================= I · iPhone ======================= -->
+<section class="board">
+  <h2>I · iPhone <small>only the differences</small></h2>
+  <p class="lead">Same screens and words in iOS controls. What changes: no app rules and no app names, the VPN lives in a Network Extension with about 50 MB of memory, and turning on at boot is iOS's Connect On Demand.</p>
+  <div class="bd">
+
+    <figure>
+      <div class="ip">
+        <div class="sb2"><span>9:41</span><span class="r"><span class="vpn">VPN</span><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <h3>Wayfork</h3>
+        <div class="bod2">
+          <div class="gp"><div class="cl"><div class="t"><b style="font-weight:600;font-size:17px">On</b><small>14 sites via 3 tunnels, the rest as usual</small></div><span class="isw"></span></div></div>
+          <div class="hdr">Tunnels</div>
+          <div class="gp">
+            <div class="cl"><span class="dot"></span><div class="t"><b>Netherlands</b><small>Connected · ↓ 1.9 MB/s · 6 sites</small></div><div class="lat g">48<small> ms</small></div></div>
+            <div class="cl"><span class="dot"></span><div class="t"><b>Home</b><small>Connected · Idle · 3 sites</small></div><div class="lat g">31<small> ms</small></div></div>
+            <div class="cl"><span class="dot" style="border-radius:3px;background:var(--tint)"></span><div class="t"><b>Europe</b><small>Fastest · using Germany · 5 sites</small></div><div class="lat g">62<small> ms</small></div></div>
+          </div>
+          <div class="hdr"><span>Recent — went direct</span><span>3 of 9</span></div>
+          <div class="gp">
+            <div class="cl"><div class="t"><b>medium.com</b></div><span class="lnk">Route</span></div>
+            <div class="cl"><div class="t"><b>discord.com</b></div><span class="lnk">Route</span></div>
+            <div class="cl"><div class="t"><b>figma.com</b></div><span class="lnk">Route</span></div>
+          </div>
+          <div class="ftr">iPhone doesn't say which app opened a site.</div>
+        </div>
+        <div class="tab"><div class="on"><svg class="i"><use href="#i-home"/></svg>Home</div><div><svg class="i"><use href="#i-globe"/></svg>Sites</div><div><svg class="i"><use href="#i-fork"/></svg>Tunnels</div><div><svg class="i"><use href="#i-more"/></svg>More</div></div>
+      </div>
+      <figcaption><b>I1 · Home.</b> Same content, grouped lists. Recent rows lose the app line.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="ip">
+        <div class="sb2"><span>9:41</span><span class="r"><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <h3>Sites</h3>
+        <div class="bod2">
+          <div class="gp" style="padding:8px 12px;display:flex;gap:8px;align-items:center;color:var(--sec);background:#e3e3e8"><svg class="i" style="width:16px;height:16px"><use href="#i-search"/></svg>Search</div>
+          <div class="hdr">Netherlands · 5 sites</div>
+          <div class="gp">
+            <div class="cl"><div class="t"><b>chatgpt.com</b><small>and subdomains</small></div></div>
+            <div class="cl"><div class="t"><b>claude.ai</b><small>and subdomains</small></div></div>
+            <div class="cl"><div class="t"><b>149.154.160.0/20</b><small>address range · Telegram</small></div></div>
+            <div class="cl"><div class="t lnk"><b>Add Site</b></div></div>
+          </div>
+          <div class="hdr">Not via any tunnel · 4 sites</div>
+          <div class="gp"><div class="cl"><div class="t"><b>gosuslugi.ru</b><small>and subdomains</small></div></div></div>
+          <div class="hdr">From your Mac backup</div>
+          <div class="gp"><div class="cl" style="opacity:.55"><div class="t"><b>Telegram</b><small>the app → Netherlands · Mac and Android only</small></div></div></div>
+          <div class="ftr">iPhone doesn't let VPN apps tell apps apart. To route an app here, route its sites or its address range.</div>
+        </div>
+        <div class="tab"><div><svg class="i"><use href="#i-home"/></svg>Home</div><div class="on"><svg class="i"><use href="#i-globe"/></svg>Sites</div><div><svg class="i"><use href="#i-fork"/></svg>Tunnels</div><div><svg class="i"><use href="#i-more"/></svg>More</div></div>
+      </div>
+      <figcaption><b>I2 · Sites.</b> No Apps filter. App rules from a backup are kept and shown read-only, like desktop-only tunnels. The workaround is the one people already use: Telegram by its address range (F11).</figcaption>
+    </figure>
+
+    <figure>
+      <div class="ip">
+        <div class="sb2"><span>9:41</span><span class="r"><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-bat"/></svg></span></div>
+        <div class="bod2" style="padding:30px 22px 0;gap:14px">
+          <div style="display:flex;gap:6px"><i style="flex:1;height:4px;border-radius:2px;background:var(--tint)"></i><i style="flex:1;height:4px;border-radius:2px;background:var(--tint)"></i><i style="flex:1;height:4px;border-radius:2px;background:var(--tint)"></i><i style="flex:1;height:4px;border-radius:2px;background:#d1d1d6"></i></div>
+          <b style="font-size:28px;line-height:34px;margin-top:20px">Allow the VPN configuration</b>
+          <span style="color:var(--sec)">iPhone asks once, then asks for your passcode. Wayfork adds one VPN configuration and decides inside it where each site goes.</span>
+        </div>
+        <div class="scrim"></div>
+        <div class="ialert">
+          <div class="tx"><b>“Wayfork” Would Like to Add VPN Configurations</b><p>All network activity on this iPhone may be filtered or monitored when using VPN.</p></div>
+          <div class="bt"><span>Allow</span><span>Don't Allow</span></div>
+        </div>
+      </div>
+      <figcaption><b>I3 · Allow the VPN, iPhone.</b> F3 with Apple's alert. After Allow, iOS asks for the passcode and then the configuration shows up in Settings › VPN; Control Center gets a Wayfork control (iOS 18) as the Quick Settings tile's equivalent.</figcaption>
+    </figure>
+
+  </div>
+</section>
+
+<script>
+/* Russian screen strings. Keys are the English text of one text node; "nav:" and "tile:"
+   keys win inside the tab bar and Quick Settings tiles, where the same English word means
+   something else. Captions and notes are not translated. */
+const RU = {
+  "Wayfork":"Wayfork", "On":"Включён", "Off":"Выключен", "Tunnels":"Туннели", "Sites":"Сайты", "More":"Ещё",
+  "nav:Home":"Главная", "nav:Sites":"Сайты", "nav:Tunnels":"Туннели", "nav:More":"Ещё",
+  "tile:Off":"Выкл.", "tile:On · 3 tunnels":"Вкл. · 3 туннеля",
+  "Netherlands":"Нидерланды", "Home":"Дом", "Europe":"Европа", "Germany":"Германия", "Finland":"Финляндия", "Work":"Работа",
+  "Group":"Группа", "Default":"Основной", "ms":"мс", "48 ms":"48 мс", "31 ms":"31 мс", "62 ms":"62 мс", "88 ms":"88 мс",
+  "14 sites via 3 tunnels, the rest as usual":"14 сайтов через 3 туннеля, остальное как обычно",
+  "↓ 2.4 MB/s ↑ 180 KB/s":"↓ 2,4 МБ/с ↑ 180 КБ/с", "↓ 3.1 MB/s ↑ 240 KB/s":"↓ 3,1 МБ/с ↑ 240 КБ/с",
+  "Connected · ↓ 1.9 MB/s ↑ 120 KB/s · 6 sites":"Подключён · ↓ 1,9 МБ/с ↑ 120 КБ/с · 6 сайтов",
+  "Connected · Idle · 3 sites":"Подключён · без трафика · 3 сайта",
+  "Fastest · ↓ 420 KB/s · using Germany · 5 sites":"Самый быстрый · ↓ 420 КБ/с · сейчас Германия · 5 сайтов",
+  "✓ in use":"✓ сейчас", "Not via any tunnel":"Мимо туннелей", "4 sites":"4 сайта", "5 sites":"5 сайтов", "6 sites":"6 сайтов",
+  "Recent — went direct, last 5 min":"Недавние — напрямую, за 5 мин", "3 of 9":"3 из 9", "3 of 22":"3 из 22",
+  "Route":"Направить", "+ Route":"+ Направить",
+  "Everything goes via Netherlands, 8 sites via other tunnels":"Всё идёт через Нидерланды, 8 сайтов через другие туннели",
+  "Connected · ↓ 2.6 MB/s ↑ 190 KB/s · 2 sites":"Подключён · ↓ 2,6 МБ/с ↑ 190 КБ/с · 2 сайта",
+  "Connected · ↓ 510 KB/s ↑ 50 KB/s · 3 sites":"Подключён · ↓ 510 КБ/с ↑ 50 КБ/с · 3 сайта",
+  "5 sites · stay on your normal connection":"5 сайтов · остаются на обычном подключении",
+  "Recent — went via Netherlands, last 5 min":"Недавние — через Нидерланды, за 5 мин",
+  "SberBank Online":"СберБанк Онлайн", "Yandex Music":"Яндекс Музыка",
+  "Nothing goes through a tunnel. Turn on to send your 14 sites through their tunnels; everything else stays as it is.":"Через туннели ничего не идёт. Включите, и ваши 14 сайтов пойдут через свои туннели; всё остальное останется как есть.",
+  "Not running · 6 sites":"Не запущен · 6 сайтов", "Not running · 3 sites":"Не запущен · 3 сайта", "Not running · 5 sites":"Не запущена · 5 сайтов",
+  "Netherlands can't connect":"Нидерланды: нет подключения",
+  "2 of 3 tunnels up, the rest as usual. Its 6 sites go as usual until it is back.":"Работают 2 туннеля из 3. Его 6 сайтов пока идут как обычно.",
+  "Can't connect · The server didn't answer":"Нет подключения · Сервер не ответил",
+  "Fix…":"Исправить…", "Retry":"Повторить", "Connecting… · 2nd try":"Подключается… · попытка 2",
+  "You switched from Wi-Fi to mobile data 20 s ago. Tunnels reconnect on their own; this usually takes a few seconds.":"20 с назад телефон перешёл с Wi-Fi на мобильную сеть. Туннели переподключатся сами, обычно за несколько секунд.",
+  "Add a tunnel to turn Wayfork on.":"Добавьте туннель, чтобы включить Wayfork.",
+  "Add a VPN you already have":"Добавьте VPN, который у вас уже есть",
+  "A VLESS, Trojan, Shadowsocks, VMess or WireGuard link, the QR code from your VPN panel, or a subscription URL. Then tell Wayfork which sites go through it; the rest of your traffic is not touched.":"Ссылку VLESS, Trojan, Shadowsocks, VMess или WireGuard, QR-код из панели VPN или адрес подписки. Потом укажите, какие сайты пускать через него. Остальной трафик Wayfork не трогает.",
+  "Scan QR code":"Сканировать QR-код", "Paste link":"Вставить ссылку", "Paste a link":"Вставить ссылку",
+  "Import a backup from your computer":"Загрузить бэкап с компьютера",
+  "All":"Все", "Apps":"Приложения", "Addresses":"Адреса", "Blocked":"Блокировка",
+  "+ Add site":"+ Сайт", "Add site":"Добавить сайт", "Add Site":"Добавить сайт", "Add a site":"Новый сайт",
+  "and subdomains":"и поддомены", "exactly this":"только этот", "pattern":"шаблон",
+  "the app · all traffic":"приложение · весь трафик", "3 more":"ещё 3",
+  "OpenVPN · desktop only · 3 sites go as usual":"OpenVPN · только на компьютере · 3 сайта идут как обычно",
+  "Site":"Сайт", "Goes through":"Через", "Europe · group":"Европа · группа", "Cancel":"Отмена", "Add":"Добавить",
+  "Route medium.com":"Направить medium.com", "Shared from Chrome · went direct a moment ago":"Из Chrome · только что шёл напрямую",
+  "Send medium.com and its subdomains through":"Пустить medium.com и поддомены через",
+  "Then reload the page: the browser may keep using its old connection for a minute.":"Потом обновите страницу: браузер может ещё минуту держать старое соединение.",
+  "An app sends all its traffic through the tunnel you pick, whatever site it opens.":"Приложение отправляет весь свой трафик через выбранный туннель, какой бы сайт оно ни открывало.",
+  "all traffic":"весь трафик", "TCP only · voice stays direct":"только TCP · голос напрямую", "Not via any":"Мимо туннелей",
+  "Other apps":"Остальные приложения", "by its sites":"по своим сайтам",
+  "Connected · VLESS · 6 sites":"Подключён · VLESS · 6 сайтов", "Connected · WireGuard · 3 sites":"Подключён · WireGuard · 3 сайта",
+  "Connected · Trojan · in Europe":"Подключён · Trojan · в группе Европа", "Connected · Shadowsocks · in Europe":"Подключён · Shadowsocks · в группе Европа",
+  "Groups":"Группы", "Fastest · using Germany · 5 sites":"Самый быстрый · сейчас Германия · 5 сайтов", "Desktop only":"Только на компьютере",
+  "OpenVPN · from your Mac backup · 3 sites go as usual":"OpenVPN · из бэкапа Mac · 3 сайта идут как обычно",
+  "OpenVPN runs in the Mac and Windows apps only. Wayfork keeps this tunnel and its sites so your next backup still has them.":"OpenVPN работает только в приложениях для Mac и Windows. Wayfork хранит этот туннель и его сайты, чтобы они попали в следующий бэкап.",
+  "Add tunnel":"Добавить туннель", "Add a tunnel":"Новый туннель", "Use the link you copied":"Взять скопированную ссылку",
+  "trojan://…@de-1.example.net · Germany 2":"trojan://…@de-1.example.net · Германия 2",
+  "From your VPN panel or another phone":"Из панели VPN или с другого телефона",
+  "Subscription URL":"Адрес подписки", "A list of servers, pick the ones to add":"Список серверов, выберите нужные",
+  "Choose a file":"Выбрать файл", "WireGuard .conf or a Wayfork backup":".conf WireGuard или бэкап Wayfork",
+  "OpenVPN files (.ovpn) work in the Mac and Windows apps only.":"Файлы OpenVPN (.ovpn) работают только в приложениях для Mac и Windows.",
+  "Point at the QR code":"Наведите камеру на QR-код", "in your VPN panel":"в панели VPN", "Found a VLESS tunnel":"Найден туннель VLESS",
+  "Name":"Название", "Netherlands 2":"Нидерланды 2", "Scan again":"Ещё раз", "Connected":"Подключён",
+  "↓ 1.9 MB/s ↑ 120 KB/s · last 2 min: min 44, max 57 ms":"↓ 1,9 МБ/с ↑ 120 КБ/с · за 2 мин: от 44 до 57 мс",
+  "6 sites and 1 app":"6 сайтов и 1 приложение", "Everything else":"Всё остальное",
+  "Sites without a rule go through this tunnel":"Сайты без правила идут через этот туннель",
+  "From the tunnel":"От туннеля", "Server":"Сервер", "Imported Oct 12, 2026":"Добавлен 12 октября 2026 г.", "from a link":"по ссылке",
+  "Show as QR code":"Показать QR-код", "Add this tunnel on another phone":"Чтобы добавить туннель на другом телефоне", "Delete tunnel":"Удалить туннель",
+  "Can't reach":"Не открывается", "3 sites failed in the last 10 min":"3 сайта не открылись за 10 мин",
+  "Connections by exit":"Соединения по выходам", "What went where right now":"Что и куда идёт сейчас",
+  "Block lists":"Списки блокировки", "Ads and trackers · 2 lists":"Реклама и трекеры · 2 списка",
+  "Turn on with the phone":"Включать вместе с телефоном", "Android's Always-on VPN · open settings":"Постоянная VPN в Android · открыть настройки",
+  "Reconnect tunnels on their own":"Переподключать туннели автоматически", "Notify me when a tunnel stops working":"Сообщать, если туннель перестал работать",
+  "DNS for sites outside tunnels":"DNS для сайтов мимо туннелей", "Same as the phone":"Как в телефоне",
+  "Backup":"Бэкап", "Export or import, same file as the Mac and Windows apps":"Экспорт и импорт, тот же файл, что на Mac и Windows",
+  "Problems log":"Журнал проблем", "Share diagnostics…":"Отправить диагностику…", "About":"О приложении",
+  "Sites that failed in the last 10 minutes. If one is blocked on your network, send it through a tunnel.":"Сайты, которые не открылись за последние 10 минут. Если сайт заблокирован в вашей сети, пустите его через туннель.",
+  "Chrome · went direct · 14 timeouts":"Chrome · напрямую · 14 таймаутов", "Discord · went direct · 6 resets":"Discord · напрямую · 6 обрывов",
+  "Telegram · via Netherlands · 3 timeouts":"Telegram · через Нидерланды · 3 таймаута", "Retry tunnel":"Переподключить",
+  "A site that failed through a tunnel points at the tunnel, not the site: Wayfork offers to retry or test the tunnel instead of a rule.":"Если сайт не открылся через туннель, дело в туннеле, а не в сайте. Поэтому Wayfork предлагает переподключить туннель, а не добавить правило.",
+  "Wednesday, 14 October":"среда, 14 октября", "Internet":"Интернет", "Flashlight":"Фонарик",
+  "Wayfork · now":"Wayfork · сейчас", "On — 14 sites via 3 tunnels":"Включён — 14 сайтов через 3 туннеля",
+  "↓ 2.4 MB/s ↑ 180 KB/s · Netherlands 48 ms":"↓ 2,4 МБ/с ↑ 180 КБ/с · Нидерланды 48 мс",
+  "Turn off":"Выключить", "Open":"Открыть", "Wayfork · 2 min ago":"Wayfork · 2 мин назад",
+  "Netherlands stopped working":"Нидерланды: туннель не работает", "Its 6 sites go as usual until it is back.":"Пока его 6 сайтов идут как обычно.",
+  "Skip":"Пропустить",
+  "Wayfork sends the sites you choose through it. Everything else on this phone stays on your normal connection.":"Wayfork пустит через него выбранные сайты. Всё остальное на телефоне останется на обычном подключении.",
+  "From your VPN panel":"Из панели VPN", "A backup from your computer":"Бэкап с компьютера", "Brings your tunnels and sites":"Перенесёт туннели и сайты",
+  "Where do I get this?":"Где это взять?",
+  "From whoever runs your VPN: their panel or bot shows a link and a QR code. An OpenVPN file will not work on a phone.":"У того, кто держит ваш VPN: в его панели или боте есть ссылка и QR-код. Файл OpenVPN на телефоне не заработает.",
+  "Which sites go through Netherlands?":"Какие сайты пустить через Нидерланды?", "Site to route, e.g. example.com":"Сайт, например example.com",
+  "Only these sites":"Только эти сайты", "The rest of the phone's traffic is not touched":"Остальной трафик телефона не трогаем",
+  "Everything through Netherlands, except these":"Всё через Нидерланды, кроме этих", "For when most of the web needs the VPN":"Когда VPN нужен почти везде",
+  "Back":"Назад", "Continue":"Далее", "Allow the VPN connection":"Разрешите VPN-подключение",
+  "Android asks once. Wayfork runs a single VPN connection on this phone and decides inside it where each site goes.":"Android спросит один раз. Wayfork держит на телефоне одно VPN-подключение и уже внутри решает, куда идёт каждый сайт.",
+  "Your tunnels and sites stay on this phone.":"Туннели и сайты хранятся только на этом телефоне.",
+  "Another VPN app will be turned off: Android runs one at a time.":"Другое VPN-приложение отключится: Android держит только одно.",
+  "Connection request":"Запрос на подключение",
+  "Wayfork wants to set up a VPN connection that allows it to monitor network traffic. Only accept if you trust the source.":"Приложение Wayfork пытается подключиться к сети VPN, что позволит ему отслеживать трафик. Продолжайте, только если доверяете источнику.",
+  "OK":"ОК", "Try it":"Проверьте", "Open chatgpt.com":"Открыть chatgpt.com",
+  "Opened chatgpt.com — it went through Netherlands":"chatgpt.com открылся через Нидерланды", "ya.ru went direct, as it should":"ya.ru пошёл напрямую, как и должен",
+  "Wayfork lives in the notification shade and in Quick Settings: swipe down and add the Wayfork tile to turn it on or off without opening the app.":"Wayfork живёт в шторке и быстрых настройках: добавьте плитку Wayfork, чтобы включать и выключать его, не открывая приложение.",
+  "Done":"Готово", "Connected · ↓ 1.9 MB/s · 6 sites":"Подключён · ↓ 1,9 МБ/с · 6 сайтов", "Recent — went direct":"Недавние — напрямую",
+  "iPhone doesn't say which app opened a site.":"iPhone не сообщает, какое приложение открыло сайт.", "Search":"Поиск",
+  "Netherlands · 5 sites":"Нидерланды · 5 сайтов", "address range · Telegram":"диапазон адресов · Telegram",
+  "Not via any tunnel · 4 sites":"Мимо туннелей · 4 сайта", "From your Mac backup":"Из бэкапа Mac",
+  "the app → Netherlands · Mac and Android only":"приложение → Нидерланды · только Mac и Android",
+  "iPhone doesn't let VPN apps tell apps apart. To route an app here, route its sites or its address range.":"На iPhone VPN не различает приложения. Чтобы направить приложение, направьте его сайты или диапазон адресов.",
+  "Allow the VPN configuration":"Разрешите конфигурацию VPN",
+  "iPhone asks once, then asks for your passcode. Wayfork adds one VPN configuration and decides inside it where each site goes.":"iPhone спросит один раз, затем попросит код-пароль. Wayfork добавит одну конфигурацию VPN и уже внутри решит, куда идёт каждый сайт.",
+  "“Wayfork” Would Like to Add VPN Configurations":"Программа «Wayfork» запрашивает разрешение на добавление конфигураций VPN",
+  "All network activity on this iPhone may be filtered or monitored when using VPN.":"При использовании VPN вся сетевая активность на этом iPhone может фильтроваться или отслеживаться.",
+  "Allow":"Разрешить", "Don't Allow":"Не разрешать"
+};
+(function () {
+  const nodes = [];
+  document.querySelectorAll(".ph, .ip").forEach(function (frame) {
+    const w = document.createTreeWalker(frame, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) {
+      const key = n.nodeValue.replace(/\s+/g, " ").trim();
+      if (!key) continue;
+      const el = n.parentElement;
+      const ctx = el.closest(".nav, .tab") ? "nav:" : el.closest(".tile") ? "tile:" : "";
+      const ru = RU[ctx + key] !== undefined ? RU[ctx + key] : RU[key];
+      if (ru === undefined) continue;
+      nodes.push({ n: n, en: n.nodeValue, ru: n.nodeValue.match(/^\s*/)[0] + ru + n.nodeValue.match(/\s*$/)[0] });
+    }
+  });
+  const buttons = document.querySelectorAll(".lang button");
+  function apply(lang) {
+    nodes.forEach(function (x) { x.n.nodeValue = lang === "ru" ? x.ru : x.en; });
+    document.querySelectorAll(".ph, .ip").forEach(function (f) { f.lang = lang; });
+    buttons.forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.lang === lang)); });
+    try { localStorage.setItem("wayfork-mobile-lang", lang); } catch (e) {}
+  }
+  buttons.forEach(function (b) { b.addEventListener("click", function () { apply(b.dataset.lang); }); });
+  let start = location.hash === "#ru" ? "ru" : location.hash === "#en" ? "en" : null;
+  if (!start) { try { start = localStorage.getItem("wayfork-mobile-lang"); } catch (e) {} }
+  if (start === "ru") apply("ru");
+})();
+</script>
+
+</body>
+</html>
