@@ -52,8 +52,6 @@ Decisions taken without the maintainer and checks only the maintainer can do. Ea
 - MB0+MB1: the desktop-only tunnel answer — sites of an OpenVPN tunnel from a backup go
   through the default tunnel when one is set on the phone (not straight out). If you
   wanted them always direct, say so.
-- MB0+MB1: the prototype copy at https://claude.ai/artifact/49kVJnNXp8XHLHkpmHhqnK is not
-  republished; the repo file `docs/design/prototype/mobile.html` has the 2026-10-15 notes.
 - MB0+MB1: read the MB0 table and the MB1 entries in ROADMAP-mobile.md; "ok" turns both
   phase rows into "approved <date>", or overturn any line above.
 - MB2a: needs your Android phone with SFA installed; the session prepares configs and

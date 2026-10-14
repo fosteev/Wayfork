@@ -149,8 +149,8 @@ What changes for the user compared with F1–F23, in the W1 format ("same" / "ch
       VPN / Connect On Demand, backup import with desktop-only tunnels (S1, T1), Russian UI
 - [x] Each MF entry has its acceptance line, as F-entries do in ROADMAP.md
 - [x] "Later (mobile)" list: OpenVPN 3 core, Google Play, live sync, widgets
-- [ ] Prototype boards updated where MB1 changed a decision; Artifact copy republished
-      (repo file updated 2026-10-15; the Artifact copy is not republished yet)
+- [x] Prototype boards updated where MB1 changed a decision; Artifact copy republished
+      (repo file updated and Artifact republished 2026-10-15)
 
 **Done when:** the maintainer approved MB1; every F-number appears exactly once
 (`grep -c '^\*\*F[0-9]' docs/ROADMAP-mobile.md` → 23).
