@@ -55,10 +55,15 @@ struct PopoverView: View {
     }
 
     /// The list's ceiling: the screen minus the menu bar, the header, the quick add and
-    /// the footer (about 220 pt of chrome), never below 240 pt.
+    /// the footer (up to about 300 pt of chrome with the failed line and the guide card),
+    /// between 240 and 560 pt. The screen is the one under the pointer — the one whose menu
+    /// bar was clicked; `NSScreen.main` follows the key window, often another display.
     private var listMaxHeight: CGFloat {
-        let screen = NSScreen.main?.visibleFrame.height ?? 800
-        return max(240, screen - 220)
+        let pointer = NSEvent.mouseLocation
+        let screen =
+            NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) } ?? NSScreen.main
+        let height = screen?.visibleFrame.height ?? 800
+        return min(560, max(240, height - 300))
     }
 
     private var header: some View {
@@ -183,38 +188,34 @@ struct PopoverView: View {
 
 /// The content at its natural height while it fits `maxHeight`; a scroll view of exactly
 /// `maxHeight` once it does not. A plain `ScrollView` cannot do this in the menu bar
-/// window: the window sizes itself to the content's ideal height, and a scroll view's
-/// ideal height is nothing.
+/// window: the window sizes itself to the content's ideal height, and an unconstrained
+/// scroll view takes whatever it is offered. The layout asks the scroll view for its ideal
+/// height (its content's) and caps it; measuring through a preference never shrank the
+/// window.
 private struct SizedScrollView<Content: View>: View {
     let maxHeight: CGFloat
     @ViewBuilder let content: Content
-    @State private var contentHeight: CGFloat = 0
 
     var body: some View {
-        Group {
-            if contentHeight > maxHeight {
-                ScrollView(.vertical) { measured }
-                    .frame(height: maxHeight)
-            } else {
-                measured
-            }
+        CappedHeightLayout(maxHeight: maxHeight) {
+            ScrollView(.vertical) { content }
         }
-        .onPreferenceChange(ContentHeightKey.self) { contentHeight = $0 }
-    }
-
-    private var measured: some View {
-        content.background(
-            GeometryReader { proxy in
-                Color.clear.preference(key: ContentHeightKey.self, value: proxy.size.height)
-            }
-        )
     }
 }
 
-private struct ContentHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
+private struct CappedHeightLayout: Layout {
+    let maxHeight: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let child = subviews.first else { return .zero }
+        let ideal = child.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil))
+        return CGSize(width: proposal.width ?? ideal.width, height: min(ideal.height, maxHeight))
+    }
+
+    func placeSubviews(
+        in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+    ) {
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
     }
 }
 
