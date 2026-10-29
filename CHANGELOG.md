@@ -6,6 +6,22 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.10.2] — 2026-10-29
+
+A popover fix on macOS and licence texts in both packages; everything else as in 0.10.1.
+
+### Fixed
+
+- With many tunnels the macOS popover could grow past the screen and push its footer out
+  of reach; the tunnel list height is now capped with room for the whole footer, and the
+  list scrolls.
+
+### Changed
+
+- Wayfork is licensed under GPL-3.0-or-later. The macOS app and the Windows installer now
+  ship `LICENSE`, `THIRD_PARTY_NOTICES.md` and the licence texts of the bundled
+  components (sing-box, OpenVPN, OpenSSL, WireGuard and others).
+
 ## [0.10.1] — 2026-10-07
 
 A fix for tunnels imported from WireGuard, Shadowsocks and Trojan configs (issue #4) on
