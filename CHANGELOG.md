@@ -6,6 +6,11 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-10-30
+
+VLESS over XHTTP on macOS through a bundled Xray-core; the Windows build only carries the
+version bump. Pre-release until the live check on an XHTTP server passes.
+
 ### Added
 
 - macOS: `vless://…?type=xhttp` links import and route like any other tunnel. sing-box has
