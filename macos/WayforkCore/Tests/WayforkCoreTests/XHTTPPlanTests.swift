@@ -436,8 +436,7 @@ private func goldenFiles(
     let binary = Fixtures.root.deletingLastPathComponent()
         .appendingPathComponent("macos/Resources/bin/xray")
     guard FileManager.default.isExecutableFile(atPath: binary.path) else {
-        Issue.record("SKIPPED: \(binary.path) is missing; run scripts/fetch-bins.sh")
-        return
+        return  // not fetched (CI): scripts/fetch-bins.sh
     }
     let root = Fixtures.url("xray")
     var checked = 0
@@ -470,8 +469,7 @@ private func goldenFiles(
     let binary = Fixtures.root.deletingLastPathComponent()
         .appendingPathComponent("macos/Resources/bin/sing-box")
     guard FileManager.default.isExecutableFile(atPath: binary.path) else {
-        Issue.record("SKIPPED: \(binary.path) is missing; run scripts/fetch-bins.sh")
-        return
+        return  // not fetched (CI): scripts/fetch-bins.sh
     }
     for (name, store, resolved) in goldenVariants() {
         let result = RuntimePlanBuilder.build(

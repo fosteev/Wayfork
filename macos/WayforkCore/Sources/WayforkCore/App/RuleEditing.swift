@@ -79,7 +79,9 @@ public enum QuickAdd {
         } catch {
             return .invalid(RuleEditing.message(for: .invalidHostname(input)))
         }
-        if var existing = store.rules.first(where: { $0.pattern == pattern && $0.network == network }) {
+        if var existing = store.rules.first(where: {
+            $0.pattern == pattern && $0.network == network
+        }) {
             existing.target = target
             existing.match = match
             existing.isEnabled = true

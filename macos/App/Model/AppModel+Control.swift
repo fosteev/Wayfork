@@ -202,7 +202,8 @@ extension AppModel {
         case .add(let rule):
             return try await commit(
                 .insertRule(rule, before: nil),
-                description: "add \(rule.pattern)\(networkSuffix(rule.network)) → \(controlExitName(target))",
+                description:
+                    "add \(rule.pattern)\(networkSuffix(rule.network)) → \(controlExitName(target))",
                 rule: rule,
                 params: params)
         case .update(let rule):
@@ -230,7 +231,9 @@ extension AppModel {
         let rule = try findRule(text)
         return try await commit(
             StoreEdit.removal(of: rule, in: store),
-            description: "remove \(rule.pattern)\(networkSuffix(rule.network)) → \(controlExitName(rule.target))", rule: rule,
+            description:
+                "remove \(rule.pattern)\(networkSuffix(rule.network)) → \(controlExitName(rule.target))",
+            rule: rule,
             params: params)
     }
 

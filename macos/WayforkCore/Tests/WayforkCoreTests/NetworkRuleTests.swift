@@ -137,7 +137,9 @@ private let discord = "/Applications/Discord.app"
     let store = Fixtures.store(rules: [
         Rule(pattern: discord, match: .app, tunnelID: Fixtures.workID),
         Rule(pattern: discord, match: .app, target: .direct, network: .udp),
-        Rule(pattern: "/Applications/Slack.app", match: .app, tunnelID: Fixtures.homeID, network: .tcp),
+        Rule(
+            pattern: "/Applications/Slack.app", match: .app, tunnelID: Fixtures.homeID,
+            network: .tcp),
     ])
     let input = SingBoxConfigGenerator.Input(
         store: store, vlessUUIDs: [Fixtures.homeID: "00000000-0000-4000-8000-0000000000aa"],
@@ -171,7 +173,9 @@ private let discord = "/Applications/Discord.app"
         pattern: "203.0.113.0/24", match: .ip, tunnelID: Fixtures.workID, network: .tcp)
     let store = Fixtures.store(rules: [narrowed])
     let target = RuleTarget.tunnel(Fixtures.homeID)
-    guard case .add(let rule) = QuickAdd.evaluate(input: "203.0.113.0/24", target: target, store: store)
+    guard
+        case .add(let rule) = QuickAdd.evaluate(
+            input: "203.0.113.0/24", target: target, store: store)
     else {
         Issue.record("expected an add next to the narrowed rule")
         return
