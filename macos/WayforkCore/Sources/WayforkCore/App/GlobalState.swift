@@ -67,14 +67,14 @@ public enum GlobalStateDerivation {
         }
     }
 
-    /// Enabled OpenVPN tunnels that are failing (failed / reconnecting) and those still on
+    /// Enabled process-backed (OpenVPN, XHTTP) tunnels that are failing (failed / reconnecting) and those still on
     /// their first connection attempt, both in store order.
     private static func classify(store: Store, status: RuntimeStatus) -> (
         failing: [UUID], waiting: [UUID]
     ) {
         var failing: [UUID] = []
         var waiting: [UUID] = []
-        for tunnel in store.tunnels where tunnel.isEnabled && tunnel.kind.isOpenVPN {
+        for tunnel in store.tunnels where tunnel.isEnabled && tunnel.kind.hasProcess {
             guard let state = status.tunnels[tunnel.id.uuidString.lowercased()] else { continue }
             switch state {
             case .connected, .disabled:

@@ -97,6 +97,38 @@ public enum PlanValidator {
                 try checkSize(passphrase, name: "key passphrase of \(runtime.id)", allowEmpty: true)
             }
         }
+        try validateXray(plan.xray)
+    }
+
+    /// One `xray` process per XHTTP tunnel: lowercase-UUID ids, a loopback port from the
+    /// slot range, and a config of sane size. Nothing here is spawned yet (stage 4).
+    private static func validateXray(_ runtimes: [XrayRuntime]) throws(DaemonError) {
+        guard runtimes.count <= RuntimePlan.maxTunnels else {
+            throw .planInvalid(
+                reason:
+                    "\(runtimes.count) XHTTP tunnels exceed the limit of \(RuntimePlan.maxTunnels)"
+            )
+        }
+        var ids = Set<String>()
+        var ports = Set<Int>()
+        for runtime in runtimes {
+            guard isTunnelID(runtime.id) else {
+                throw .planInvalid(reason: "tunnel id \"\(runtime.id)\" is not a lowercase UUID")
+            }
+            guard ids.insert(runtime.id).inserted else {
+                throw .planInvalid(reason: "duplicate XHTTP tunnel id \(runtime.id)")
+            }
+            guard Tunnel.xrayPorts.contains(runtime.port) else {
+                throw .planInvalid(
+                    reason:
+                        "xray port \(runtime.port) of tunnel \(runtime.id) is outside \(Tunnel.xrayPorts.lowerBound)…\(Tunnel.xrayPorts.upperBound - 1)"
+                )
+            }
+            guard ports.insert(runtime.port).inserted else {
+                throw .planInvalid(reason: "xray port \(runtime.port) is used twice")
+            }
+            try checkSize(runtime.config, name: "xray config of \(runtime.id)", allowEmpty: false)
+        }
     }
 
     /// `rules-t-<id>.json`, `rules-t-<id>-ip.json`, `-tcp.json` / `-udp.json` (F23) and their

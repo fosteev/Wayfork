@@ -73,7 +73,7 @@ DAEMON="$APP/Contents/MacOS/WayforkDaemon"
 log "Verifying signatures"
 codesign --verify --deep --strict --verbose=1 "$APP"
 codesign --verify --strict "$DAEMON"
-for bin in sing-box openvpn; do
+for bin in sing-box openvpn xray; do
     if [[ -x "$APP/Contents/Resources/bin/$bin" ]]; then
         codesign --verify --strict "$APP/Contents/Resources/bin/$bin"
     else

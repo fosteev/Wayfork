@@ -6,6 +6,15 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- macOS: `vless://…?type=xhttp` links import and route like any other tunnel. sing-box has
+  no XHTTP transport, so each XHTTP tunnel runs its own bundled `xray` (Xray-core 26.10.29,
+  about 64 MB as a universal binary) on a loopback SOCKS5 port, and sing-box reaches it
+  through a `socks` outbound. The tunnel card shows the process state, *Show log* and the
+  Logs window cover it, and `wayforkctl logs --source xray` reads its log. Windows is
+  pending.
+
 ## [0.10.2] — 2026-10-29
 
 A popover fix on macOS and licence texts in both packages; everything else as in 0.10.1.

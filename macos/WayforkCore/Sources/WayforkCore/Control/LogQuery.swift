@@ -4,7 +4,8 @@ import Foundation
 /// case-insensitive substrings, a start time and a tail length. Pure; the CLI only finds the
 /// files.
 public struct LogQuery: Sendable, Hashable {
-    /// Empty: every source. `openvpn` stands for every `openvpn:<id>`.
+    /// Empty: every source. `openvpn` stands for every `openvpn:<id>`, `xray` for every
+    /// `xray:<id>`.
     public var sources: [String]
     /// Lines at this level or more severe.
     public var level: LogLevel
@@ -57,7 +58,8 @@ public struct LogQuery: Sendable, Hashable {
     static func source(_ source: String, matches filter: String) -> Bool {
         let filter = filter.lowercased()
         let source = source.lowercased()
-        return source == filter || (filter == "openvpn" && source.hasPrefix("openvpn:"))
+        return source == filter
+            || (["openvpn", "xray"].contains(filter) && source.hasPrefix(filter + ":"))
     }
 
     /// `90s`, `15m`, `2h`, `1d` before `now`, or an ISO-8601 timestamp (with or without

@@ -125,6 +125,9 @@ public enum ProxyLinkParser {
             transport = ("ws", host ?? "", path)
         case .grpc(let serviceName):
             transport = ("grpc", "", serviceName)
+        case .xhttp:
+            // VMess never holds XHTTP (the parser refuses it); fall back to plain TCP.
+            transport = ("tcp", "", "")
         }
         var json: [String: String] = [
             "add": meta.server,
@@ -387,6 +390,8 @@ public enum ProxyLinkParser {
         case .grpc(let serviceName):
             query.append(("type", "grpc"))
             if !serviceName.isEmpty { query.append(("serviceName", serviceName)) }
+        case .xhttp:
+            break  // VLESS only: the Trojan parser refuses it, so it never gets here.
         }
     }
 

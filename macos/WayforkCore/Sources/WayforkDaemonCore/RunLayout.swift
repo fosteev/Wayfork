@@ -17,6 +17,9 @@ public enum RunLayout {
     public static func openVPNConfig(_ id: String) -> String { "t-\(id).ovpn" }
     public static func managementSocket(_ id: String) -> String { "t-\(id).sock" }
     public static func openVPNPID(_ id: String) -> String { "t-\(id).pid" }
+    /// xray config of an XHTTP tunnel (D7): UUID inside, so 0600 like the `.ovpn`.
+    public static func xrayConfig(_ id: String) -> String { "t-\(id).xray.json" }
+    public static func xrayPID(_ id: String) -> String { "t-\(id).xray.pid" }
     public static func ruleSet(_ id: String) -> String { "rules-t-\(id).json" }
     /// IP rules of a tunnel (F11); always part of the plan next to `ruleSet`.
     public static func ipRuleSet(_ id: String) -> String { "rules-t-\(id)-ip.json" }
@@ -40,8 +43,17 @@ public enum RunLayout {
         fileName.hasPrefix("rules-t-") && fileName.hasSuffix(".json")
     }
 
-    /// Raw child output log: `sing-box.log`, `openvpn-<id>.log`, `daemon.log`.
+    /// Raw child output log: `sing-box.log`, `openvpn-<id>.log`, `xray-<id>.log`,
+    /// `daemon.log`.
     public static func childLog(source: String) -> String {
         source.replacingOccurrences(of: ":", with: "-") + ".log"
+    }
+
+    /// The log source a `childLog` file stem was written for (`xray-<id>` → `xray:<id>`).
+    public static func source(forChildLogStem stem: String) -> String {
+        for kind in ["openvpn", "xray"] where stem.hasPrefix(kind + "-") {
+            return kind + ":" + stem.dropFirst(kind.count + 1)
+        }
+        return stem
     }
 }

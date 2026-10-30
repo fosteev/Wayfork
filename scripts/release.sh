@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Builds a distributable Wayfork: Xcode archive, Developer ID signing with hardened runtime
-# and secure timestamps (app, daemon, bundled sing-box/openvpn/wayforkctl), notarization through
+# and secure timestamps (app, daemon, bundled sing-box/openvpn/xray/wayforkctl), notarization through
 # notarytool, stapling, and a signed + notarized DMG with a SHA-256 next to it.
 #
 # Usage: scripts/release.sh [--identity "<Developer ID Application: …>"]
@@ -70,7 +70,7 @@ done
 # Preflight
 
 command -v xcodebuild >/dev/null || die "xcodebuild not found (install Xcode)"
-for bin in sing-box openvpn; do
+for bin in sing-box openvpn xray; do
     [[ -x "$ROOT/macos/Resources/bin/$bin" ]] \
         || die "bundled binary missing: macos/Resources/bin/$bin (run scripts/fetch-bins.sh)"
     lipo -info "$ROOT/macos/Resources/bin/$bin" | grep -q "arm64" \
@@ -174,7 +174,7 @@ chmod 755 "$APP/$BIN_REL/wayforkctl"
 # runtime, secure timestamp, identifiers kept.
 
 log "Signing"
-for bin in sing-box openvpn wayforkctl; do
+for bin in sing-box openvpn xray wayforkctl; do
     [[ -x "$APP/$BIN_REL/$bin" ]] || die "$bin is not in the bundle"
     codesign --force --sign "$IDENTITY" --options runtime --timestamp \
         --identifier "com.wayfork.bin.$bin" "$APP/$BIN_REL/$bin"
@@ -187,7 +187,7 @@ codesign --force --sign "$IDENTITY" --options runtime --timestamp \
 log "Verifying"
 codesign --verify --deep --strict --verbose=1 "$APP"
 for path in "$APP" "$APP/$DAEMON_REL" "$APP/$BIN_REL/sing-box" "$APP/$BIN_REL/openvpn" \
-    "$APP/$BIN_REL/wayforkctl"; do
+    "$APP/$BIN_REL/xray" "$APP/$BIN_REL/wayforkctl"; do
     codesign --verify --strict "$path"
     # Capture first: `grep -q` closing the pipe early would fail the pipeline under pipefail.
     INFO="$(codesign -dvv "$path" 2>&1)"

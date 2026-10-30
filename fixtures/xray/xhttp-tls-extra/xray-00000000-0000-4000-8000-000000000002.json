@@ -1,0 +1,58 @@
+{
+  "inbounds" : [
+    {
+      "listen" : "127.0.0.1",
+      "port" : 47105,
+      "protocol" : "socks",
+      "settings" : {
+        "auth" : "noauth",
+        "ip" : "127.0.0.1",
+        "udp" : true
+      }
+    }
+  ],
+  "log" : {
+    "access" : "none",
+    "loglevel" : "warning"
+  },
+  "outbounds" : [
+    {
+      "protocol" : "vless",
+      "settings" : {
+        "vnext" : [
+          {
+            "address" : "cdn.example.net",
+            "port" : 8443,
+            "users" : [
+              {
+                "encryption" : "none",
+                "id" : "00000000-0000-4000-8000-0000000000aa"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings" : {
+        "network" : "xhttp",
+        "security" : "tls",
+        "tlsSettings" : {
+          "alpn" : [
+            "h2",
+            "http/1.1"
+          ],
+          "fingerprint" : "firefox",
+          "serverName" : "front.example.net"
+        },
+        "xhttpSettings" : {
+          "extra" : {
+            "noSSEHeader" : true,
+            "xPaddingBytes" : "100-1000"
+          },
+          "host" : "origin.example.net",
+          "mode" : "packet-up",
+          "path" : "/xh"
+        }
+      }
+    }
+  ]
+}

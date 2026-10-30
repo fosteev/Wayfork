@@ -1,0 +1,101 @@
+{
+  "bundlePath" : "/Applications/Wayfork.app",
+  "resolvedServerAddresses" : {
+    "xhttp.example.net" : [
+      "198.51.100.7"
+    ]
+  },
+  "store" : {
+    "rules" : [
+      {
+        "id" : "00000000-0000-4000-8000-000000000100",
+        "isEnabled" : true,
+        "match" : "suffix",
+        "pattern" : "example.com",
+        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000101",
+        "isEnabled" : true,
+        "match" : "wildcard",
+        "pattern" : "*.cdn.example.com",
+        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+      }
+    ],
+    "schemaVersion" : 3,
+    "settings" : {
+      "autoReconnect" : true,
+      "connectOnLaunch" : false,
+      "directDNS" : {
+        "system" : {
+
+        }
+      },
+      "launchAtLogin" : false,
+      "logLevel" : "info",
+      "logRetentionDays" : 7,
+      "notifyOnTunnelFailure" : true,
+      "overrideSystemDNS" : true
+    },
+    "tunnels" : [
+      {
+        "createdAt" : "2026-08-25T12:00:00Z",
+        "id" : "00000000-0000-4000-8000-000000000001",
+        "isEnabled" : true,
+        "kind" : {
+          "openVPN" : {
+            "configHash" : "abc",
+            "discoveredDNS" : [
+              "10.8.0.1"
+            ],
+            "dns" : {
+              "auto" : {
+
+              }
+            },
+            "needsCredentials" : true,
+            "needsKeyPassphrase" : false,
+            "remotes" : [
+              {
+                "host" : "vpn.example.org",
+                "port" : 1194,
+                "proto" : "udp"
+              }
+            ]
+          }
+        },
+        "name" : "Work",
+        "slot" : 0
+      },
+      {
+        "createdAt" : "2026-08-25T12:00:00Z",
+        "id" : "00000000-0000-4000-8000-000000000002",
+        "isEnabled" : true,
+        "kind" : {
+          "vless" : {
+            "allowInsecure" : false,
+            "alpn" : [
+
+            ],
+            "port" : 443,
+            "realityPublicKey" : "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+            "realityShortID" : "0123abcd",
+            "security" : "reality",
+            "server" : "xhttp.example.net",
+            "sni" : "www.apple.com",
+            "transport" : {
+              "xhttp" : {
+                "path" : "/"
+              }
+            }
+          }
+        },
+        "name" : "Home",
+        "slot" : 1
+      }
+    ]
+  },
+  "vlessUUIDs" : {
+    "00000000-0000-4000-8000-000000000002" : "00000000-0000-4000-8000-0000000000aa"
+  }
+}

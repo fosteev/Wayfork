@@ -10,16 +10,19 @@ public struct DaemonInfo: Codable, Sendable, Hashable {
     public var buildID: String?
     public var singBoxVersion: String
     public var openVPNVersion: String
+    /// Optional so that an older daemon still decodes.
+    public var xrayVersion: String?
 
     public init(
         version: String, bundlePath: String, buildID: String? = nil, singBoxVersion: String,
-        openVPNVersion: String
+        openVPNVersion: String, xrayVersion: String? = nil
     ) {
         self.version = version
         self.bundlePath = bundlePath
         self.buildID = buildID
         self.singBoxVersion = singBoxVersion
         self.openVPNVersion = openVPNVersion
+        self.xrayVersion = xrayVersion
     }
 }
 
@@ -111,7 +114,7 @@ public struct RuntimeStatus: Codable, Sendable, Hashable {
 
 public struct LogLine: Codable, Sendable, Hashable {
     public var ts: Date
-    /// `daemon`, `sing-box`, `openvpn:<tunnel id>`.
+    /// `daemon`, `sing-box`, `openvpn:<tunnel id>`, `xray:<tunnel id>`.
     public var source: String
     public var level: LogLevel
     public var message: String

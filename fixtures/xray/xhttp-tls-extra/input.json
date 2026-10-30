@@ -1,0 +1,96 @@
+{
+  "bundlePath" : "/Applications/Wayfork.app",
+  "resolvedServerAddresses" : {
+
+  },
+  "store" : {
+    "defaultTunnelID" : "00000000-0000-4000-8000-000000000002",
+    "rules" : [
+      {
+        "id" : "00000000-0000-4000-8000-000000000100",
+        "isEnabled" : true,
+        "match" : "suffix",
+        "pattern" : "example.com",
+        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+      }
+    ],
+    "schemaVersion" : 3,
+    "settings" : {
+      "autoReconnect" : true,
+      "connectOnLaunch" : false,
+      "directDNS" : {
+        "system" : {
+
+        }
+      },
+      "launchAtLogin" : false,
+      "logLevel" : "info",
+      "logRetentionDays" : 7,
+      "notifyOnTunnelFailure" : true,
+      "overrideSystemDNS" : true
+    },
+    "tunnels" : [
+      {
+        "createdAt" : "2026-08-25T12:00:00Z",
+        "id" : "00000000-0000-4000-8000-000000000001",
+        "isEnabled" : true,
+        "kind" : {
+          "openVPN" : {
+            "configHash" : "abc",
+            "discoveredDNS" : [
+              "10.8.0.1"
+            ],
+            "dns" : {
+              "auto" : {
+
+              }
+            },
+            "needsCredentials" : true,
+            "needsKeyPassphrase" : false,
+            "remotes" : [
+              {
+                "host" : "vpn.example.org",
+                "port" : 1194,
+                "proto" : "udp"
+              }
+            ]
+          }
+        },
+        "name" : "Work",
+        "slot" : 0
+      },
+      {
+        "createdAt" : "2026-08-25T12:00:00Z",
+        "id" : "00000000-0000-4000-8000-000000000002",
+        "isEnabled" : true,
+        "kind" : {
+          "vless" : {
+            "allowInsecure" : false,
+            "alpn" : [
+              "h2",
+              "http/1.1"
+            ],
+            "fingerprint" : "firefox",
+            "port" : 8443,
+            "security" : "tls",
+            "server" : "cdn.example.net",
+            "sni" : "front.example.net",
+            "transport" : {
+              "xhttp" : {
+                "extra" : "{\"xPaddingBytes\":\"100-1000\",\"noSSEHeader\":true}",
+                "host" : "origin.example.net",
+                "mode" : "packet-up",
+                "path" : "/xh"
+              }
+            }
+          }
+        },
+        "name" : "Home",
+        "slot" : 5
+      }
+    ]
+  },
+  "vlessUUIDs" : {
+    "00000000-0000-4000-8000-000000000002" : "00000000-0000-4000-8000-0000000000aa"
+  }
+}

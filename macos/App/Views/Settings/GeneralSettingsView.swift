@@ -176,7 +176,8 @@ struct GeneralSettingsView: View {
         guard let info = model.daemonInfo else { return "helper not connected" }
         let singBox = info.singBoxVersion.isEmpty ? "sing-box ?" : "sing-box \(info.singBoxVersion)"
         let openVPN = info.openVPNVersion.isEmpty ? "OpenVPN ?" : "OpenVPN \(info.openVPNVersion)"
-        return "\(singBox) · \(openVPN)"
+        let xray = (info.xrayVersion ?? "").isEmpty ? "Xray ?" : "Xray \(info.xrayVersion ?? "")"
+        return "\(singBox) · \(openVPN) · \(xray)"
     }
 
     private var dnsMode: Binding<Int> {

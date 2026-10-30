@@ -1,0 +1,117 @@
+{
+  "accepted" : [
+    {
+      "expected" : {
+        "meta" : {
+          "allowInsecure" : false,
+          "alpn" : [
+
+          ],
+          "fingerprint" : "chrome",
+          "port" : 443,
+          "realityPublicKey" : "public-key",
+          "realityShortID" : "short-id",
+          "security" : "reality",
+          "server" : "example.com",
+          "sni" : "example.com",
+          "transport" : {
+            "xhttp" : {
+              "path" : "/"
+            }
+          }
+        },
+        "name" : "XHTTP Reality",
+        "uuid" : "00000000-0000-4000-8000-000000000001"
+      },
+      "name" : "xhttp-reality-minimal",
+      "uri" : "vless://00000000-0000-4000-8000-000000000001@example.com:443?encryption=none&security=reality&sni=example.com&fp=chrome&pbk=public-key&sid=short-id&type=xhttp#XHTTP%20Reality"
+    },
+    {
+      "expected" : {
+        "meta" : {
+          "allowInsecure" : false,
+          "alpn" : [
+            "h2"
+          ],
+          "port" : 443,
+          "security" : "tls",
+          "server" : "example.com",
+          "sni" : "example.com",
+          "transport" : {
+            "xhttp" : {
+              "host" : "cdn.example.com",
+              "mode" : "packet-up",
+              "path" : "/x"
+            }
+          }
+        },
+        "name" : "XHTTP TLS",
+        "uuid" : "00000000-0000-4000-8000-000000000001"
+      },
+      "name" : "xhttp-tls-host-packet-up",
+      "uri" : "vless://00000000-0000-4000-8000-000000000001@example.com:443?encryption=none&security=tls&sni=example.com&alpn=h2&type=xhttp&path=%2Fx&host=cdn.example.com&mode=packet-up#XHTTP%20TLS"
+    },
+    {
+      "expected" : {
+        "meta" : {
+          "allowInsecure" : false,
+          "alpn" : [
+
+          ],
+          "fingerprint" : "chrome",
+          "port" : 443,
+          "security" : "tls",
+          "server" : "example.com",
+          "sni" : "example.com",
+          "transport" : {
+            "xhttp" : {
+              "extra" : "{\"xPaddingBytes\":\"100-1000\",\"noGRPCHeader\":true}",
+              "mode" : "stream-up",
+              "path" : "/up"
+            }
+          }
+        },
+        "name" : "XHTTP Extra",
+        "uuid" : "00000000-0000-4000-8000-000000000001"
+      },
+      "name" : "xhttp-tls-extra-object",
+      "uri" : "vless://00000000-0000-4000-8000-000000000001@example.com:443?encryption=none&security=tls&sni=example.com&fp=chrome&type=xhttp&path=%2Fup&mode=stream-up&extra=%7B%22xPaddingBytes%22%3A%22100-1000%22%2C%22noGRPCHeader%22%3Atrue%7D#XHTTP%20Extra"
+    },
+    {
+      "expected" : {
+        "meta" : {
+          "allowInsecure" : false,
+          "alpn" : [
+
+          ],
+          "port" : 8080,
+          "security" : "none",
+          "server" : "2001:db8::1",
+          "transport" : {
+            "xhttp" : {
+              "mode" : "stream-one",
+              "path" : "/"
+            }
+          }
+        },
+        "name" : "XHTTP Plain",
+        "uuid" : "00000000-0000-4000-8000-000000000001"
+      },
+      "name" : "xhttp-stream-one-no-tls",
+      "uri" : "vless://00000000-0000-4000-8000-000000000001@[2001:db8::1]:8080?type=xhttp&mode=stream-one&path=%2F#XHTTP%20Plain"
+    }
+  ],
+  "rejected" : [
+    "vless://00000000-0000-4000-8000-000000000001@example.com:443?security=tls&type=xhttp&mode=bogus",
+    "vless://00000000-0000-4000-8000-000000000001@example.com:443?security=tls&type=xhttp&mode=",
+    "vless://00000000-0000-4000-8000-000000000001@example.com:443?security=tls&type=xhttp&extra=%5B1%5D",
+    "vless://00000000-0000-4000-8000-000000000001@example.com:443?security=tls&type=xhttp&extra=not-json",
+    "vless://00000000-0000-4000-8000-000000000001@example.com:443?security=tls&type=xhttp&extra=%22text%22",
+    "vless://00000000-0000-4000-8000-000000000001@example.com:443?security=tls&type=xhttp&extra=",
+    "vless://00000000-0000-4000-8000-000000000001@example.com:443?security=reality&pbk=k&type=xhttp&flow=xtls-rprx-vision",
+    "vless://00000000-0000-4000-8000-000000000001@example.com:443?security=tls&type=xhttp&allowInsecure=1",
+    "vless://00000000-0000-4000-8000-000000000001@example.com:443?security=tls&type=xhttp&insecure=true",
+    "vless://00000000-0000-4000-8000-000000000001@example.com:443?security=tls&type=splithttp&path=%2Fx",
+    "vless://00000000-0000-4000-8000-000000000001@example.com:443?security=reality&type=xhttp"
+  ]
+}

@@ -12,6 +12,9 @@ public struct RuntimePlan: Codable, Sendable, Hashable {
     public var singBox: SingBoxPlan
     /// One entry per enabled OpenVPN tunnel. VLESS tunnels only exist inside the sing-box config.
     public var openVPN: [OpenVPNRuntime]
+    /// One entry per enabled XHTTP VLESS tunnel (docs/design/04-tunnels.md, "VLESS over
+    /// XHTTP"). Missing in plans from an older app: decodes as `[]`.
+    public var xray: [XrayRuntime]
     /// `Settings.autoReconnect`: whether the daemon restarts an OpenVPN process after a
     /// transient failure. Not part of any hash; takes effect on the next failure.
     public var autoReconnect: Bool
@@ -25,6 +28,7 @@ public struct RuntimePlan: Codable, Sendable, Hashable {
         version: Int = RuntimePlan.currentVersion,
         singBox: SingBoxPlan,
         openVPN: [OpenVPNRuntime],
+        xray: [XrayRuntime] = [],
         autoReconnect: Bool = true,
         logLevel: LogLevel = .info,
         overrideSystemDNS: Bool = true
@@ -32,13 +36,14 @@ public struct RuntimePlan: Codable, Sendable, Hashable {
         self.version = version
         self.singBox = singBox
         self.openVPN = openVPN
+        self.xray = xray
         self.autoReconnect = autoReconnect
         self.logLevel = logLevel
         self.overrideSystemDNS = overrideSystemDNS
     }
 
     private enum CodingKeys: String, CodingKey {
-        case version, singBox, openVPN, autoReconnect, logLevel, overrideSystemDNS
+        case version, singBox, openVPN, xray, autoReconnect, logLevel, overrideSystemDNS
     }
 
     public init(from decoder: Decoder) throws {
@@ -46,6 +51,7 @@ public struct RuntimePlan: Codable, Sendable, Hashable {
         version = try c.decode(Int.self, forKey: .version)
         singBox = try c.decode(SingBoxPlan.self, forKey: .singBox)
         openVPN = try c.decode([OpenVPNRuntime].self, forKey: .openVPN)
+        xray = try c.decodeIfPresent([XrayRuntime].self, forKey: .xray) ?? []
         autoReconnect = try c.decodeIfPresent(Bool.self, forKey: .autoReconnect) ?? true
         logLevel = try c.decodeIfPresent(LogLevel.self, forKey: .logLevel) ?? .info
         overrideSystemDNS = try c.decodeIfPresent(Bool.self, forKey: .overrideSystemDNS) ?? true
@@ -81,6 +87,7 @@ public struct RuntimePlan: Codable, Sendable, Hashable {
                 "\($0)=\(Hashing.sha256Hex(singBox.ruleSets[$0] ?? ""))"
             })
         parts.append(contentsOf: openVPN.map { "\($0.id)=\($0.configHash)" })
+        parts.append(contentsOf: xray.map { "xray-\($0.id)=\($0.configHash)" })
         parts.append("overrideSystemDNS=\(overrideSystemDNS)")
         return Hashing.sha256Hex(parts.joined(separator: "\n"))
     }
@@ -243,5 +250,24 @@ public struct OpenVPNRuntime: Codable, Sendable, Hashable, Identifiable {
                 credentials?.password ?? "",
                 keyPassphrase ?? "",
             ].joined(separator: "\u{0}"))
+    }
+}
+
+/// One bundled `xray` process: the loopback SOCKS side of an XHTTP VLESS tunnel.
+public struct XrayRuntime: Codable, Sendable, Hashable, Identifiable {
+    /// Tunnel id (`Tunnel.id.uuidString.lowercased()`).
+    public var id: String
+    /// `127.0.0.1` port of the SOCKS inbound (`Tunnel.xrayPort`).
+    public var port: Int
+    /// The full xray JSON, UUID included; the daemon writes it to the run directory.
+    public var config: String
+    /// Hash of `config`: any change restarts the process.
+    public var configHash: String
+
+    public init(id: String, port: Int, config: String) {
+        self.id = id
+        self.port = port
+        self.config = config
+        configHash = Hashing.sha256Hex(config)
     }
 }

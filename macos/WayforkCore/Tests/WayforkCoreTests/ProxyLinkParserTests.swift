@@ -203,6 +203,20 @@ private struct VMessLinks: Codable {
     }
 }
 
+@Test func trojanAndVMessKeepRejectingXHTTP() throws {
+    #expect(throws: ProxyLinkError.unsupported("Transport \"xhttp\" is not supported yet.")) {
+        try ProxyLinkParser.parse("trojan://secret@example.com:443?type=xhttp")
+    }
+    let json: [String: Any] = [
+        "add": "example.com", "port": 443, "id": "00000000-0000-4000-8000-000000000034",
+        "aid": 0, "net": "xhttp", "tls": "tls",
+    ]
+    let body = try JSONSerialization.data(withJSONObject: json).base64EncodedString()
+    #expect(throws: ProxyLinkError.unsupported("Transport \"xhttp\" is not supported yet.")) {
+        try ProxyLinkParser.parse("vmess://\(body)")
+    }
+}
+
 @Test func parserTrimsInputAndWrapsVLESSErrors() throws {
     guard
         case .vless(let result) = try ProxyLinkParser.parse(

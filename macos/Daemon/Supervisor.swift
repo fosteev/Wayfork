@@ -25,12 +25,14 @@ actor Supervisor {
     private let events: AsyncStream<SupervisorEvent>
     private let eventSink: AsyncStream<SupervisorEvent>.Continuation
     private var sessions: [String: OpenVPNSession] = [:]
+    /// XHTTP tunnels: one xray process each (docs/roadmap/xhttp-xray.md, D8).
+    private var xraySessions: [String: XraySession] = [:]
     private var status = RuntimeStatus.stopped
     private var plan: RuntimePlan?
     private var eventPump: Task<Void, Never>?
     private var queue: Task<Void, Never>?
     private var applyGeneration = 0
-    private var binaryVersions: (singBox: String, openVPN: String)?
+    private var binaryVersions: (singBox: String, openVPN: String, xray: String)?
     /// CDHash of the executable this process was started from, taken once at startup: after
     /// the app bundle is replaced the file at `env.executablePath` is already the *new*
     /// daemon, and hashing it on request made a stale process look up to date.
@@ -122,7 +124,7 @@ actor Supervisor {
             status.engine = state
             await resolver.setEngineRunning(state.isRunning)
         case .tunnel(let id, let state):
-            guard sessions[id] != nil else { return }
+            guard sessions[id] != nil || xraySessions[id] != nil else { return }
             status.tunnels[id] = state
         case .discoveredDNS(let id, let servers):
             guard sessions[id] != nil else { return }
@@ -139,14 +141,16 @@ actor Supervisor {
         if binaryVersions == nil {
             binaryVersions = (
                 await binaryVersion(env.singBoxPath, name: "sing-box", arguments: ["version"]),
-                await binaryVersion(env.openVPNPath, name: "openvpn", arguments: ["--version"])
+                await binaryVersion(env.openVPNPath, name: "openvpn", arguments: ["--version"]),
+                await binaryVersion(env.xrayPath, name: "xray", arguments: ["version"])
             )
         }
         return DaemonInfo(
             version: env.version, bundlePath: env.bundlePath,
             buildID: buildID,
             singBoxVersion: binaryVersions?.singBox ?? "",
-            openVPNVersion: binaryVersions?.openVPN ?? "")
+            openVPNVersion: binaryVersions?.openVPN ?? "",
+            xrayVersion: binaryVersions?.xray ?? "")
     }
 
     func currentStatus() -> RuntimeStatus {
@@ -184,6 +188,10 @@ actor Supervisor {
     func reconnect(tunnelID: String) async -> ApplyResult {
         await prober.retry(tunnel: tunnelID)
         return await serialized {
+            if let session = await self.xraySessions[tunnelID] {
+                await session.reconnect()
+                return .success
+            }
             guard let session = await self.sessions[tunnelID] else {
                 // A proxy or WireGuard tunnel has no process: Retry only clears the probe streak.
                 return await self.plan?.routedTunnelIDs.contains(tunnelID) == true
@@ -195,6 +203,8 @@ actor Supervisor {
     }
 
     /// Tunnels the prober measures: routed by the plan, and connected when OpenVPN (F14).
+    /// XHTTP tunnels are probed whatever their xray state: the app shows their reachability
+    /// only through the probe, so a crash-looping xray must turn into "Not reachable".
     private func probeTargets() -> [String] {
         guard let plan else { return [] }
         return plan.routedTunnelIDs.filter { id in
@@ -237,7 +247,9 @@ actor Supervisor {
     // MARK: - Reconcile
 
     private func performApply(_ plan: RuntimePlan) async -> ApplyResult {
-        for (path, name) in [(env.singBoxPath, "sing-box"), (env.openVPNPath, "openvpn")] {
+        for (path, name) in [
+            (env.singBoxPath, "sing-box"), (env.openVPNPath, "openvpn"), (env.xrayPath, "xray"),
+        ] {
             do {
                 try BinaryValidator.validate(path: path, name: name, teamID: env.teamID)
             } catch {
@@ -249,11 +261,12 @@ actor Supervisor {
             singBoxRunning: await engine.isRunning,
             singBoxConfigHash: await engine.configHash,
             ruleSets: await engine.ruleSets,
-            openVPN: await sessionKeys())
+            openVPN: await sessionKeys(),
+            xray: xraySessions.mapValues(\.diffKey))
         let actions = ReconcilePlanner.plan(from: current, to: plan)
         hub.post(
             .info,
-            "apply: sing-box \(actions.singBox), stop \(actions.stopOpenVPN.count), start \(actions.startOpenVPN.count) tunnel(s)"
+            "apply: sing-box \(actions.singBox), stop \(actions.stopOpenVPN.count + actions.stopXray.count), start \(actions.startOpenVPN.count + actions.startXray.count) tunnel(s)"
         )
         // F15: the recent-hosts list follows `route.final`, which a default-tunnel change
         // moves (the config restarts sing-box, so the list starts over anyway).
@@ -265,6 +278,7 @@ actor Supervisor {
             plan.singBox.hasBlockList && (plan.logLevel == .info || plan.logLevel == .debug))
 
         await stopSessions(actions.stopOpenVPN)
+        await stopXraySessions(actions.stopXray)
         await engine.deleteRuleSets(actions.staleRuleSets)
 
         var failure: DaemonError?
@@ -316,7 +330,26 @@ actor Supervisor {
                 hub.post(.error, "openvpn \(runtime.id): \(error)")
             }
         }
+        for runtime in plan.xray where actions.startXray.contains(runtime.id) {
+            let session = XraySession(
+                runtime: runtime, autoReconnect: plan.autoReconnect, env: env, hub: hub,
+                events: eventSink)
+            xraySessions[runtime.id] = session
+            status.tunnels[runtime.id] = .connecting(attempt: 1)
+            do {
+                try await session.start()
+            } catch {
+                status.tunnels[runtime.id] = .failed(
+                    reason: XraySessionReducer.startFailedReason, permanent: true)
+                hub.post(
+                    .error, "xray \(runtime.id): \(error)",
+                    source: XraySessionReducer.source(for: runtime.id))
+            }
+        }
         for session in sessions.values {
+            await session.setAutoReconnect(plan.autoReconnect)
+        }
+        for session in xraySessions.values {
             await session.setAutoReconnect(plan.autoReconnect)
         }
 
@@ -361,6 +394,7 @@ actor Supervisor {
         await resolver.setDesired(false)
         await sampler.reset()
         await stopSessions(Array(sessions.keys))
+        await stopXraySessions(Array(xraySessions.keys))
         wipeRunDirectory()
         plan = nil
         status = .stopped
@@ -373,6 +407,18 @@ actor Supervisor {
         for id in ids {
             status.tunnels[id] = nil
             status.discoveredDNS[id] = nil
+        }
+        await withTaskGroup(of: Void.self) { group in
+            for session in stopping {
+                group.addTask { await session.stop() }
+            }
+        }
+    }
+
+    private func stopXraySessions(_ ids: [String]) async {
+        let stopping = ids.compactMap { xraySessions.removeValue(forKey: $0) }
+        for id in ids {
+            status.tunnels[id] = nil
         }
         await withTaskGroup(of: Void.self) { group in
             for session in stopping {
@@ -411,7 +457,7 @@ actor Supervisor {
         guard let result = try? await CommandRunner.run(path, arguments, timeout: .seconds(5)),
             let first = result.lines.first
         else { return "unavailable" }
-        // "sing-box version 1.13.19" / "OpenVPN 2.7.6 aarch64-apple-darwin […]"
+        // "sing-box version 1.13.19" / "Xray 26.10.29 (Xray, …)" / "OpenVPN 2.7.6 aarch64-apple-darwin […]"
         let words = first.split(separator: " ")
         return words.first { $0.first?.isNumber == true }.map(String.init) ?? first
     }

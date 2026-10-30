@@ -94,6 +94,10 @@ public enum RuntimePlanBuilder {
         bundlePath + "/Contents/Resources/bin/openvpn"
     }
 
+    public static func xrayBinaryPath(bundlePath: String) -> String {
+        bundlePath + "/Contents/Resources/bin/xray"
+    }
+
     /// The bundled block list (F18); the daemon derives the same path from its own bundle
     /// and accepts no other (trust rule 3).
     public static func blockListPath(bundlePath: String) -> String {
@@ -114,6 +118,7 @@ public enum RuntimePlanBuilder {
     ) -> RuntimePlanBuildResult {
         var warnings: [PlanWarning] = []
         var openVPN: [OpenVPNRuntime] = []
+        var xray: [XrayRuntime] = []
         var effectiveStore = store
 
         // OpenVPN tunnels without a config body cannot run: treat them as disabled so the
@@ -137,10 +142,19 @@ public enum RuntimePlanBuilder {
                         config: config,
                         credentials: secrets.credentials[tunnel.id],
                         keyPassphrase: secrets.keyPassphrases[tunnel.id]))
-            case .vless:
-                if secrets.vlessUUIDs[tunnel.id] == nil {
+            case .vless(let meta):
+                guard let uuid = secrets.vlessUUIDs[tunnel.id] else {
                     warnings.append(.missingSecret(tunnelID: tunnel.id))
                     effectiveStore.tunnels[index].isEnabled = false
+                    continue
+                }
+                // XHTTP: sing-box dials a loopback SOCKS port; this process answers it.
+                if let port = tunnel.xrayPort,
+                    let config = XrayConfigGenerator.generate(meta: meta, uuid: uuid, port: port)
+                {
+                    xray.append(
+                        XrayRuntime(
+                            id: tunnel.id.uuidString.lowercased(), port: port, config: config))
                 }
             case .wireGuard:
                 if secrets.wireGuardKeys[tunnel.id] == nil {
@@ -168,6 +182,7 @@ public enum RuntimePlanBuilder {
                 passwords: secrets.passwords,
                 vmessUUIDs: secrets.vmessUUIDs,
                 openVPNBinaryPath: openVPNBinaryPath(bundlePath: bundlePath),
+                xrayBinaryPath: xrayBinaryPath(bundlePath: bundlePath),
                 resolvedServerAddresses: resolvedServerAddresses,
                 systemDNSServers: systemDNSServers,
                 networkResolvers: networkResolvers,
@@ -175,6 +190,7 @@ public enum RuntimePlanBuilder {
         let plan = RuntimePlan(
             singBox: SingBoxPlan(config: generated.config, ruleSets: generated.ruleSets),
             openVPN: openVPN,
+            xray: xray,
             autoReconnect: store.settings.autoReconnect,
             logLevel: store.settings.logLevel,
             overrideSystemDNS: store.settings.overrideSystemDNS)

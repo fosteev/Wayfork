@@ -21,6 +21,17 @@ private func vlessTunnel(_ name: String, slot: Int, enabled: Bool = true) -> Tun
                 security: .reality, sni: "cdn.example.com", fingerprint: "chrome")))
 }
 
+private func xhttpTunnel(_ name: String, slot: Int, enabled: Bool = true) -> Tunnel {
+    Tunnel(
+        name: name, isEnabled: enabled, slot: slot,
+        kind: .vless(
+            VLESSMeta(
+                server: "xhttp.example.net", port: 443, security: .reality, sni: "www.apple.com",
+                realityPublicKey: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+                realityShortID: "0123abcd",
+                transport: .xhttp(path: "/", host: nil, mode: nil, extra: nil))))
+}
+
 private func sampleStore() -> (Store, work: Tunnel, home: Tunnel, lab: Tunnel) {
     let work = openVPNTunnel("Work", slot: 0)
     let home = vlessTunnel("Home", slot: 1)
@@ -743,4 +754,78 @@ private func groupedStore() -> (Store, group: TunnelGroup, work: Tunnel, home: T
             == "Showing lines for a.example · 3 tries, all refused · went Work")
     #expect(FailedText.popoverLine(count: 3) == "3 sites can't be reached")
     #expect(FailedText.empty(since: nil) == "Every site your apps tried could be reached.")
+}
+
+// MARK: - XHTTP: a supervised process like OpenVPN (docs/roadmap/xhttp-xray.md, stage 4b)
+
+@Test func hasProcessCoversOpenVPNAndXHTTPOnly() {
+    #expect(openVPNTunnel("O", slot: 0).kind.hasProcess)
+    #expect(xhttpTunnel("X", slot: 1).kind.hasProcess)
+    #expect(!vlessTunnel("V", slot: 2).kind.hasProcess)  // VLESS over TCP stays in sing-box
+    let ws = VLESSMeta(
+        server: "s.example", port: 443, security: .tls, transport: .ws(path: "/", host: nil))
+    #expect(!TunnelKind.vless(ws).hasProcess)
+    let shadowsocks = ShadowsocksMeta(server: "ss.example.net", port: 8388, method: "aes-256-gcm")
+    #expect(!TunnelKind.shadowsocks(shadowsocks).hasProcess)
+    // OpenVPN-only questions stay OpenVPN-only.
+    #expect(!xhttpTunnel("X", slot: 1).kind.isOpenVPN)
+}
+
+@Test func logSourceNamesTheProcessLogOfEachTunnel() {
+    let open = openVPNTunnel("O", slot: 0)
+    let xhttp = xhttpTunnel("X", slot: 1)
+    #expect(open.logSource == "openvpn:\(open.id.uuidString.lowercased())")
+    #expect(xhttp.logSource == "xray:\(xhttp.id.uuidString.lowercased())")
+    #expect(xhttp.logSource?.hasPrefix("xray:") == true)
+    #expect(vlessTunnel("V", slot: 2).logSource == nil)
+}
+
+@Test func xrayFailureCodesHaveHumanText() {
+    #expect(
+        StatusText.failureMessage(code: "xray.exited")
+            == "Xray stopped (reconnect on its own is off)")
+    #expect(StatusText.failureMessage(code: "xray.startFailed") == "Xray could not start")
+    #expect(StatusText.failureAction(code: "xray.exited") == .showLog)
+    #expect(StatusText.failureAction(code: "xray.startFailed") == .showLog)
+}
+
+@Test func xhttpCardsFollowTheProcessStateLikeOpenVPN() {
+    let xhttp = xhttpTunnel("X", slot: 0)
+    let failedState = TunnelState.failed(reason: "xray.exited", permanent: false)
+    let failed = StatusText.card(
+        tunnel: xhttp, state: failedState, global: .degraded(failingTunnelIDs: [xhttp.id]),
+        ruleCount: 1)
+    #expect(failed.status == "Can't connect")
+    #expect(failed.detail == "Xray stopped (reconnect on its own is off)")
+    #expect(failed.isError)
+    #expect(failed.glyph == .failed)
+    #expect(failed.actions == [.reconnect, .edit(.showLog)])
+
+    // The same state on an OpenVPN tunnel renders the same card shape.
+    let ovpn = openVPNTunnel("O", slot: 1)
+    let ovpnFailed = StatusText.card(
+        tunnel: ovpn, state: .failed(reason: "ovpn.exited", permanent: false),
+        global: .degraded(failingTunnelIDs: [ovpn.id]), ruleCount: 1)
+    #expect(ovpnFailed.status == failed.status)
+    #expect(ovpnFailed.actions == failed.actions)
+
+    // Before the process reports anything, the card waits instead of claiming "Connected".
+    let waiting = StatusText.card(tunnel: xhttp, state: nil, global: .on, ruleCount: 2)
+    #expect(waiting.status == "Connecting…")
+    #expect(waiting.glyph == .transitioning)
+    let connected = StatusText.card(
+        tunnel: xhttp, state: .connected(since: Date(), ip: nil, interface: "127.0.0.1:47100"),
+        global: .on, ruleCount: 2)
+    #expect(connected.status == "Connected")
+    #expect(connected.detail == "2 sites")
+}
+
+@Test func xhttpFailureDegradesTheGlobalState() {
+    let xhttp = xhttpTunnel("X", slot: 0)
+    let store = Store(tunnels: [xhttp])
+    var status = RuntimeStatus(engine: .running(since: Date()))
+    status.tunnels = [key(xhttp): .failed(reason: "xray.startFailed", permanent: false)]
+    #expect(
+        GlobalStateDerivation.derive(store: store, status: status, transition: nil)
+            == .degraded(failingTunnelIDs: [xhttp.id]))
 }

@@ -1,0 +1,51 @@
+{
+  "inbounds" : [
+    {
+      "listen" : "127.0.0.1",
+      "port" : 47101,
+      "protocol" : "socks",
+      "settings" : {
+        "auth" : "noauth",
+        "ip" : "127.0.0.1",
+        "udp" : true
+      }
+    }
+  ],
+  "log" : {
+    "access" : "none",
+    "loglevel" : "warning"
+  },
+  "outbounds" : [
+    {
+      "protocol" : "vless",
+      "settings" : {
+        "vnext" : [
+          {
+            "address" : "xhttp.example.net",
+            "port" : 443,
+            "users" : [
+              {
+                "encryption" : "none",
+                "id" : "00000000-0000-4000-8000-0000000000aa"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings" : {
+        "network" : "xhttp",
+        "realitySettings" : {
+          "fingerprint" : "chrome",
+          "password" : "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+          "serverName" : "www.apple.com",
+          "shortId" : "0123abcd"
+        },
+        "security" : "reality",
+        "xhttpSettings" : {
+          "mode" : "auto",
+          "path" : "/"
+        }
+      }
+    }
+  ]
+}

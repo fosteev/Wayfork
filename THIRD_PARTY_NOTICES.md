@@ -14,6 +14,7 @@ on macOS, `<install folder>\licenses\` on Windows.
 | Component | Licence text |
 |---|---|
 | sing-box | `licenses/sing-box.txt` (notice and extra term; full GPL-3.0 text in `LICENSE`) |
+| Xray-core | `licenses/xray-core.txt` (MPL-2.0) |
 | OpenVPN, LZO | `licenses/openvpn-COPYING.txt`, `licenses/openvpn-COPYRIGHT.GPL.txt` (GPL-2.0 text) |
 | OpenSSL | `licenses/openssl.txt` |
 | LZ4 | `licenses/lz4.txt` |
@@ -32,6 +33,14 @@ on macOS, `<install folder>\licenses\` on Windows.
   prior consent". Wayfork is not affiliated with or endorsed by the sing-box project.
 - Copyright (C) 2022 by nekohasekai
 - Source: https://github.com/SagerNet/sing-box (tag `v<SING_BOX_VERSION>`)
+
+## Xray-core
+
+- Shipped as: `xray` (macOS); it carries VLESS over XHTTP, which sing-box lacks
+- Version: `XRAY_VERSION` in `scripts/versions.env`, official release binaries, unmodified
+- Licence: Mozilla Public License 2.0
+- Copyright (c) Project X (XTLS) contributors
+- Source: https://github.com/XTLS/Xray-core (tag `v<XRAY_VERSION>`)
 
 ## OpenVPN
 

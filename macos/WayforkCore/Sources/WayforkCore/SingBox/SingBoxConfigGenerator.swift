@@ -27,9 +27,13 @@ public enum SingBoxConfigGenerator {
         /// Absolute path of the bundled `openvpn`, matched by `process_path` so that the
         /// tunnels' own control traffic always goes direct.
         public var openVPNBinaryPath: String
-        /// IPv4 addresses of OpenVPN and WireGuard server hostnames (lowercased host →
-        /// addresses), resolved by the caller (`HostResolver`). OpenVPN server addresses
-        /// also enter the `ip_cidr` half of the direct rule; WireGuard peer addresses do not.
+        /// Absolute path of the bundled `xray`, matched by `process_path` like openvpn's. Only
+        /// used while an XHTTP tunnel is routed; nil leaves the rule as it was.
+        public var xrayBinaryPath: String?
+        /// IPv4 addresses of OpenVPN, WireGuard and XHTTP server hostnames (lowercased host →
+        /// addresses), resolved by the caller (`HostResolver`). OpenVPN and XHTTP server
+        /// addresses also enter the `ip_cidr` half of the direct rule; WireGuard peer
+        /// addresses do not.
         public var resolvedServerAddresses: [String: [String]]
         /// IPv4 addresses of the system resolvers (`SystemDNS.Snapshot.routable`). Those
         /// inside the LAN ranges are carved out of `route_exclude_address` so that the system
@@ -53,6 +57,7 @@ public enum SingBoxConfigGenerator {
             store: Store, vlessUUIDs: [UUID: String],
             wireGuardKeys: [UUID: WireGuardSecrets] = [:], passwords: [UUID: String] = [:],
             vmessUUIDs: [UUID: String] = [:], openVPNBinaryPath: String,
+            xrayBinaryPath: String? = nil,
             resolvedServerAddresses: [String: [String]] = [:], systemDNSServers: [String] = [],
             networkResolvers: [String] = [], blockListPath: String? = nil
         ) {
@@ -62,6 +67,7 @@ public enum SingBoxConfigGenerator {
             self.passwords = passwords
             self.vmessUUIDs = vmessUUIDs
             self.openVPNBinaryPath = openVPNBinaryPath
+            self.xrayBinaryPath = xrayBinaryPath
             self.resolvedServerAddresses = resolvedServerAddresses
             self.systemDNSServers = systemDNSServers
             self.networkResolvers = networkResolvers
@@ -190,11 +196,15 @@ public enum SingBoxConfigGenerator {
                 "action": "reject",
             ])
         }
-        routeRules.append(["process_path": [input.openVPNBinaryPath], "outbound": "direct"])
-        // The OpenVPN servers themselves always go direct, by address and by name: the
-        // process match above is best effort (seen to miss the very first UDP flow after
+        var directProcesses = [input.openVPNBinaryPath]
+        if let xrayPath = input.xrayBinaryPath, routed.contains(where: { $0.kind.usesXray }) {
+            directProcesses.append(xrayPath)
+        }
+        routeRules.append(["process_path": directProcesses, "outbound": "direct"])
+        // The OpenVPN and XHTTP servers themselves always go direct, by address and by name:
+        // the process match above is best effort (seen to miss the very first UDP flow after
         // start), and a control channel routed into another tunnel is a tunnel-in-tunnel.
-        let servers = openVPNServers(routed, resolved: input.resolvedServerAddresses)
+        let servers = directServers(routed, resolved: input.resolvedServerAddresses)
         if let rule = serverRouteRule(servers) {
             routeRules.append(rule)
         }
@@ -267,9 +277,14 @@ public enum SingBoxConfigGenerator {
                     "domain_resolver": ["server": dnsTag, "strategy": "ipv4_only"],
                 ])
             case .vless(let meta):
-                outbounds.append(
-                    vlessOutbound(
-                        meta, tag: tunnel.outboundTag, uuid: input.vlessUUIDs[tunnel.id] ?? ""))
+                if let port = tunnel.xrayPort, meta.usesXray {
+                    outbounds.append(xraySocksOutbound(tag: tunnel.outboundTag, port: port))
+                } else {
+                    outbounds.append(
+                        vlessOutbound(
+                            meta, tag: tunnel.outboundTag,
+                            uuid: input.vlessUUIDs[tunnel.id] ?? ""))
+                }
             case .wireGuard(let meta):
                 let dnsTag = "dns-\(tunnel.outboundTag)"
                 dnsServers.append([
@@ -375,8 +390,8 @@ public enum SingBoxConfigGenerator {
         let directDNSHosts = uniqueHosts(
             servers.hosts + wireGuardPeerHosts(routed))
         if !directDNSHosts.isEmpty {
-            // OpenVPN remotes and WireGuard peers must resolve to real addresses, never
-            // fake IPs. Only OpenVPN's control flow also gets a direct route rule above.
+            // OpenVPN remotes, XHTTP servers and WireGuard peers must resolve to real
+            // addresses, never fake IPs. Only the first two also get a direct route rule above.
             dnsRules.append(["domain": directDNSHosts, "server": "dns-direct"])
         }
         if let blockList {
@@ -466,10 +481,11 @@ public enum SingBoxConfigGenerator {
 
     // MARK: - Pieces
 
-    /// `remote` hosts of the routed OpenVPN tunnels, split into IPv4 literals (as /32) and
-    /// names; unique, in store order. A name's `resolved` addresses (sorted) join the
-    /// literals right after it.
-    static func openVPNServers(_ routed: [Tunnel], resolved: [String: [String]] = [:])
+    /// `remote` hosts of the routed OpenVPN tunnels and servers of the routed XHTTP tunnels —
+    /// the peers of processes (`openvpn`, `xray`) whose own traffic must never enter a
+    /// tunnel — split into IPv4 literals (as /32) and names; unique, in store order. A
+    /// name's `resolved` addresses (sorted) join the literals right after it.
+    static func directServers(_ routed: [Tunnel], resolved: [String: [String]] = [:])
         -> (addresses: [String], hosts: [String])
     {
         var addresses: [String] = []
@@ -480,12 +496,17 @@ public enum SingBoxConfigGenerator {
             if !addresses.contains(cidr) { addresses.append(cidr) }
         }
         for tunnel in routed {
-            guard case .openVPN(let meta) = tunnel.kind else { continue }
-            for remote in meta.remotes {
-                if IPv4Prefix(remote.host) != nil {
-                    addAddress(remote.host)
+            let serverHosts: [String]
+            switch tunnel.kind {
+            case .openVPN(let meta): serverHosts = meta.remotes.map(\.host)
+            case .vless(let meta) where meta.usesXray: serverHosts = [meta.server]
+            default: continue
+            }
+            for serverHost in serverHosts {
+                if IPv4Prefix(serverHost) != nil {
+                    addAddress(serverHost)
                 } else {
-                    let host = remote.host.lowercased()
+                    let host = serverHost.lowercased()
                     guard !host.isEmpty, !hosts.contains(host) else { continue }
                     hosts.append(host)
                     for address in (resolved[host] ?? []).sorted() { addAddress(address) }
@@ -693,6 +714,19 @@ public enum SingBoxConfigGenerator {
         ]
     }
 
+    /// An XHTTP tunnel as sing-box sees it: the loopback SOCKS port of its `xray` process
+    /// (docs/design/04-tunnels.md, "VLESS over XHTTP"). The tag is the tunnel's, so rules,
+    /// DNS detours and counters do not care what is behind it.
+    static func xraySocksOutbound(tag: String, port: Int) -> [String: Any] {
+        [
+            "type": "socks",
+            "tag": tag,
+            "server": XrayConfigGenerator.listenAddress,
+            "server_port": port,
+            "version": "5",
+        ]
+    }
+
     /// docs/design/04-tunnels.md, "sing-box outbound mapping".
     static func vlessOutbound(_ meta: VLESSMeta, tag: String, uuid: String) -> [String: Any] {
         var outbound: [String: Any] = [
@@ -824,6 +858,10 @@ public enum SingBoxConfigGenerator {
             return block
         case .grpc(let serviceName):
             return ["type": "grpc", "service_name": serviceName]
+        case .xhttp:
+            // Stage 3 routes XHTTP tunnels through a socks outbound to xray; sing-box has
+            // no XHTTP transport, so none of its outbounds carries this block.
+            return nil
         }
     }
 }

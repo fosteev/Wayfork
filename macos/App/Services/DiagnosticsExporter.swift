@@ -97,6 +97,7 @@ enum DiagnosticsExporter {
             daemon: \(input.daemonInfo?.version ?? "unknown") at \(input.daemonInfo?.bundlePath ?? "?")
             sing-box: \(input.daemonInfo?.singBoxVersion ?? "unknown")
             openvpn: \(input.daemonInfo?.openVPNVersion ?? "unknown")
+            xray: \(input.daemonInfo?.xrayVersion ?? "unknown")
             generated: \(ISO8601DateFormatter().string(from: Date()))
             """)
         for (title, path, arguments) in [

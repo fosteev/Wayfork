@@ -56,8 +56,9 @@ daemon line the app received) and `wayfork.log` (the app's own lines), plus thei
 with the app quit and needs no privileges. The daemon's raw copies under
 `/Library/Logs/Wayfork/` are root-only and are not read.
 
-- `--source`: `app`, `daemon`, `sing-box`, `openvpn` (every `openvpn:<id>`) or an exact
-  source; repeatable. Default: all.
+- `--source`: `app`, `daemon`, `sing-box`, `openvpn` (every `openvpn:<id>`), `xray` (every
+  `xray:<id>`, the process behind a VLESS-over-XHTTP tunnel) or an exact source; repeatable.
+  Default: all.
 - `--level`: threshold, `error` < `warning` < `info` < `debug`; default `debug` (all).
 - `--grep`: case-insensitive substring of the message; repeatable, all must match.
 - `--since`: `90s`, `15m`, `2h`, `1d` or an ISO-8601 timestamp; default: no limit.

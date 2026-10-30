@@ -57,7 +57,7 @@ Windows**, one repository, one rule model, one export format.
 - **Connections by exit** — a second view of the Logs window: per tunnel, group and
   *Not via any tunnel*, how many connections opened, reached and failed, with the fail
   rate; an exit expands into its *Can't reach* rows.
-- **Logs and diagnostics** — app, sing-box and per-tunnel OpenVPN logs in one window;
+- **Logs and diagnostics** — app, sing-box and per-tunnel OpenVPN and xray logs in one window;
   "Export Diagnostics" zips them with a sanitized config.
 - **Settings** — launch at login, connect on launch, auto-reconnect with backoff, Wayfork
   as the system resolver while On, resolver for direct traffic, log level and retention,
@@ -84,7 +84,7 @@ Requires macOS 14 (Sonoma) or later, Apple silicon or Intel.
    xattr -dr com.apple.quarantine /Applications/Wayfork.app
    ```
 
-   Use `-r`: it also covers the privileged helper and the bundled `sing-box` / `openvpn`.
+   Use `-r`: it also covers the privileged helper and the bundled `sing-box` / `openvpn` / `xray`.
 3. Launch it. Wayfork lives in the menu bar, with no Dock icon. Flip the switch; macOS asks
    you once to approve the helper in *System Settings › General › Login Items & Extensions*
    under *Allow in the Background*. There is no password prompt.
@@ -137,7 +137,8 @@ under `%LOCALAPPDATA%\Wayfork` are kept.
   than `0.0.0.0/0` is kept as written and flagged — the peer drops whatever falls outside.
 - **Links** — *+ Add › Add from link…* takes `vless://`, `ss://`, `trojan://` and
   `vmess://`; the scheme picks the parser and the sheet shows what it understood. REALITY
-  over TCP and gRPC is supported, XHTTP is not (see the roadmap). Refused with a reason rather than
+  over TCP and gRPC is supported. XHTTP (`type=xhttp`) is supported on macOS through a bundled
+  `xray` process per tunnel; on Windows it is pending. Refused with a reason rather than
   guessed: pre-AEAD Shadowsocks ciphers, SIP003 `plugin=`, VMess `alterId` above 0.
 - **Subscriptions** — the same sheet takes an `https://` subscription URL: *Fetch* loads
   it (plain link lines or base64 of them), lists every server with a checkbox and every
@@ -250,8 +251,9 @@ rule changes from the command line are macOS-only for now.
 - One privileged component does the rest: a launchd daemon registered with `SMAppService`
   on macOS, a LocalSystem service on Windows. It spawns the bundled binaries, adds routes,
   samples traffic counters and streams logs to the unprivileged GUI.
-- Everything is bundled — `sing-box` and `openvpn`, pinned in `scripts/versions.env` and
-  `windows/versions.env`. No kernel extension and no Network Extension on macOS; on
+- Everything is bundled — `sing-box` and `openvpn` (plus `xray` on macOS, for XHTTP
+  tunnels), pinned in `scripts/versions.env` and `windows/versions.env`. The universal
+  `xray` adds about 64 MB to the macOS app bundle. No kernel extension and no Network Extension on macOS; on
   Windows the only driver installed is OpenVPN's WHQL-signed `ovpn-dco` (sing-box's TUN
   rides the wintun sing-tun already embeds).
 
@@ -303,8 +305,9 @@ rule changes from the command line are macOS-only for now.
 - **Application rules** only see traffic entering the TUN, and are keyed by path — a moved
   app needs a new rule. They do not cross platforms in an export.
 - **IP rules** are IPv4 and match the destination address only; no port or protocol conditions.
-- Subscriptions are fetched once, not refreshed; no rule lists; no XHTTP (sing-box does
-  not implement it).
+- Subscriptions are fetched once, not refreshed; no rule lists. XHTTP runs through a
+  separate `xray` process per tunnel (sing-box does not implement it), macOS only for now;
+  Windows is pending.
 - *Can't reach* and *Connections* count connections that failed to open; a request that
   reached the server and failed there is invisible inside TLS.
 - Neither build is signed for its store: macOS is not notarized, Windows is not Authenticode-signed.
@@ -314,7 +317,7 @@ rule changes from the command line are macOS-only for now.
 ### macOS — Xcode 26 (Swift 6 language mode, strict concurrency)
 
 ```sh
-scripts/fetch-bins.sh                 # pinned sing-box, static universal openvpn
+scripts/fetch-bins.sh                 # pinned sing-box, xray, static universal openvpn
 scripts/fetch-blocklist.sh            # pinned ads & trackers list, compiled with sing-box
 scripts/dev-sign.sh                   # build signed with your Apple Development identity
 swift test --package-path macos/WayforkCore
@@ -357,6 +360,6 @@ prototypes, [variant-b.html](docs/design/prototype/variant-b.html) and
 Copyright (C) 2026 Andrey Fosteev. Wayfork is free software, licensed under the
 [GNU General Public License v3.0 or later](LICENSE).
 
-Release builds bundle third-party binaries (sing-box, OpenVPN and its libraries, the
+Release builds bundle third-party binaries (sing-box, Xray-core, OpenVPN and its libraries, the
 ovpn-dco driver) and the oisd block list under their own licences — see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

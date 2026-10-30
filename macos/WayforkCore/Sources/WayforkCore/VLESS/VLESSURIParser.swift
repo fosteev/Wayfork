@@ -62,6 +62,7 @@ public enum VLESSURIParser {
         case nil, "tcp": transport = .tcp
         case "ws": transport = .ws(path: query["path"] ?? "/", host: query["host"])
         case "grpc": transport = .grpc(serviceName: query["serviceName"] ?? "")
+        case "xhttp": transport = try parseXHTTP(query)
         case let type?:
             throw VLESSImportError.unsupported(
                 "Transport \"\(type)\" is not supported yet.")
@@ -96,6 +97,9 @@ public enum VLESSURIParser {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty } ?? []
         let allowInsecure = isTrue(query["allowInsecure"]) || isTrue(query["insecure"])
+        if allowInsecure, case .xhttp = transport {
+            throw VLESSImportError.unsupported("allowInsecure is not supported with XHTTP.")
+        }
 
         let decodedFragment = try decode(rawFragment ?? "", component: "fragment")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -142,6 +146,12 @@ public enum VLESSURIParser {
         case .grpc(let serviceName):
             query.append(("type", "grpc"))
             query.append(("serviceName", serviceName))
+        case .xhttp(let path, let host, let mode, let extra):
+            query.append(("type", "xhttp"))
+            query.append(("path", path))
+            append(host, as: "host", to: &query)
+            append(mode, as: "mode", to: &query)
+            append(extra, as: "extra", to: &query)
         }
         if meta.allowInsecure {
             query.append(("allowInsecure", "1"))
@@ -150,6 +160,24 @@ public enum VLESSURIParser {
         let host = isIPv6(meta.server) ? "[\(meta.server)]" : meta.server
         let encodedQuery = query.map { "\($0.0)=\(percentEncode($0.1))" }.joined(separator: "&")
         return "vless://\(uuid)@\(host):\(meta.port)?\(encodedQuery)#\(percentEncode(name))"
+    }
+
+    private static let xhttpModes: Set<String> = ["auto", "packet-up", "stream-up", "stream-one"]
+
+    private static func parseXHTTP(_ query: [String: String]) throws -> ProxyTransport {
+        let mode = query["mode"]
+        if let mode, !xhttpModes.contains(mode) {
+            throw VLESSImportError.invalid(
+                "mode must be auto, packet-up, stream-up, or stream-one")
+        }
+        let extra = query["extra"]
+        if let extra {
+            let object = try? JSONSerialization.jsonObject(with: Data(extra.utf8))
+            guard object is [String: Any] else {
+                throw VLESSImportError.invalid("extra must be a JSON object")
+            }
+        }
+        return .xhttp(path: query["path"] ?? "/", host: query["host"], mode: mode, extra: extra)
     }
 
     private static func splitOnce(

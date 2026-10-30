@@ -3,7 +3,7 @@ import Foundation
 /// Resolves the OpenVPN servers' hostnames for the plan (docs/design/03-routing.md, "Notes on
 /// specific choices"). Blocking `getaddrinfo`: call it off the main actor.
 public enum HostResolver {
-    /// Non-literal OpenVPN and WireGuard server hosts, lowercased, unique, in store order.
+    /// Non-literal OpenVPN, WireGuard and XHTTP VLESS server hosts, lowercased, unique, in store order.
     public static func serverHosts(in store: Store) -> [String] {
         var hosts: [String] = []
         for tunnel in store.tunnels where tunnel.isEnabled {
@@ -11,7 +11,10 @@ public enum HostResolver {
             switch tunnel.kind {
             case .openVPN(let meta): candidates = meta.remotes.map(\.host)
             case .wireGuard(let meta): candidates = meta.peers.map(\.host)
-            case .vless, .shadowsocks, .trojan, .vmess: candidates = []
+            // xray, not sing-box, dials an XHTTP server, and its lookup must reach a real
+            // address (see `SingBoxConfigGenerator.directServers`).
+            case .vless(let meta): candidates = meta.usesXray ? [meta.server] : []
+            case .shadowsocks, .trojan, .vmess: candidates = []
             }
             for candidate in candidates
             where candidate.contains("/") || IPv4Prefix(candidate)?.isHost != true {

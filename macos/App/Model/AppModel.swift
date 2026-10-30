@@ -1004,7 +1004,7 @@ final class AppModel {
         case .replaceConfig:
             openSettings(
                 section: .tunnels, tunnel: tunnel.id, focus: tunnel.kind.isOpenVPN ? .config : .url)
-        case .showLog: openLogs(source: "openvpn:\(tunnel.id.uuidString.lowercased())")
+        case .showLog: openLogs(source: tunnel.logSource)
         case .exportDiagnostics: Task { await exportDiagnostics(includeServerAddresses: false) }
         case .openSystemSettings: HelperInstaller.openLoginItems()
         case .reinstallHelper: Task { await reinstallHelper() }

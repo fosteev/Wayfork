@@ -144,6 +144,31 @@ fetch_sing_box() {
 }
 
 # ---------------------------------------------------------------------------------------
+# xray: official release zips (only the `xray` binary is kept), combined into a universal one
+# ---------------------------------------------------------------------------------------
+
+fetch_xray() {
+    local arch name sha_var asset dir slices=()
+    for arch in $ARCHS; do
+        case "$arch" in
+            arm64) asset="Xray-macos-arm64-v8a.zip" ;;
+            x86_64) asset="Xray-macos-64.zip" ;;
+            *) die "unsupported architecture: $arch" ;;
+        esac
+        sha_var="XRAY_SHA256_$(tr '[:lower:]' '[:upper:]' <<<"$arch")"
+        download "$asset" "${!sha_var}" \
+            "https://github.com/XTLS/Xray-core/releases/download/v${XRAY_VERSION}/$asset"
+        dir="$BUILD_DIR/xray-$arch"
+        rm -rf "$dir"
+        mkdir -p "$dir"
+        unzip -q -o "$DL_DIR/$asset" xray -d "$dir"
+        slices+=("$dir/xray")
+    done
+    lipo_or_copy "$OUT_DIR/xray" "${slices[@]}"
+    log "xray $XRAY_VERSION -> $OUT_DIR/xray"
+}
+
+# ---------------------------------------------------------------------------------------
 # openvpn: static build per architecture, then lipo
 # ---------------------------------------------------------------------------------------
 
@@ -250,13 +275,16 @@ fetch_openvpn() {
 # ---------------------------------------------------------------------------------------
 
 fetch_sing_box
+fetch_xray
 fetch_openvpn
 
 log "Result"
 lipo -archs "$OUT_DIR/sing-box" | sed 's/^/  sing-box: /'
+lipo -archs "$OUT_DIR/xray" | sed 's/^/  xray:     /'
 lipo -archs "$OUT_DIR/openvpn" | sed 's/^/  openvpn:  /'
 if [[ " $ARCHS " == *" $(uname -m) "* ]]; then
     "$OUT_DIR/sing-box" version | head -n 1 | sed 's/^/  /'
+    "$OUT_DIR/xray" version | head -n 1 | sed 's/^/  /'
     "$OUT_DIR/openvpn" --version | head -n 1 | sed 's/^/  /'
     if otool -L "$OUT_DIR/openvpn" | grep -q -E 'libssl|libcrypto|liblz4|liblzo'; then
         die "openvpn is dynamically linked against a crypto/compression library"

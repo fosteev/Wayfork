@@ -11,6 +11,8 @@ public enum FailureCode: String, Sendable, CaseIterable {
     case ovpnUnsupportedPrompt = "ovpn.unsupportedPrompt"
     case ovpnExited = "ovpn.exited"
     case ovpnStartFailed = "ovpn.startFailed"
+    case xrayExited = "xray.exited"
+    case xrayStartFailed = "xray.startFailed"
     case singboxStartFailed = "singbox.startFailed"
     case singboxConfigInvalid = "singbox.configInvalid"
     case helperNotApproved = "helper.notApproved"
@@ -28,6 +30,8 @@ public enum FailureCode: String, Sendable, CaseIterable {
         case .ovpnUnsupportedPrompt: "OpenVPN asked for something Wayfork can't provide"
         case .ovpnExited: "OpenVPN stopped (reconnect on its own is off)"
         case .ovpnStartFailed: "OpenVPN could not start"
+        case .xrayExited: "Xray stopped (reconnect on its own is off)"
+        case .xrayStartFailed: "Xray could not start"
         case .singboxStartFailed: "Routing engine failed to start. Another VPN may be active."
         case .singboxConfigInvalid: "Routing config rejected"
         case .helperNotApproved: "Wayfork needs approval in System Settings → Login Items."
@@ -41,7 +45,9 @@ public enum FailureCode: String, Sendable, CaseIterable {
         case .ovpnAuthFailed, .ovpnNeedsCredentials: .editCredentials
         case .ovpnKeyPassphrase, .ovpnNeedsKeyPassphrase: .editKeyPassphrase
         case .ovpnConfigError: .replaceConfig
-        case .ovpnUnsupportedPrompt, .ovpnExited, .ovpnStartFailed, .singboxStartFailed: .showLog
+        case .ovpnUnsupportedPrompt, .ovpnExited, .ovpnStartFailed, .xrayExited,
+            .xrayStartFailed, .singboxStartFailed:
+            .showLog
         case .singboxConfigInvalid: .exportDiagnostics
         case .helperNotApproved: .openSystemSettings
         case .helperVersionMismatch, .helperUnreachable: .reinstallHelper
@@ -262,14 +268,14 @@ public enum StatusText {
             break
         }
         // F14: probes through the tunnel failed N times in a row.
-        if let latency, latency.unreachable, !tunnel.kind.isOpenVPN || state?.isConnected == true {
+        if let latency, latency.unreachable, !tunnel.kind.hasProcess || state?.isConnected == true {
             return TunnelPresentation(
                 glyph: .failed, status: "Not reachable",
                 detail:
                     "\(LatencyFormat.unreachableDetail(latency, now: now)) · \(waiting(ruleCount))",
                 isError: true, actions: [.reconnect], isDefault: isDefault)
         }
-        guard tunnel.kind.isOpenVPN else {
+        guard tunnel.kind.hasProcess else {
             return TunnelPresentation(
                 glyph: .up, status: "Connected", detail: sites, isDefault: isDefault)
         }
@@ -357,7 +363,7 @@ public enum StatusText {
     ) -> String? {
         if !member.isEnabled || missingSecret { return "off" }
         if latency?.unreachable == true { return "not reachable" }
-        if member.kind.isOpenVPN, case .failed = state { return "not reachable" }
+        if member.kind.hasProcess, case .failed = state { return "not reachable" }
         return nil
     }
 
@@ -565,6 +571,7 @@ public enum StatusText {
             case .tcp: break
             case .ws: parts.append("ws")
             case .grpc: parts.append("gRPC")
+            case .xhttp: parts.append("XHTTP")
             }
             if meta.flow == "xtls-rprx-vision" { parts.append("vision") }
             return parts.joined(separator: " · ")
@@ -646,6 +653,7 @@ public enum StatusText {
         case .tcp: break
         case .ws: parts.append("ws")
         case .grpc: parts.append("gRPC")
+        case .xhttp: parts.append("XHTTP")
         }
     }
 

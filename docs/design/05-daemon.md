@@ -8,7 +8,8 @@ Everything that needs no privileges lives in the `WayforkDaemonCore` library (se
 target of the `WayforkCore` package, unit-tested without root): `ManagedProcess`
 (`posix_spawn` + pipes + exit source), `UnixSocketLineClient`, `RotatingLogFile`,
 `AtomicFile`, the management-protocol parser and `OpenVPNSessionReducer` (the whole
-tunnel state machine as a pure reducer: events in, `TunnelState` + effects out),
+tunnel state machine as a pure reducer: events in, `TunnelState` + effects out) with its
+smaller twin `XraySessionReducer`,
 `ReconcilePlanner`, `PlanValidator`, `BackoffPolicy`/`CrashCounter`, `RouteCommand`,
 argv builders. `macos/Daemon/` only wires those to XPC, `Security` and the filesystem.
 
@@ -66,11 +67,11 @@ minimal and stable.
 ```
 
 ```swift
-struct DaemonInfo: Codable { var version: String; var bundlePath: String; var singBoxVersion: String; var openVPNVersion: String }
+struct DaemonInfo: Codable { var version: String; var bundlePath: String; var singBoxVersion: String; var openVPNVersion: String; var xrayVersion: String? }
 struct ApplyResult: Codable { var ok: Bool; var error: DaemonError? }
 struct RuntimeStatus: Codable {
     var engine: EngineState            // stopped | starting | running(since) | failed(reason)
-    var tunnels: [String: TunnelState] // by tunnel id (OpenVPN only)
+    var tunnels: [String: TunnelState] // by tunnel id (OpenVPN and XHTTP; native kinds have none)
     var planHash: String?              // hash of the last applied plan
     var proxyPortInUse: [String] = []  // F17: tunnel / group ids whose local proxy port could not be bound
 }
@@ -152,6 +153,7 @@ actor Supervisor {
     var plan: RuntimePlan?
     var singBox: ManagedProcess?
     var openVPN: [String: OpenVPNSession]      // ManagedProcess + management socket client
+    var xraySessions: [String: XraySession]    // ManagedProcess per XHTTP tunnel, no management socket
     var status: RuntimeStatus
 }
 ```
@@ -166,6 +168,16 @@ feeding the log stream. Restart policy per process:
 - openvpn: permanent failures (auth, key passphrase, config error) stop retries; anything
   else retries while `autoReconnect` is on. `reconnect(tunnelID:)` resets backoff and
   restarts immediately.
+
+- xray (XHTTP tunnels): the same backoff, driven by `XraySession` and `XraySessionReducer`.
+  A session is "connected" only once xray prints `core: Xray <version> started`; every exit
+  is transient and retried while `autoReconnect` is on, and `reconnect(tunnelID:)` works
+  as for openvpn. The config (`t-<id>.xray.json`, 0600, UUID inside) is written before the
+  spawn and removed on stop; `t-<id>.xray.pid` is written after it. xray binds with
+  `SO_REUSEPORT`, so a leftover from a crashed daemon would share its port silently — the
+  startup cleanup below is what removes it. `ReconcilePlanner` diffs `plan.xray` by
+  `configHash`, and `apply` stops changed or removed sessions before it starts new ones.
+  Design: [04-tunnels.md](04-tunnels.md), "VLESS over XHTTP (Xray)".
 
 Reconcile runs on the actor; per-process start/stop are `async` steps so a slow openvpn
 shutdown never blocks status queries.
@@ -200,7 +212,7 @@ executable path (`…/Contents/MacOS/WayforkDaemon` → three levels up), then
 `SecStaticCodeCreateWithPath` + `SecStaticCodeCheckValidity` against
 `anchor apple generic and identifier "com.wayfork.bin.<name>" and certificate leaf[subject.OU] = "<TEAMID>"`
 (same Team ID as the client requirement; the identifiers `com.wayfork.bin.sing-box` /
-`com.wayfork.bin.openvpn` are assigned by `scripts/embed-bins.sh` when the binaries are
+`com.wayfork.bin.openvpn` / `com.wayfork.bin.xray` are assigned by `scripts/embed-bins.sh` when the binaries are
 copied into the bundle and signed). Failure → `DaemonError.binaryUntrusted`, nothing runs.
 
 ### Startup cleanup
@@ -209,7 +221,7 @@ copied into the bundle and signed). Failure → `DaemonError.binaryUntrusted`, n
    `kill -9`; see "System resolver override").
 2. Read `run/*.pid`; for each pid, compare `proc_pidpath` with our binaries; matching
    processes get SIGTERM → 3 s → SIGKILL.
-3. Delete stale sockets, `t-*.ovpn`, `sing-box.json`, `rules-*.json`. Keep `cache.db`.
+3. Delete stale sockets, `t-*.ovpn`, `t-*.xray.json`, `sing-box.json`, `rules-*.json`. Keep `cache.db`.
 4. Remove scoped default routes on `utun101…utun132` that still exist as interfaces
    (`route -n delete -inet default -ifscope utunN`, ignore errors).
 5. `status = stopped`.
@@ -549,15 +561,16 @@ delete it afterwards. This is how M2 is verified before the app exists.
 | `run/cache.db` | 0600 | sing-box cache |
 | `run/dns-override.json` | 0600 | the primary service's manual DNS entry before the override (F12); survives `stop`'s wipe until restored |
 | `/Library/Logs/Wayfork/daemon.log` | 0600 | daemon's own log (also `os_log`, subsystem `com.wayfork.daemon`) |
-| `/Library/Logs/Wayfork/<source>.log` | 0600 | raw child output (`sing-box.log`, `openvpn-<id>.log`), 5 × 1 MB rotation, one `<ISO-8601> <LEVEL> <message>` per line |
+| `/Library/Logs/Wayfork/<source>.log` | 0600 | raw child output (`sing-box.log`, `openvpn-<id>.log`, `xray-<id>.log`), 5 × 1 MB rotation, one `<ISO-8601> <LEVEL> <message>` per line |
 
 Everything under `run/` except `cache.db` (and `dns-override.json`, which its own restore deletes) is deleted on `stop`.
 
 ## Logging plumbing
 
-Child stdout/stderr → line reader → `LogLine` (source `sing-box` / `openvpn:<id>`, level
+Child stdout/stderr → line reader → `LogLine` (source `sing-box` / `openvpn:<id>` / `xray:<id>`, level
 parsed from the line: sing-box prefixes `INFO`/`WARN`/`ERROR`/`DEBUG`, openvpn management
-`>LOG` flags `I`/`W`/`F`/`N`/`D`) → ring buffer of the last 2 000 lines per source (for
+`>LOG` flags `I`/`W`/`F`/`N`/`D`, xray `[Debug]`/`[Info]`/`[Warning]`/`[Error]` after a
+timestamp, with unprefixed lines such as `Failed to start: …` or a Go panic read as errors) → ring buffer of the last 2 000 lines per source (for
 reattach) → batched push to the subscribed client. Daemon's own events use source `daemon`.
 openvpn prints every line on stdout *and* to management clients with `log on`; stdout is
 forwarded only until the management socket is up (that is where `Options error` from a bad

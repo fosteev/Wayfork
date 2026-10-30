@@ -29,6 +29,19 @@ private func line(
         #expect(LogQuery(sources: ["SING-BOX", "app"]).run([lines]).count == 3)
     }
 
+    @Test func xraySourceStandsForEveryXraySession() {
+        let lines = [
+            line(0, "xray:abc", .warning, "core: Xray 26.10.29 started"),
+            line(1, "xray:def", .error, "Failed to start"),
+            line(2, "openvpn:abc", .warning, "TLS handshake failed"),
+            line(3, "xrayish", .info, "not a session"),
+        ]
+        #expect(
+            LogQuery(sources: ["xray"]).run([lines]).map(\.source) == ["xray:abc", "xray:def"])
+        #expect(LogQuery(sources: ["xray:def"]).run([lines]).map(\.source) == ["xray:def"])
+        #expect(LogQuery(sources: ["openvpn"]).run([lines]).map(\.source) == ["openvpn:abc"])
+    }
+
     @Test func mergesStreamsByTimeAndKeepsTheTail() {
         let runtime = [line(0, "sing-box", .info, "a"), line(2, "sing-box", .info, "c")]
         let app = [line(1, "app", .info, "b"), line(2, "app", .info, "d")]

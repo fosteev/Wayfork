@@ -404,6 +404,9 @@ struct AddLinkSheet: View {
             result = "ws \(path)"
             if let host { result += " · host \(host)" }
         case .grpc(let serviceName): result = "gRPC \(serviceName)"
+        case .xhttp(let path, _, let mode, _):
+            result = "XHTTP \(path)"
+            if let mode { result += " · \(mode)" }
         }
         if let flow { result += " · flow \(flow)" }
         return result

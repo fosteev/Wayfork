@@ -40,6 +40,15 @@ public enum OpenVPNArguments {
     }
 }
 
+/// argv for the xray child of an XHTTP tunnel (docs/roadmap/xhttp-xray.md, D8). The
+/// config holds everything else, so the reconcile diff compares only its hash.
+public enum XrayArguments {
+    public static func arguments(for runtime: XrayRuntime, runDirectory: String) -> [String] {
+        let run = runDirectory as NSString
+        return ["run", "-c", run.appendingPathComponent(RunLayout.xrayConfig(runtime.id))]
+    }
+}
+
 /// argv for the sing-box child (docs/design/03-routing.md).
 public enum SingBoxArguments {
     public static func run(runDirectory: String) -> [String] {

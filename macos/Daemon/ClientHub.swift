@@ -160,15 +160,13 @@ actor ClientHub {
     }
 
     /// Last `count` lines of every raw log file on disk, keyed by file stem
-    /// (`daemon`, `sing-box`, `openvpn-<id>`).
+    /// (`daemon`, `sing-box`, `openvpn-<id>`, `xray-<id>`).
     func tails(_ count: Int) -> [String: [String]] {
         var result: [String: [String]] = [:]
         let names = (try? FileManager.default.contentsOfDirectory(atPath: logDirectory)) ?? []
         for name in names where name.hasSuffix(".log") {
             let stem = String(name.dropLast(".log".count))
-            let source =
-                stem.hasPrefix("openvpn-")
-                ? "openvpn:" + stem.dropFirst("openvpn-".count) : stem
+            let source = RunLayout.source(forChildLogStem: stem)
             result[stem] = file(for: source)?.tail(count) ?? []
         }
         return result

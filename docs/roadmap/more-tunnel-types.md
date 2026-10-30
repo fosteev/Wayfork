@@ -396,6 +396,9 @@ good/bad lines, an empty body and a non-list body.
 
 ### 8. XHTTP via bundled Xray-core *(separate approval; gets its own roadmap file)*
 
+> Approved 2026-10-30 and moved to [xhttp-xray.md](xhttp-xray.md); the list below is the
+> original sketch, kept for history.
+
 Kept here so the shape is not lost; it is the OpenVPN process model with a port instead of
 a utun, described in ROADMAP L3. When approved, create `docs/roadmap/xhttp-xray.md` and
 move these steps there.

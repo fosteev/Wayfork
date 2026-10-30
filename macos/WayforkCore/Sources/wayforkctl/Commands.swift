@@ -10,7 +10,8 @@ let helpText = """
     Read (safe):
       logs [--source S]… [--level L] [--grep T]… [--since D] [--tail N] [--json] [--raw]
             the app's log files, works with the app quit. S: app | daemon | sing-box |
-            openvpn | openvpn:<id>; L: error | warning | info | debug (threshold);
+            openvpn | openvpn:<id> | xray | xray:<id>; L: error | warning | info | debug
+            (threshold);
             D: 90s | 15m | 2h | 1d | ISO-8601; N: default 100, 0 = all. Configured server
             addresses are replaced by server-N unless --raw (resolved server IPs are not).
       status                     tunnels, groups, rule count, last apply, pending change

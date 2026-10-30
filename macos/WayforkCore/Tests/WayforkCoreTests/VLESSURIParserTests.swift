@@ -44,7 +44,7 @@ private let vlessUUID = "00000000-0000-4000-8000-000000000001"
     #expect(ipv6.meta.sni == "2001:db8::1")
 }
 
-@Test(arguments: ["kcp", "http", "h2", "httpupgrade", "xhttp", "quic", "splithttp", "other"])
+@Test(arguments: ["kcp", "http", "h2", "httpupgrade", "quic", "splithttp", "other"])
 func rejectsUnsupportedTransports(_ transport: String) {
     #expect(
         throws: VLESSImportError.unsupported(
@@ -104,14 +104,24 @@ private struct VLESSLinks: Codable {
     var rejected: [String]
 
     static let path = Fixtures.url("vless/links.json")
+    /// Swift-only until the Windows twin of the XHTTP stage reads it.
+    static let xhttpPath = Fixtures.url("vless/xhttp-links.json")
 
-    static func load() throws -> VLESSLinks {
+    static func load(_ path: URL = VLESSLinks.path) throws -> VLESSLinks {
         try JSONCoding.decoder.decode(VLESSLinks.self, from: Data(contentsOf: path))
     }
 }
 
 @Test func fixtureLinksParseAsRecorded() throws {
-    var links = try VLESSLinks.load()
+    try checkAcceptedFixture(at: VLESSLinks.path)
+}
+
+@Test func xhttpFixtureLinksParseAsRecorded() throws {
+    try checkAcceptedFixture(at: VLESSLinks.xhttpPath)
+}
+
+private func checkAcceptedFixture(at path: URL) throws {
+    var links = try VLESSLinks.load(path)
     let update = ProcessInfo.processInfo.environment["WAYFORK_UPDATE_GOLDEN"] != nil
     #expect(!links.accepted.isEmpty)
     for index in links.accepted.indices {
@@ -128,12 +138,20 @@ private struct VLESSLinks: Codable {
     if update {
         let data = try JSONCoding.prettyEncoder.encode(links)
         try (String(decoding: data, as: UTF8.self) + "\n").write(
-            to: VLESSLinks.path, atomically: true, encoding: .utf8)
+            to: path, atomically: true, encoding: .utf8)
     }
 }
 
 @Test func fixtureLinksAreRejected() throws {
-    let links = try VLESSLinks.load()
+    try checkRejectedFixture(at: VLESSLinks.path)
+}
+
+@Test func xhttpFixtureLinksAreRejected() throws {
+    try checkRejectedFixture(at: VLESSLinks.xhttpPath)
+}
+
+private func checkRejectedFixture(at path: URL) throws {
+    let links = try VLESSLinks.load(path)
     #expect(!links.rejected.isEmpty)
     for uri in links.rejected {
         #expect(throws: VLESSImportError.self, "\(uri)") { try VLESSURIParser.parse(uri) }
@@ -178,4 +196,102 @@ private struct VLESSLinks: Codable {
             meta: VLESSMeta(server: "example.com", port: 443, security: .none),
             uuid: vlessUUID, name: longName))
     #expect(result.name == String(repeating: "é", count: 40))
+}
+
+// MARK: - XHTTP
+
+private func xhttpLink(_ query: String) -> String {
+    "vless://\(vlessUUID)@example.com:443?\(query)"
+}
+
+@Test func parsesXHTTPFields() throws {
+    let minimal = try VLESSURIParser.parse(
+        xhttpLink("type=xhttp&security=reality&pbk=k&sid=s&sni=a.com"))
+    #expect(minimal.meta.transport == .xhttp(path: "/", host: nil, mode: nil, extra: nil))
+    #expect(minimal.meta.security == .reality)
+
+    let full = try VLESSURIParser.parse(
+        xhttpLink(
+            "type=xhttp&security=tls&path=%2Fx&host=cdn.example.com&mode=stream-one&extra=%7B%22a%22%3A1%7D"
+        ))
+    #expect(
+        full.meta.transport
+            == .xhttp(
+                path: "/x", host: "cdn.example.com", mode: "stream-one", extra: "{\"a\":1}"))
+
+    for mode in ["auto", "packet-up", "stream-up", "stream-one"] {
+        let result = try VLESSURIParser.parse(xhttpLink("type=xhttp&mode=\(mode)"))
+        #expect(result.meta.transport == .xhttp(path: "/", host: nil, mode: mode, extra: nil))
+    }
+}
+
+@Test func rejectsInvalidXHTTPOptions() {
+    #expect(
+        throws: VLESSImportError.invalid("mode must be auto, packet-up, stream-up, or stream-one")
+    ) {
+        try VLESSURIParser.parse(xhttpLink("type=xhttp&mode=fast"))
+    }
+    #expect(throws: VLESSImportError.invalid("extra must be a JSON object")) {
+        try VLESSURIParser.parse(xhttpLink("type=xhttp&extra=%5B1%5D"))
+    }
+    #expect(throws: VLESSImportError.invalid("extra must be a JSON object")) {
+        try VLESSURIParser.parse(xhttpLink("type=xhttp&extra=not-json"))
+    }
+    #expect(throws: VLESSImportError.invalid("flow requires TLS/REALITY over TCP")) {
+        try VLESSURIParser.parse(
+            xhttpLink("type=xhttp&security=reality&pbk=k&flow=xtls-rprx-vision"))
+    }
+    for flag in ["allowInsecure=1", "insecure=true"] {
+        #expect(
+            throws: VLESSImportError.unsupported("allowInsecure is not supported with XHTTP.")
+        ) {
+            try VLESSURIParser.parse(xhttpLink("type=xhttp&security=tls&\(flag)"))
+        }
+    }
+    #expect(
+        throws: VLESSImportError.unsupported("Transport \"splithttp\" is not supported yet.")
+    ) {
+        try VLESSURIParser.parse(xhttpLink("type=splithttp"))
+    }
+}
+
+@Test func xhttpWriterKeepsFieldOrderAndSkipsNilFields() {
+    let meta = VLESSMeta(
+        server: "example.com", port: 443, security: .tls, sni: "example.com",
+        transport: .xhttp(
+            path: "/x", host: "cdn.example.com", mode: "packet-up", extra: "{\"a\":1}"))
+    #expect(
+        VLESSURIParser.uri(meta: meta, uuid: "<uuid>", name: "N")
+            == "vless://<uuid>@example.com:443?encryption=none&security=tls&sni=example.com&type=xhttp&path=%2Fx&host=cdn.example.com&mode=packet-up&extra=%7B%22a%22%3A1%7D#N"
+    )
+
+    var sparse = meta
+    sparse.transport = .xhttp(path: "/x", host: nil, mode: "stream-one", extra: nil)
+    #expect(
+        VLESSURIParser.uri(meta: sparse, uuid: "<uuid>", name: "N")
+            == "vless://<uuid>@example.com:443?encryption=none&security=tls&sni=example.com&type=xhttp&path=%2Fx&mode=stream-one#N"
+    )
+}
+
+@Test func xhttpFixtureLinksRoundTrip() throws {
+    let links = try VLESSLinks.load(VLESSLinks.xhttpPath)
+    #expect(!links.accepted.isEmpty)
+    for link in links.accepted {
+        let first = try VLESSURIParser.parse(link.uri)
+        guard case .xhttp = first.meta.transport else {
+            Issue.record("\(link.name) is not an XHTTP link")
+            continue
+        }
+        let rewritten = VLESSURIParser.uri(meta: first.meta, uuid: first.uuid, name: first.name)
+        #expect(try VLESSURIParser.parse(rewritten) == first, "\(link.name)")
+    }
+}
+
+@Test func xhttpMetaSurvivesStoreCoding() throws {
+    let meta = VLESSMeta(
+        server: "example.com", port: 443, security: .tls, sni: "example.com",
+        transport: .xhttp(path: "/x", host: nil, mode: "auto", extra: "{\"a\":1}"))
+    let data = try JSONCoding.compactEncoder.encode(meta)
+    #expect(String(decoding: data, as: UTF8.self).contains("\"transport\":{\"xhttp\":{"))
+    #expect(try JSONCoding.decoder.decode(VLESSMeta.self, from: data) == meta)
 }

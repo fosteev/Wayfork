@@ -18,6 +18,7 @@ struct DaemonEnvironment: Sendable {
     var binDirectory: String { bundlePath + "/Contents/Resources/bin" }
     var singBoxPath: String { binDirectory + "/sing-box" }
     var openVPNPath: String { binDirectory + "/openvpn" }
+    var xrayPath: String { binDirectory + "/xray" }
 
     static func current() -> DaemonEnvironment {
         let executable =

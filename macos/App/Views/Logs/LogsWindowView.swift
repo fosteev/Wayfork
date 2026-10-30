@@ -34,8 +34,8 @@ struct LogsWindowView: View {
             ordered.append(fixed)
             seen.insert(fixed)
         }
-        for tunnel in model.store.tunnels where tunnel.kind.isOpenVPN {
-            let source = "openvpn:\(tunnel.id.uuidString.lowercased())"
+        for tunnel in model.store.tunnels {
+            guard let source = tunnel.logSource else { continue }
             ordered.append(source)
             seen.insert(source)
         }
@@ -207,12 +207,15 @@ struct LogsWindowView: View {
         }
     }
 
-    /// `openvpn:<id>` → `openvpn:<name>`.
+    /// `openvpn:<id>` → `openvpn:<name>`, `xray:<id>` → `xray:<name>`.
     private func displayName(_ source: String) -> String {
-        guard source.hasPrefix("openvpn:"), let id = UUID(uuidString: String(source.dropFirst(8))),
-            let tunnel = model.store.tunnel(id: id)
-        else { return source }
-        return "openvpn:\(tunnel.name)"
+        for prefix in ["openvpn:", "xray:"] where source.hasPrefix(prefix) {
+            guard let id = UUID(uuidString: String(source.dropFirst(prefix.count))),
+                let tunnel = model.store.tunnel(id: id)
+            else { return source }
+            return "\(prefix)\(tunnel.name)"
+        }
+        return source
     }
 
     private func copyVisible(_ rows: [Row]) {

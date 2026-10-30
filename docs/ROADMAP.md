@@ -152,7 +152,7 @@ Written as user scenarios. Technical details belong to Phase 2.
 | VMess | `vmess://` base64 JSON (V2RayN) | uuid | yes; `aid>0` → unsupported |
 | Subscriptions (URL → list of links, plain or base64) | URL | — | yes, stage 7 (approved 2026-09-12) |
 | Hysteria2, TUIC, AnyTLS, SOCKS/HTTP upstream, NaiveProxy | links / fields | password | no — no server to test against; same recipe on request |
-| XHTTP via Xray-core | `vless://…type=xhttp` | uuid | no — separate approval (below) |
+| XHTTP via Xray-core | `vless://…type=xhttp` | uuid | separate roadmap, macOS first (below) |
 | IKEv2 / L2TP / other per-process VPNs | — | — | no — own process + system NE, outside the architecture |
 
 - What sing-box would misroute or silently degrade is **refused at import with a reason**,
@@ -172,7 +172,10 @@ Written as user scenarios. Technical details belong to Phase 2.
   reaches through a `socks` outbound — the OpenVPN per-process model with a port instead of
   a `utun`. Needs a pinned, signed `xray` binary (`com.wayfork.bin.xray`), an `XrayRuntime`
   entry in the plan, an xray config generator, `type=xhttp` in the URI parser and a
-  process-path direct rule for xray's own traffic. Separate approval, its own roadmap file.
+  process-path direct rule for xray's own traffic. Approved 2026-10-30 (macOS first):
+  [roadmap/xhttp-xray.md](roadmap/xhttp-xray.md). **Status:** macOS stages 1–5 are
+  implemented and documented; the live check on a 3x-ui XHTTP+REALITY server
+  is owed to the maintainer. The Windows twin (stage W) is pending.
 - Plan, decisions and per-step progress:
   [roadmap/more-tunnel-types.md](roadmap/more-tunnel-types.md); design in
   [design/04-tunnels.md](design/04-tunnels.md).

@@ -109,6 +109,9 @@ public enum ProxyTransport: Codable, Sendable, Hashable {
     case tcp
     case ws(path: String, host: String?)
     case grpc(serviceName: String)
+    /// VLESS only; runs through a bundled Xray, not sing-box. `mode` nil means auto, `extra`
+    /// is the share link's JSON object, kept verbatim.
+    case xhttp(path: String, host: String?, mode: String?, extra: String?)
 }
 
 /// VLESS tunnel metadata. The UUID lives in Keychain.
@@ -126,6 +129,13 @@ public struct VLESSMeta: Codable, Sendable, Hashable {
     public var realityShortID: String?
     public var transport: ProxyTransport
     public var allowInsecure: Bool
+
+    /// Whether sing-box cannot dial this tunnel itself: XHTTP runs through a bundled Xray
+    /// process (docs/design/04-tunnels.md, "VLESS over XHTTP").
+    public var usesXray: Bool {
+        if case .xhttp = transport { return true }
+        return false
+    }
 
     public init(
         server: String,
@@ -260,6 +270,17 @@ public enum TunnelKind: Sendable, Hashable {
         return false
     }
 
+    /// An XHTTP VLESS tunnel: one `xray` process per tunnel, reached over loopback SOCKS.
+    public var usesXray: Bool {
+        if case .vless(let meta) = self { return meta.usesXray }
+        return false
+    }
+
+    /// The tunnel is carried by a process the daemon supervises (OpenVPN, or `xray` for
+    /// XHTTP), so it has a connection state of its own and a process log. Native sing-box
+    /// kinds have neither.
+    public var hasProcess: Bool { isOpenVPN || usesXray }
+
     public var hasOwnResolver: Bool {
         switch self {
         case .openVPN, .wireGuard: true
@@ -358,6 +379,10 @@ public struct Tunnel: Codable, Sendable, Hashable, Identifiable {
     public static let nameMaxLength = 40
     /// `utun` unit of the first OpenVPN tunnel slot; sing-box itself owns `utun100`.
     public static let firstOpenVPNInterfaceUnit = 101
+    /// Loopback SOCKS port of the first XHTTP tunnel slot (`xrayPort`).
+    public static let firstXrayPort = 47100
+    /// Every port `xrayPort` can return.
+    public static let xrayPorts = firstXrayPort..<(firstXrayPort + maxSlots)
 
     public var id: UUID
     /// Unique, 1…40 characters.
@@ -415,5 +440,21 @@ public struct Tunnel: Codable, Sendable, Hashable, Identifiable {
     public var interfaceName: String? {
         guard kind.isOpenVPN else { return nil }
         return "utun\(Tunnel.firstOpenVPNInterfaceUnit + slot)"
+    }
+
+    /// Log source of the tunnel's supervised process, the key the daemon logs it under:
+    /// `openvpn:<id>` / `xray:<id>`, nil for kinds sing-box runs itself. The id is lowercased.
+    public var logSource: String? {
+        let id = self.id.uuidString.lowercased()
+        if kind.isOpenVPN { return "openvpn:\(id)" }
+        if kind.usesXray { return "xray:\(id)" }
+        return nil
+    }
+
+    /// `47100 + slot` for XHTTP tunnels: deterministic like the `utun` unit, so nothing has
+    /// to flow back from the daemon. Other kinds have no xray process.
+    public var xrayPort: Int? {
+        guard kind.usesXray else { return nil }
+        return Tunnel.firstXrayPort + slot
     }
 }

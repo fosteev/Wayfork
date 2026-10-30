@@ -1,12 +1,13 @@
 # Tunnels
 
-Technical side of F1 and F13. Six kinds in two runtime shapes:
+Technical side of F1 and F13. Six kinds in three runtime shapes:
 
 | Shape | Kinds | In the sing-box config | Process | Interface |
 |-------|-------|------------------------|---------|-----------|
 | External process | OpenVPN | `direct` outbound with `bind_interface` | `openvpn`, one per tunnel | own `utun` |
 | Native | VLESS, Shadowsocks, Trojan, VMess | one entry in `outbounds[]` | — | — |
 | Native | WireGuard | one entry in `endpoints[]` | — | userspace (gVisor) |
+| Local proxy process | VLESS over XHTTP | `socks` outbound to `127.0.0.1:<port>` | `xray`, one per tunnel | — (loopback port) |
 
 Everything native is "ready whenever sing-box runs": nothing to start, nothing to
 supervise, no route to install. The tag is `t-<id>` in every case, so route rules, DNS
@@ -161,7 +162,7 @@ vless://<uuid>@<host>:<port>?<query>#<name>
 | Query key | Meaning | Mapping |
 |-----------|---------|---------|
 | `encryption` | must be `none` (or absent) | else `import.vless.invalid` |
-| `type` | transport: `tcp` (default), `ws`, `grpc` | `VLESSTransport`; `kcp`, `http`, `httpupgrade`, `xhttp` → `import.vless.unsupported` (XHTTP is planned via a bundled Xray-core, ROADMAP L3; the pinned sing-box has no such transport) |
+| `type` | transport: `tcp` (default), `ws`, `grpc` | `VLESSTransport`; `xhttp` (runs through Xray, see "VLESS over XHTTP"); `kcp`, `http`, `httpupgrade`, `splithttp` → `import.vless.unsupported` |
 | `security` | `none`, `tls`, `reality` | `VLESSSecurity` |
 | `sni` | TLS server name | `sni` (defaults to host) |
 | `fp` | uTLS fingerprint | `fingerprint` |
@@ -206,6 +207,64 @@ checked against the pinned sing-box with `sing-box check`).
 
 No process, no routes, no DNS entry: the tunnel is "ready" whenever sing-box runs.
 Reachability is only observed per connection until L4 adds health checks.
+
+## VLESS over XHTTP (Xray)
+
+sing-box has no XHTTP transport. The pinned 1.13.19 rejects `xhttp`/`splithttp`, and
+upstream declined to add it. Each XHTTP tunnel therefore runs its own bundled `xray`
+(Xray-core, pinned in `scripts/versions.env`). The process listens on a loopback SOCKS5
+port, and the sing-box side of the tunnel is a plain `socks` outbound. Plan and decisions
+D1–D10: [roadmap/xhttp-xray.md](../roadmap/xhttp-xray.md).
+
+- **Model.** `ProxyTransport.xhttp(path:host:mode:extra:)` applies to VLESS only. `extra`
+  is the share link's JSON object, kept verbatim. `allowInsecure` and `flow` are refused
+  with XHTTP.
+- **Port.** `127.0.0.1:(47100 + slot)` is deterministic, like `utun101 + slot`. The
+  inbound has no auth because it is loopback-only.
+- **Plan.** `RuntimePlan.xray: [XrayRuntime]` carries `id`, `port`, the full xray config
+  and its hash; a plan without the key decodes to `[]`. The app's pure `XrayConfigGenerator`
+  builds that config: `log.loglevel: "warning"` with `access: "none"` (otherwise xray prints
+  a line per connection, domain included, into the daemon log), a SOCKS inbound with UDP on,
+  and a VLESS outbound over XHTTP with `none`/`tls`/`reality`. It has no mux, no routing and
+  no DNS. The stream key is `network` and the REALITY key is `realitySettings.password`
+  (the share link's `pbk`); both are pinned by a unit test, because xray ignores unknown
+  keys and `xray run -test` cannot catch a wrong name. `RuntimePlanBuilder` skips a tunnel
+  whose UUID is missing, as for OpenVPN. `PlanValidator` checks the count, the port range
+  and the config size. Any change to the hash restarts the process.
+- **sing-box side.** The tunnel is `{"type": "socks", "tag": "t-<id>", "server": "127.0.0.1",
+  "server_port": <port>, "version": "5"}`. The generator branches on VLESS with an `xhttp`
+  transport before `vlessOutbound`, so no outbound of an XHTTP tunnel has `type: vless`.
+- **Daemon.** `XraySession` follows `OpenVPNSession`: spawn through `ManagedProcess`,
+  backoff and stop. It has no management socket and no routes. The config, which includes
+  the UUID, is written to the run directory as `t-<id>.xray.json` with mode 0600 and is
+  removed when the session stops (and with everything else in `run/` at daemon startup).
+  The command is `xray run -c <run>/t-<id>.xray.json`. Its decisions live in
+  `XraySessionReducer`, which is not OpenVPN's: a tunnel counts as connected only on the
+  `core: Xray … started` line, and every exit is transient and retried with the same backoff
+  while `autoReconnect` is on (reasons `xray.exited`, `xray.startFailed`). A permanent
+  failure exists only when the session cannot start at all (untrusted binary, unwritable
+  run directory). The prober measures an XHTTP tunnel whatever its xray state, since the
+  card shows its reachability only through the probe. Logs go to source `xray:<id>`.
+- **Leftovers and SO_REUSEPORT.** xray binds its listener with `SO_REUSEPORT`, so a second
+  process on the same port shares it silently instead of failing to bind. The session
+  writes `t-<id>.xray.pid`, and the daemon's startup cleanup kills a leftover from a
+  crashed daemon (the `.pid` rule it already applies to openvpn). A port clash with another
+  program fails to bind only if that program does not use `SO_REUSEPORT` either; in that
+  case the session backs off with the error in the log. `LocalProxy.portRange` (F17) still
+  overlaps 47100–47131, so a user can pick a clashing port by hand.
+- **App.** `TunnelKind.hasProcess` (OpenVPN or XHTTP) says "this tunnel has a supervised
+  process", and `Tunnel.logSource` gives its log source (`openvpn:<id>` / `xray:<id>`).
+  The card, the failed/degraded state, *Show log* and the Logs window use them, so an XHTTP
+  tunnel behaves like an OpenVPN one there. Reason texts for `xray.exited` and
+  `xray.startFailed` sit next to the OpenVPN ones in `StatusText`.
+- **Loop avoidance.** Three things keep xray's own traffic out of the tunnel, as for
+  openvpn: a `process_path` direct rule for the bundled `xray` (emitted only when an XHTTP
+  tunnel is routed, so existing configs stay byte-identical), the server's name and
+  pre-resolved addresses joining the "servers always go direct" rule (`directServers`, the
+  former `openVPNServers`), and the LAN exclusions. The XHTTP server names also join the
+  `dns-direct` rule, so xray resolves the real address and never a fake-ip.
+- **UDP.** sing-box sends UDP through SOCKS UDP ASSOCIATE, and xray carries it as XUDP.
+  This is verified only by the live check. If UDP is dead, the generic H3 hint shows it.
 
 ## Shared TLS and transport (F13)
 
@@ -522,6 +581,9 @@ written, because several of them contradict what the plan assumed.
   (`outbound detour not found`). The golden-fixture `check` in `TrafficTests` and the
   daemon's pre-apply `check` are therefore schema validators, not reference checkers — the
   generator tests carry their own assertion that every referenced tag exists.
+- **XHTTP is not accepted** (checked 2026-10-30, 1.13.19): `transport.type` `xhttp` and
+  `splithttp` are both refused, which is why XHTTP tunnels go through `xray`. xray itself
+  ignores unknown keys, so its `run -test` validates syntax and values but not key names.
 - **Unknown keys are refused** (`decode config`), so an experimental key cannot be left in
   the generator by accident.
 - **REALITY requires uTLS** (`uTLS is required by reality client`) — `fp` defaults to
