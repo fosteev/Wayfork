@@ -143,8 +143,6 @@ public enum SingBoxConfigGenerator {
         let routedGroups = store.groups.filter { group in
             group.isEnabled && group.members.contains { routedIDs.contains($0) }
         }
-        let activeRules = RuleValidator.activeRules(store)
-        let exceptions = RuleValidator.activeExceptions(store)
         let defaultTunnel = store.effectiveDefaultTunnel.flatMap { wanted in
             routed.first { $0.id == wanted.id }
         }
@@ -156,6 +154,13 @@ public enum SingBoxConfigGenerator {
             case nil: return nil
             }
         }()
+
+        let rows = RuleValidator.resolvedRules(
+            store,
+            routedExitIDs: routedIDs.union(routedGroups.map(\.id))
+        )
+        .filter { RuleSetGenerator.renderRow($0.rule) != nil }
+        let ruleFiles = RuleSetGenerator.generate(rows: rows)
 
         var dnsServers: [[String: Any]] = [
             directDNSServer(store.settings.directDNS, networkResolvers: input.networkResolvers)
@@ -208,28 +213,19 @@ public enum SingBoxConfigGenerator {
         if let rule = serverRouteRule(servers) {
             routeRules.append(rule)
         }
-        routeRules.append([
-            "rule_set": [RuleSetGenerator.directTag, RuleSetGenerator.directIPTag],
-            "outbound": "direct",
-        ])
-        // F23: Direct rules narrowed to one transport, right behind the both-network ones.
-        var ruleSetRefs: [[String: Any]] = [
-            localRuleSet(tag: RuleSetGenerator.directTag, path: RuleSetGenerator.directFileName),
-            localRuleSet(
-                tag: RuleSetGenerator.directIPTag, path: RuleSetGenerator.directIPFileName),
+        routeRules.append(["rule_set": [RuleSetGenerator.directTag], "outbound": "direct"])
+        var ruleSetRefs = [
+            localRuleSet(tag: RuleSetGenerator.directTag, path: RuleSetGenerator.directFileName)
         ]
-        for network in RuleNetwork.allCases
-        where RuleSetGenerator.renderNarrowed(rules: exceptions, network: network) != nil {
-            routeRules.append([
-                "rule_set": [RuleSetGenerator.directNarrowedTag(network)],
-                "network": [network.rawValue],
-                "outbound": "direct",
-            ])
-            ruleSetRefs.append(
-                localRuleSet(
-                    tag: RuleSetGenerator.directNarrowedTag(network),
-                    path: RuleSetGenerator.directNarrowedFileName(network)))
+        func appendRows(_ selected: [ResolvedRule]) {
+            for row in selected {
+                var route: [String: Any] = ["rule_set": [row.tag], "outbound": row.outboundTag]
+                if let network = row.rule.network { route["network"] = [network.rawValue] }
+                routeRules.append(route)
+                ruleSetRefs.append(localRuleSet(tag: row.tag, path: row.fileName))
+            }
         }
+        appendRows(rows.filter(\.isException))
         // F18: listed names are rejected after the exceptions and before every tunnel
         // rule-set, so the list wins whichever tunnel a rule would send them to.
         let blockList = blockListRules(store.settings.blockList, path: input.blockListPath)
@@ -239,27 +235,6 @@ public enum SingBoxConfigGenerator {
                 "type": "local", "tag": blockListTag, "format": "binary", "path": blockList.path,
             ])
         }
-        // F23: narrowed tunnel and group rules go in here, after the block list and before
-        // the both-network rules, so they win over them whatever the section order.
-        let narrowedInsertIndex = routeRules.count
-        var narrowedRouteRules: [[String: Any]] = []
-        func addNarrowed(_ exit: RoutedExit) {
-            for network in RuleNetwork.allCases
-            where RuleSetGenerator.renderNarrowed(
-                rules: activeRules[exit.id] ?? [], network: network) != nil
-            {
-                narrowedRouteRules.append([
-                    "rule_set": [exit.narrowedRuleSetTag(network)],
-                    "network": [network.rawValue],
-                    "outbound": exit.outboundTag,
-                ])
-                ruleSetRefs.append(
-                    localRuleSet(
-                        tag: exit.narrowedRuleSetTag(network),
-                        path: exit.narrowedRuleSetFileName(network)))
-            }
-        }
-
         for tunnel in routed {
             switch tunnel.kind {
             case .openVPN(let meta):
@@ -312,14 +287,7 @@ public enum SingBoxConfigGenerator {
                     vmessOutbound(
                         meta, tag: tunnel.outboundTag, uuid: input.vmessUUIDs[tunnel.id] ?? ""))
             }
-            routeRules.append([
-                "rule_set": [tunnel.ruleSetTag, tunnel.ipRuleSetTag],
-                "outbound": tunnel.outboundTag,
-            ])
-            ruleSetRefs.append(localRuleSet(tag: tunnel.ruleSetTag, path: tunnel.ruleSetFileName))
-            ruleSetRefs.append(
-                localRuleSet(tag: tunnel.ipRuleSetTag, path: tunnel.ipRuleSetFileName))
-            addNarrowed(RoutedExit(tunnel))
+
         }
         for group in routedGroups {
             let members = group.members.filter { routedIDs.contains($0) }
@@ -346,22 +314,16 @@ public enum SingBoxConfigGenerator {
                     "interrupt_exist_connections": false,
                 ])
             }
-            routeRules.append([
-                "rule_set": [group.ruleSetTag, group.ipRuleSetTag],
-                "outbound": group.outboundTag,
-            ])
-            ruleSetRefs.append(localRuleSet(tag: group.ruleSetTag, path: group.ruleSetFileName))
-            ruleSetRefs.append(
-                localRuleSet(tag: group.ipRuleSetTag, path: group.ipRuleSetFileName))
-            addNarrowed(RoutedExit(group))
         }
-        routeRules.insert(contentsOf: narrowedRouteRules, at: narrowedInsertIndex)
+        appendRows(rows.filter { !$0.isException })
         routeRules.append(["ip_is_private": true, "outbound": "direct"])
 
         // F11: a tunnel IP rule inside the LAN ranges must enter the TUN, so its range is
         // carved out of the exclusion list. Direct IP rules stay excluded — direct either way.
         var carved = routed.flatMap { tunnel in
-            (activeRules[tunnel.id] ?? []).filter(\.isIP).compactMap { IPv4Prefix($0.pattern) }
+            rows.filter { $0.target == .tunnel(tunnel.id) && $0.rule.isIP }.compactMap {
+                IPv4Prefix($0.rule.pattern)
+            }
         }
         // The system resolvers must enter the TUN for `hijack-dns` to see their queries, and a
         // LAN-hosted resolver sits inside the excluded ranges (03-routing.md, "Notes on
@@ -394,16 +356,11 @@ public enum SingBoxConfigGenerator {
             // addresses, never fake IPs. Only the first two also get a direct route rule above.
             dnsRules.append(["domain": directDNSHosts, "server": "dns-direct"])
         }
-        if let blockList {
-            dnsRules.append(blockList.dns)
+        for row in rows where row.isException && !row.rule.isApp && !row.rule.isIP {
+            dnsRules.append(["rule_set": row.tag, "server": "dns-direct"])
         }
-        if !routed.isEmpty {
-            dnsRules.append([
-                "rule_set": routed.map(\.ruleSetTag) + routedGroups.map(\.ruleSetTag),
-                "query_type": ["A", "AAAA"],
-                "server": "fakeip",
-            ])
-        }
+        if let blockList { dnsRules.append(blockList.dns) }
+        let orderedDNSIndex = dnsRules.count
         // F8: with a default tunnel every remaining A/AAAA gets a fake IP so that the default
         // outbound dials by domain (VLESS resolves server-side, OpenVPN through its own
         // resolver); other query types go to the default tunnel's resolver.
@@ -422,6 +379,18 @@ public enum SingBoxConfigGenerator {
             }
             dnsFinal = tag
         }
+        var orderedDNS: [[String: Any]] = []
+        for row in rows where !row.isException && !row.rule.isApp && !row.rule.isIP {
+            if row.target == .direct {
+                orderedDNS.append(["rule_set": row.tag, "server": "dns-direct"])
+            } else {
+                orderedDNS.append([
+                    "rule_set": row.tag, "query_type": ["A", "AAAA"], "server": "fakeip",
+                ])
+                orderedDNS.append(["rule_set": row.tag, "server": dnsFinal])
+            }
+        }
+        dnsRules.insert(contentsOf: orderedDNS, at: orderedDNSIndex)
         var dns: [String: Any] = [
             "servers": dnsServers,
             "rules": dnsRules,
@@ -470,9 +439,7 @@ public enum SingBoxConfigGenerator {
 
         return Output(
             config: JSONText.render(config),
-            ruleSets: RuleSetGenerator.generate(
-                exits: routed.map(RoutedExit.init) + routedGroups.map(RoutedExit.init),
-                activeRules: activeRules, exceptions: exceptions),
+            ruleSets: ruleFiles,
             routedTunnels: routed,
             routedGroups: routedGroups,
             defaultTunnel: defaultTunnel,

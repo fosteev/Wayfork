@@ -8,6 +8,7 @@ import 'package:wayfork/app/ui/pages/rules_page.dart';
 import 'package:wayfork/core/app/running_app.dart';
 import 'package:wayfork/core/model/rule.dart';
 import 'package:wayfork/core/model/store.dart';
+import 'package:wayfork/core/secrets/secret_store.dart';
 
 import '../../core/app/sample_store.dart';
 import '../fakes.dart';
@@ -23,6 +24,10 @@ import 'ui_harness.dart';
   List<AppAction> performed,
 })
 page(Harness app, AppNavigator navigator, {FakeRunningApps? apps}) {
+  app.model.listPreferences.initialized = true;
+  app.model.listPreferences.expanded.addAll(
+    app.model.store.lists.map((l) => l.id),
+  );
   final picker = FakeFilePicker();
   final running = apps ?? FakeRunningApps();
   final performed = <AppAction>[];
@@ -40,7 +45,8 @@ page(Harness app, AppNavigator navigator, {FakeRunningApps? apps}) {
 
 /// The group order on screen: Direct, then the tunnels of the store.
 Future<void> openGroupMenu(WidgetTester tester, int group, String item) async {
-  await tester.tap(find.byType(DropDownButton).at(group));
+  await tester.ensureVisible(find.text('Add site or app').at(group));
+  await tester.tap(find.text('Add site or app').at(group));
   await tester.pumpAndSettle();
   await tester.tap(find.text(item));
   await tester.pumpAndSettle();
@@ -54,36 +60,31 @@ Future<void> submit(WidgetTester tester, String text) async {
 }
 
 void main() {
-  testWidgets('Direct comes first and every tunnel gets a group', (
+  testWidgets('purpose lists follow user order with a separate default line', (
+    tester,
+  ) async {
+    final app = await boot(tester);
+    await tester.pumpWidget(page(app, AppNavigator()).widget);
+    await tester.pumpAndSettle();
+    expect(find.text('Everything else'), findsOneWidget);
+    expect(find.text('Not via any tunnel'), findsNothing);
+    expect(
+      tester.getTopLeft(find.text('Work').first).dy,
+      lessThan(tester.getTopLeft(find.text('Home').first).dy),
+    );
+    expect(find.text('example.com'), findsOneWidget);
+    expect(find.text('*.cdn.example.com'), findsOneWidget);
+    expect(find.text('pattern'), findsOneWidget);
+  });
+
+  testWidgets('Site adds an inherited rule at the end of its list', (
     tester,
   ) async {
     final app = await boot(tester);
     await tester.pumpWidget(page(app, AppNavigator()).widget);
     await tester.pumpAndSettle();
 
-    expect(find.text('Not via any tunnel'), findsOneWidget);
-    expect(
-      find.text('stay on your normal connection, whatever other rules say'),
-      findsOneWidget,
-    );
-    expect(find.text('Work'), findsOneWidget);
-    expect(find.text('Lab'), findsOneWidget);
-    expect(
-      tester.getTopLeft(find.text('Not via any tunnel')).dy,
-      lessThan(tester.getTopLeft(find.text('Work')).dy),
-    );
-    // The rows carry the pattern and its match.
-    expect(find.text('example.com'), findsOneWidget);
-    expect(find.text('*.cdn.example.com'), findsOneWidget);
-    expect(find.text('pattern'), findsOneWidget);
-  });
-
-  testWidgets('+ Domain adds a rule at the end of its group', (tester) async {
-    final app = await boot(tester);
-    await tester.pumpWidget(page(app, AppNavigator()).widget);
-    await tester.pumpAndSettle();
-
-    await openGroupMenu(tester, 2, 'Site');
+    await openGroupMenu(tester, 1, 'Site');
     expect(find.byType(RuleEditor), findsOneWidget);
     await submit(tester, 'shop.example.com');
 
@@ -114,7 +115,7 @@ void main() {
     await tester.pumpWidget(page(app, AppNavigator()).widget);
     await tester.pumpAndSettle();
 
-    await openGroupMenu(tester, 1, 'Site');
+    await openGroupMenu(tester, 0, 'Site');
     await tester.enterText(find.byType(RuleEditor), '*.shop.example.com');
     await tester.pumpAndSettle();
     // Suffix, Exact, Wildcard and IP are the options; the editor picked one.
@@ -170,7 +171,8 @@ void main() {
     tester,
   ) async {
     final sample = SampleStore();
-    final store = sample.store.copyWith(
+    final destination = sample.store.ensureList(const RuleTargetDirect());
+    final store = destination.store.copyWith(
       tunnels: [
         sample.work,
         sample.home,
@@ -178,19 +180,27 @@ void main() {
       ],
       rules: [
         // An exception with the same pattern shadows the tunnel rule below.
-        Rule(pattern: 'example.com', target: const RuleTargetDirect()),
+        Rule(
+          pattern: 'example.com',
+          target: const RuleTargetDirect(),
+          listID: destination.listID,
+        ),
         ...sample.store.rules,
       ],
     );
     final app = await boot(tester, store: store);
+    await tester.runAsync(() async {
+      await app.secrets.write(
+        sampleOpenVPNConfig,
+        SecretKey(SecretKind.ovpn, sample.work.id),
+      );
+      await app.model.recomputeMissingSecrets();
+    });
     await tester.pumpWidget(page(app, AppNavigator()).widget);
     await tester.pumpAndSettle();
 
     expect(find.text('paused'), findsOneWidget, reason: 'old.example.com');
-    expect(
-      find.text('never used — "Not via any tunnel" has it'),
-      findsOneWidget,
-    );
+    expect(find.text('Never used — Direct → example.com wins'), findsOneWidget);
     expect(find.text('paused — Lab is off'), findsOneWidget);
   });
 
@@ -222,7 +232,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(view.picker.openCalls, 0, reason: 'no file dialog on this path');
-    final rule = app.model.store.exceptions.single;
+    final rule = app.model.store.rules
+        .where((r) => r.match == RuleMatch.app)
+        .single;
     expect(rule.match, RuleMatch.app);
     expect(rule.pattern, r'C:\Program Files\Example\example.exe');
     expect(find.text('example'), findsOneWidget, reason: 'the name, not path');
@@ -238,14 +250,15 @@ void main() {
 
     await tester.tap(find.text('news.example.org'), buttons: kSecondaryButton);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Move to'));
+    await tester.tap(find.text('Move to list'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Not via any tunnel').last);
+    await tester.tap(find.text('Work').last);
     await tester.pumpAndSettle();
 
-    expect(app.model.store.exceptions.map((rule) => rule.pattern), [
+    expect(
+      app.model.store.rulesIn(app.model.store.lists.first.id).last.pattern,
       'news.example.org',
-    ]);
+    );
     await tester.pump(const Duration(milliseconds: 100));
   });
 
@@ -266,7 +279,9 @@ void main() {
 
   testWidgets('a rule dragged onto a group header joins it', (tester) async {
     final app = await boot(tester);
-    await tester.pumpWidget(page(app, AppNavigator()).widget);
+    final view = page(app, AppNavigator()).widget;
+    app.model.listPreferences.expanded.remove(app.model.store.lists.first.id);
+    await tester.pumpWidget(view);
     await tester.pumpAndSettle();
 
     await tester.ensureVisible(find.text('docs.example.net'));
@@ -274,9 +289,15 @@ void main() {
       tester.getCenter(find.text('docs.example.net')),
     );
     await tester.pump(const Duration(milliseconds: 200));
-    // Home's header is the nearest one still on screen once Lab's row is.
-    await gesture.moveTo(tester.getCenter(find.text('Home')));
+    await gesture.moveBy(const Offset(16, 0));
+    await tester.pump();
+    // Bring the destination fully inside the capped scroll view while dragging.
+    await tester.ensureVisible(find.text('Home').first);
+    await tester.pump();
+    await gesture.moveTo(tester.getCenter(find.text('Home').first));
     await tester.pumpAndSettle();
+    await gesture.moveBy(const Offset(1, 1));
+    await tester.pump();
     await gesture.up();
     await tester.pumpAndSettle();
 
@@ -292,11 +313,13 @@ void main() {
 
   testWidgets('an app rule reveals its executable', (tester) async {
     final sample = SampleStore();
+    final destination = sample.store.ensureList(const RuleTargetDirect());
     final app = await boot(
       tester,
-      store: sample.store.copyWith(
+      store: destination.store.copyWith(
         rules: [
           Rule(
+            listID: destination.listID,
             pattern: r'C:\Program Files\Example\example.exe',
             match: RuleMatch.app,
             target: const RuleTargetDirect(),
@@ -322,11 +345,13 @@ void main() {
     tester,
   ) async {
     final sample = SampleStore();
+    final destination = sample.store.ensureList(const RuleTargetDirect());
     final app = await boot(
       tester,
-      store: sample.store.copyWith(
+      store: destination.store.copyWith(
         rules: [
           Rule(
+            listID: destination.listID,
             pattern: r'C:\Program Files\Example\example.exe',
             match: RuleMatch.app,
             target: const RuleTargetDirect(),
@@ -363,7 +388,7 @@ void main() {
     await tester.pumpWidget(page(app, AppNavigator()).widget);
     await tester.pumpAndSettle();
 
-    await openGroupMenu(tester, 1, 'Site');
+    await openGroupMenu(tester, 0, 'Site');
     expect(find.text('TCP and UDP'), findsNothing);
     await tester.enterText(find.byType(RuleEditor), '203.0.113.0/24');
     await tester.pumpAndSettle();
@@ -376,19 +401,18 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
   });
 
-  testWidgets('without tunnels the page asks for one', (tester) async {
+  testWidgets('without tunnels Direct lists can still be created', (
+    tester,
+  ) async {
     final app = await boot(tester, store: Store.empty);
-    final navigator = AppNavigator();
-
-    await tester.pumpWidget(page(app, navigator).widget);
+    await tester.pumpWidget(page(app, AppNavigator()).widget);
     await tester.pumpAndSettle();
     expect(
-      find.text('Add a tunnel first; rules point domains at tunnels.'),
+      find.text('No lists yet. Create a list for sites, apps or IP ranges.'),
       findsOneWidget,
     );
-
-    await tester.tap(find.text('Add a tunnel…'));
+    await tester.tap(find.text('New list'));
     await tester.pumpAndSettle();
-    expect(navigator.page, AppPage.tunnels);
+    expect(find.text('Sites and apps'), findsOneWidget);
   });
 }

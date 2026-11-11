@@ -6,23 +6,34 @@ import (
 	"strings"
 )
 
-// RoutedTunnelIDs lists the tunnels the config routes: every routed tunnel has a
-// rules-t-<id>.json, so no separate list is needed to know whom to probe (F14).
-func (p RuntimePlan) RoutedTunnelIDs() []string { return p.routedIDs("rules-t-") }
+// RoutedTunnelIDs discovers concrete exit definitions, including exits with no row files.
+func (p RuntimePlan) RoutedTunnelIDs() []string { return p.routedIDs("t-") }
 
-// RoutedGroupIDs lists the groups the config routes, from their rules-g-<id>.json (F16).
-func (p RuntimePlan) RoutedGroupIDs() []string { return p.routedIDs("rules-g-") }
+// RoutedGroupIDs discovers concrete group definitions.
+func (p RuntimePlan) RoutedGroupIDs() []string { return p.routedIDs("g-") }
 
 func (p RuntimePlan) routedIDs(prefix string) []string {
-	ids := []string{}
-	for name := range p.SingBox.RuleSets {
-		if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".json") || isRouteOnlyRuleSet(name) {
-			continue
+	ids := map[string]struct{}{}
+	root := p.SingBox.root()
+	for _, key := range []string{"outbounds", "endpoints"} {
+		entries, _ := root[key].([]any)
+		for _, entry := range entries {
+			outbound, _ := entry.(map[string]any)
+			tag, _ := outbound["tag"].(string)
+			if strings.HasPrefix(tag, prefix) {
+				id := strings.TrimPrefix(tag, prefix)
+				if IsTunnelID(id) {
+					ids[id] = struct{}{}
+				}
+			}
 		}
-		ids = append(ids, strings.TrimSuffix(strings.TrimPrefix(name, prefix), ".json"))
 	}
-	sort.Strings(ids)
-	return ids
+	result := make([]string, 0, len(ids))
+	for id := range ids {
+		result = append(result, id)
+	}
+	sort.Strings(result)
+	return result
 }
 
 func (p SingBoxPlan) root() map[string]any {

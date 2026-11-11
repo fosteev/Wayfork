@@ -1,0 +1,834 @@
+// Frozen pre-F24 generator for historical structural assertions and differential migration tests.
+import 'package:collection/collection.dart';
+import 'package:wayfork/core/json_text.dart';
+import 'package:wayfork/core/model/settings.dart';
+import 'package:wayfork/core/model/store.dart';
+import 'package:wayfork/core/model/local_proxy.dart';
+import 'package:wayfork/core/model/rule.dart';
+import 'package:wayfork/core/model/tunnel.dart';
+import 'package:wayfork/core/model/tunnel_group.dart';
+import 'package:wayfork/core/platform.dart';
+import 'package:wayfork/core/singbox/rule_set_generator.dart';
+import 'package:wayfork/core/support/ipv4_prefix.dart';
+
+import 'package:wayfork/core/singbox/sing_box_config_generator.dart';
+import 'package:wayfork/core/rules/legacy_rule_validator.dart';
+
+abstract final class FrozenF23Generator {
+  static const tunHostAddress = SingBoxConstants.tunHostAddress;
+  static const tunAddress = SingBoxConstants.tunAddress;
+  static const resolverAddress = SingBoxConstants.resolverAddress;
+  static const resolverProbeName = SingBoxConstants.resolverProbeName;
+  static const fakeIPv4Range = SingBoxConstants.fakeIPv4Range;
+  static const lanRanges = SingBoxConstants.lanRanges;
+  static const fallbackTunnelDNS = SingBoxConstants.fallbackTunnelDNS;
+  static const defaultTunnelDoTServer = SingBoxConstants.defaultTunnelDoTServer;
+  static const ddrDiscoveryName = SingBoxConstants.ddrDiscoveryName;
+
+  static SingBoxOutput generate(SingBoxInput input) {
+    final store = input.store.copyWith(
+      lists: [],
+      rules: input.store.rules
+          .map(
+            (row) =>
+                row.copyWith(target: input.store.targetFor(row), listID: null),
+          )
+          .toList(),
+    );
+    final routed = store.tunnels.where((tunnel) {
+      if (!tunnel.isEnabled) return false;
+      return switch (tunnel.kind) {
+        TunnelKindOpenVPN() => true,
+        TunnelKindVLESS() => input.vlessUUIDs.containsKey(tunnel.id),
+        TunnelKindWireGuard() => input.wireGuardKeys.containsKey(tunnel.id),
+        TunnelKindShadowsocks() ||
+        TunnelKindTrojan() => input.passwords.containsKey(tunnel.id),
+        TunnelKindVMess() => input.vmessUUIDs.containsKey(tunnel.id),
+      };
+    }).toList();
+    // F16: a group is routed when it is enabled and at least one member is;
+    // members that are not routed are left out of its outbound list.
+    final routedIDs = routed.map((tunnel) => tunnel.id).toSet();
+    final routedGroups = store.groups
+        .where(
+          (group) => group.isEnabled && group.members.any(routedIDs.contains),
+        )
+        .toList();
+    final activeRules = LegacyRuleValidator.activeRules(store);
+    final exceptions = LegacyRuleValidator.activeExceptions(store);
+    final wantedDefault = store.effectiveDefaultTunnel;
+    final defaultTunnel = wantedDefault == null
+        ? null
+        : routed.where((tunnel) => tunnel.id == wantedDefault.id).firstOrNull;
+    final defaultExit = switch (store.effectiveDefaultExit) {
+      DefaultExitTunnel() =>
+        defaultTunnel == null ? null : RoutedExit.tunnel(defaultTunnel),
+      DefaultExitGroup(:final group) => switch (routedGroups
+          .where((routed) => routed.id == group.id)
+          .firstOrNull) {
+        null => null,
+        final routed => RoutedExit.group(routed),
+      },
+      null => null,
+    };
+
+    final dnsServers = <Map<String, Object?>>[
+      directDNSServer(
+        store.settings.directDNS,
+        networkResolvers: input.networkResolvers,
+      ),
+    ];
+    final outbounds = <Map<String, Object?>>[
+      {'type': 'direct', 'tag': 'direct'},
+    ];
+    final endpoints = <Map<String, Object?>>[];
+    // Direct exceptions come first so they beat tunnel sets and the default.
+    final routeRules = <Map<String, Object?>>[
+      {'action': 'sniff'},
+      {'protocol': 'dns', 'action': 'hijack-dns'},
+    ];
+    // F17: one `mixed` inbound per enabled local proxy port, and a rule that
+    // sends whatever came in through it to that exit before any domain rule,
+    // exception or block list can redirect it.
+    final proxyInbounds = <Map<String, Object?>>[];
+    final proxyExits = <(String, LocalProxy?)>[
+      for (final tunnel in routed) (tunnel.outboundTag, tunnel.localProxy),
+      for (final group in routedGroups) (group.outboundTag, group.localProxy),
+    ];
+    for (final (outboundTag, proxy) in proxyExits) {
+      if (proxy == null || !proxy.isEnabled) continue;
+      final tag = LocalProxy.inboundTag(outboundTag);
+      proxyInbounds.add(mixedInbound(tag: tag, port: proxy.port));
+      routeRules.add({
+        'inbound': [tag],
+        'outbound': outboundTag,
+      });
+    }
+    if (input.systemDNSServers.isNotEmpty) {
+      // Refuse cached DDR upgrades before any rule can route them elsewhere.
+      routeRules.add({
+        'ip_cidr': input.systemDNSServers
+            .map((server) => '$server/32')
+            .toList(),
+        'port': [443, 853],
+        'action': 'reject',
+      });
+    }
+    routeRules.add({
+      'process_path': [input.openVPNBinaryPath],
+      'outbound': 'direct',
+    });
+
+    // A process match can miss the first UDP flow, so OpenVPN servers are also
+    // forced direct by address and name to prevent tunnel-in-tunnel routing.
+    final servers = openVPNServers(
+      routed,
+      resolved: input.resolvedServerAddresses,
+    );
+    final serverRule = serverRouteRule(servers);
+    if (serverRule != null) routeRules.add(serverRule);
+    routeRules.add({
+      'rule_set': [RuleSetGenerator.directTag, RuleSetGenerator.directIPTag],
+      'outbound': 'direct',
+    });
+    final ruleSetRefs = <Map<String, Object?>>[
+      localRuleSet(
+        tag: RuleSetGenerator.directTag,
+        path: RuleSetGenerator.directFileName,
+      ),
+      localRuleSet(
+        tag: RuleSetGenerator.directIPTag,
+        path: RuleSetGenerator.directIPFileName,
+      ),
+    ];
+    // F23: Direct rules narrowed to one transport, right behind the
+    // both-network ones.
+    for (final network in RuleNetwork.values.where(
+      (network) =>
+          RuleSetGenerator.renderNarrowed(
+            exceptions,
+            network,
+            platform: input.platform,
+          ) !=
+          null,
+    )) {
+      routeRules.add({
+        'rule_set': [RuleSetGenerator.directNarrowedTag(network)],
+        'network': [network.jsonValue],
+        'outbound': 'direct',
+      });
+      ruleSetRefs.add(
+        localRuleSet(
+          tag: RuleSetGenerator.directNarrowedTag(network),
+          path: RuleSetGenerator.directNarrowedFileName(network),
+        ),
+      );
+    }
+    // F18: listed names are rejected after the exceptions and before every
+    // tunnel rule-set, so the list wins whichever tunnel a rule would send
+    // them to.
+    final blockList = blockListRules(
+      store.settings.blockList,
+      path: input.blockListPath,
+    );
+    if (blockList != null) {
+      routeRules.add(blockList.route);
+      ruleSetRefs.add({
+        'type': 'local',
+        'tag': SingBoxConstants.blockListTag,
+        'format': 'binary',
+        'path': blockList.path,
+      });
+    }
+    // F23: narrowed tunnel and group rules go in here, after the block list
+    // and before the both-network rules, so they win over them whatever the
+    // section order.
+    final narrowedInsertIndex = routeRules.length;
+    final narrowedRouteRules = <Map<String, Object?>>[];
+    void addNarrowed(RoutedExit exit) {
+      for (final network in RuleNetwork.values) {
+        final text = RuleSetGenerator.renderNarrowed(
+          activeRules[exit.id] ?? const [],
+          network,
+          platform: input.platform,
+        );
+        if (text == null) continue;
+        narrowedRouteRules.add({
+          'rule_set': [exit.narrowedRuleSetTag(network)],
+          'network': [network.jsonValue],
+          'outbound': exit.outboundTag,
+        });
+        ruleSetRefs.add(
+          localRuleSet(
+            tag: exit.narrowedRuleSetTag(network),
+            path: exit.narrowedRuleSetFileName(network),
+          ),
+        );
+      }
+    }
+
+    for (final tunnel in routed) {
+      switch (tunnel.kind) {
+        case TunnelKindOpenVPN(:final meta):
+          final dnsTag = 'dns-${tunnel.outboundTag}';
+          dnsServers.add({
+            'type': 'udp',
+            'tag': dnsTag,
+            'server': resolverFor(meta),
+            'detour': tunnel.outboundTag,
+          });
+          outbounds.add({
+            'type': 'direct',
+            'tag': tunnel.outboundTag,
+            'bind_interface': input.platform.openVPNInterface(tunnel.slot),
+            'domain_resolver': {'server': dnsTag, 'strategy': 'ipv4_only'},
+          });
+        case TunnelKindVLESS(:final meta):
+          outbounds.add(
+            vlessOutbound(
+              meta,
+              tag: tunnel.outboundTag,
+              uuid: input.vlessUUIDs[tunnel.id] ?? '',
+            ),
+          );
+        case TunnelKindWireGuard(:final meta):
+          final dnsTag = 'dns-${tunnel.outboundTag}';
+          dnsServers.add({
+            'type': 'udp',
+            'tag': dnsTag,
+            'server': resolverForWireGuard(meta),
+            'detour': tunnel.outboundTag,
+          });
+          final keys = input.wireGuardKeys[tunnel.id];
+          if (keys != null) {
+            endpoints.add(
+              wireGuardEndpoint(
+                meta,
+                tag: tunnel.outboundTag,
+                secrets: keys,
+                resolved: input.resolvedServerAddresses,
+              ),
+            );
+          }
+        case TunnelKindShadowsocks(:final meta):
+          outbounds.add(
+            shadowsocksOutbound(
+              meta,
+              tag: tunnel.outboundTag,
+              password: input.passwords[tunnel.id] ?? '',
+            ),
+          );
+        case TunnelKindTrojan(:final meta):
+          outbounds.add(
+            trojanOutbound(
+              meta,
+              tag: tunnel.outboundTag,
+              password: input.passwords[tunnel.id] ?? '',
+            ),
+          );
+        case TunnelKindVMess(:final meta):
+          outbounds.add(
+            vmessOutbound(
+              meta,
+              tag: tunnel.outboundTag,
+              uuid: input.vmessUUIDs[tunnel.id] ?? '',
+            ),
+          );
+      }
+      routeRules.add({
+        'rule_set': [tunnel.ruleSetTag, tunnel.ipRuleSetTag],
+        'outbound': tunnel.outboundTag,
+      });
+      ruleSetRefs.add(
+        localRuleSet(tag: tunnel.ruleSetTag, path: tunnel.ruleSetFileName),
+      );
+      ruleSetRefs.add(
+        localRuleSet(tag: tunnel.ipRuleSetTag, path: tunnel.ipRuleSetFileName),
+      );
+      addNarrowed(RoutedExit.tunnel(tunnel));
+    }
+    for (final group in routedGroups) {
+      final members = group.members
+          .where(routedIDs.contains)
+          .map((id) => '${Tunnel.outboundTagPrefix}$id')
+          .toList();
+      switch (group.policy) {
+        case GroupPolicy.fastest:
+          outbounds.add({
+            'type': 'urltest',
+            'tag': group.outboundTag,
+            'outbounds': members,
+            'url': SingBoxConstants.probeURL,
+            'interval': SingBoxConstants.groupProbeInterval,
+            'tolerance': SingBoxConstants.groupTolerance,
+            'idle_timeout': SingBoxConstants.groupIdleTimeout,
+            'interrupt_exist_connections': false,
+          });
+        case GroupPolicy.firstLive:
+          // The service moves the selection after every probe round.
+          outbounds.add({
+            'type': 'selector',
+            'tag': group.outboundTag,
+            'outbounds': members,
+            'default': members.first,
+            'interrupt_exist_connections': false,
+          });
+      }
+      routeRules.add({
+        'rule_set': [group.ruleSetTag, group.ipRuleSetTag],
+        'outbound': group.outboundTag,
+      });
+      ruleSetRefs.add(
+        localRuleSet(tag: group.ruleSetTag, path: group.ruleSetFileName),
+      );
+      ruleSetRefs.add(
+        localRuleSet(tag: group.ipRuleSetTag, path: group.ipRuleSetFileName),
+      );
+      addNarrowed(RoutedExit.group(group));
+    }
+    routeRules.insertAll(narrowedInsertIndex, narrowedRouteRules);
+    routeRules.add({'ip_is_private': true, 'outbound': 'direct'});
+
+    // Tunnel IP rules inside LAN ranges must enter the TUN. Direct IP rules do
+    // not need carving because either path is already direct.
+    final carved = <IPv4Prefix>[];
+    for (final tunnel in routed) {
+      for (final rule in activeRules[tunnel.id] ?? const []) {
+        if (!rule.isIP) continue;
+        final prefix = IPv4Prefix.parse(rule.pattern);
+        if (prefix != null) carved.add(prefix);
+      }
+    }
+    // LAN-hosted system resolvers must enter the TUN for hijack-dns. Public
+    // resolvers are not excluded, so carving them is a no-op.
+    for (final server in input.systemDNSServers) {
+      final prefix = IPv4Prefix.parse(server);
+      if (prefix?.isHost == true) carved.add(prefix!);
+    }
+
+    dnsServers.add({
+      'type': 'fakeip',
+      'tag': 'fakeip',
+      'inet4_range': fakeIPv4Range,
+    });
+    final dnsRules = <Map<String, Object?>>[
+      {
+        'domain': [resolverProbeName],
+        'action': 'predefined',
+        'rcode': 'NOERROR',
+        'answer': ['$resolverProbeName. 0 IN A $resolverAddress'],
+      },
+      {
+        'domain': [ddrDiscoveryName],
+        'action': 'reject',
+      },
+      {'rule_set': RuleSetGenerator.directTag, 'server': 'dns-direct'},
+    ];
+    final directDNSHosts = _uniqueHosts([
+      ...servers.hosts,
+      ..._wireGuardPeerHosts(routed),
+    ]);
+    if (directDNSHosts.isNotEmpty) {
+      dnsRules.add({'domain': directDNSHosts, 'server': 'dns-direct'});
+    }
+    if (blockList != null) {
+      dnsRules.add(blockList.dns);
+    }
+    if (routed.isNotEmpty) {
+      dnsRules.add({
+        'rule_set': [
+          ...routed.map((tunnel) => tunnel.ruleSetTag),
+          ...routedGroups.map((group) => group.ruleSetTag),
+        ],
+        'query_type': ['A', 'AAAA'],
+        'server': 'fakeip',
+      });
+    }
+
+    var dnsFinal = 'dns-direct';
+    if (defaultExit != null) {
+      dnsRules.add({
+        'query_type': ['A', 'AAAA'],
+        'server': 'fakeip',
+      });
+      final tag = 'dns-${defaultExit.outboundTag}';
+      // A group dials the DoT server through whichever member is active (F16).
+      if (defaultTunnel?.kind.hasOwnResolver != true) {
+        dnsServers.add({
+          'type': 'tls',
+          'tag': tag,
+          'server': defaultTunnelDoTServer,
+          'detour': defaultExit.outboundTag,
+        });
+      }
+      dnsFinal = tag;
+    }
+
+    final dns = <String, Object?>{
+      'servers': dnsServers,
+      'rules': dnsRules,
+      'final': dnsFinal,
+      // The TUN and tunnels are IPv4-only; suppressing AAAA avoids unusable
+      // IPv6 answers after the TUN owns the IPv6 default route.
+      'strategy': 'ipv4_only',
+      'independent_cache': true,
+      // Real-answer name mappings keep unsniffable flows to Direct exceptions
+      // out of the default tunnel; without one they only let a poisoned ISP
+      // answer mislabel raw-IP flows (H4, docs/design/03-routing.md).
+      if (defaultExit != null) 'reverse_mapping': true,
+    };
+    final route = <String, Object?>{
+      'rules': routeRules,
+      'rule_set': ruleSetRefs,
+      // A missing default fails closed by construction instead of leaking.
+      'final': defaultExit?.outboundTag ?? 'direct',
+      'auto_detect_interface': true,
+      'default_domain_resolver': 'dns-direct',
+      'find_process': true,
+    };
+    final config = <String, Object?>{
+      'log': {'level': store.settings.logLevel.singBoxLevel, 'timestamp': true},
+      'dns': dns,
+      'inbounds': [
+        tunInbound(carving: carved, platform: input.platform),
+        ...proxyInbounds,
+      ],
+      'outbounds': outbounds,
+      if (endpoints.isNotEmpty) 'endpoints': endpoints,
+      'route': route,
+      'experimental': {
+        'cache_file': {
+          'enabled': true,
+          'path': 'cache.db',
+          'store_fakeip': true,
+        },
+      },
+    };
+
+    return SingBoxOutput(
+      config: '${JsonText.render(config)}\n',
+      ruleSets: RuleSetGenerator.generateForExits(
+        exits: [
+          ...routed.map(RoutedExit.tunnel),
+          ...routedGroups.map(RoutedExit.group),
+        ],
+        activeRules: activeRules,
+        exceptions: exceptions,
+        platform: input.platform,
+      ),
+      routedTunnels: routed,
+      routedGroups: routedGroups,
+      defaultTunnel: defaultTunnel,
+      defaultExit: defaultExit,
+    );
+  }
+
+  /// The block list's DNS rule (NXDOMAIN) and route rule (reject), the
+  /// exceptions folded in as an inverted half of a logical `and` (F18). Null
+  /// while the switch is off or the build ships no list.
+  static ({Map<String, Object?> dns, Map<String, Object?> route, String path})?
+  blockListRules(BlockListSettings settings, {required String? path}) {
+    if (!settings.isEnabled || path == null) return null;
+    final exceptions = settings.exceptions;
+    Map<String, Object?> rule(Map<String, Object?> action) {
+      if (exceptions.isEmpty) {
+        return {'rule_set': SingBoxConstants.blockListTag, ...action};
+      }
+      return {
+        'type': 'logical',
+        'mode': 'and',
+        'rules': [
+          {'rule_set': SingBoxConstants.blockListTag},
+          {
+            'domain': exceptions,
+            'domain_suffix': exceptions.map((host) => '.$host').toList(),
+            'invert': true,
+          },
+        ],
+        ...action,
+      };
+    }
+
+    return (
+      dns: rule({'action': 'predefined', 'rcode': 'NXDOMAIN'}),
+      route: rule({'action': 'reject'}),
+      path: path,
+    );
+  }
+
+  /// SOCKS5 + HTTP CONNECT on one loopback port, no authentication (F17). No
+  /// `domain_strategy`: the outbound dials by the name the client handed over.
+  static Map<String, Object?> mixedInbound({
+    required String tag,
+    required int port,
+  }) => {
+    'type': 'mixed',
+    'tag': tag,
+    'listen': LocalProxy.listenAddress,
+    'listen_port': port,
+  };
+
+  /// OpenVPN remotes split into address CIDRs and lowercased hostnames,
+  /// unique in store order. Resolved addresses are sorted beside each name.
+  static ({List<String> addresses, List<String> hosts}) openVPNServers(
+    List<Tunnel> routed, {
+    Map<String, List<String>> resolved = const {},
+  }) {
+    final addresses = <String>[];
+    final hosts = <String>[];
+    void addAddress(String literal) {
+      final prefix = IPv4Prefix.parse(literal);
+      if (prefix == null) return;
+      final cidr = prefix.toString();
+      if (!addresses.contains(cidr)) addresses.add(cidr);
+    }
+
+    for (final tunnel in routed) {
+      final meta = tunnel.kind.openVPN;
+      if (meta == null) continue;
+      for (final remote in meta.remotes) {
+        if (IPv4Prefix.parse(remote.host) != null) {
+          addAddress(remote.host);
+          continue;
+        }
+        final host = remote.host.toLowerCase();
+        if (host.isEmpty || hosts.contains(host)) continue;
+        hosts.add(host);
+        final resolvedAddresses = [...?resolved[host]]..sort();
+        for (final address in resolvedAddresses) {
+          addAddress(address);
+        }
+      }
+    }
+    return (addresses: addresses, hosts: hosts);
+  }
+
+  static Map<String, Object?>? serverRouteRule(
+    ({List<String> addresses, List<String> hosts}) servers,
+  ) {
+    final rule = <String, Object?>{
+      'outbound': 'direct',
+      if (servers.hosts.isNotEmpty) 'domain': servers.hosts,
+      if (servers.addresses.isNotEmpty) 'ip_cidr': servers.addresses,
+    };
+    return rule.length > 1 ? rule : null;
+  }
+
+  static Map<String, Object?> directDNSServer(
+    DirectDNS directDNS, {
+    List<String> networkResolvers = const [],
+  }) => switch (directDNS) {
+    DirectDNSSystem() =>
+      networkResolvers.isEmpty
+          ? {'type': 'local', 'tag': 'dns-direct'}
+          : udpDNSServer(networkResolvers.first),
+    DirectDNSCustom(:final servers) =>
+      servers.isEmpty
+          ? {'type': 'local', 'tag': 'dns-direct'}
+          : udpDNSServer(servers.first),
+  };
+
+  /// No `detour: direct`: sing-box rejects a detour to an empty direct
+  /// outbound, and auto interface detection already uses the physical link.
+  static Map<String, Object?> udpDNSServer(String server) => {
+    'type': 'udp',
+    'tag': 'dns-direct',
+    'server': server,
+  };
+
+  static String resolverFor(OpenVPNMeta meta) => switch (meta.dns) {
+    TunnelDNSCustom(:final servers) => servers.firstOrNull ?? fallbackTunnelDNS,
+    TunnelDNSAuto() => meta.discoveredDNS.firstOrNull ?? fallbackTunnelDNS,
+  };
+
+  static String resolverForWireGuard(WireGuardMeta meta) => switch (meta.dns) {
+    TunnelDNSCustom(:final servers) => servers.firstOrNull ?? fallbackTunnelDNS,
+    TunnelDNSAuto() => meta.discoveredDNS.firstOrNull ?? fallbackTunnelDNS,
+  };
+
+  static Map<String, Object?> wireGuardEndpoint(
+    WireGuardMeta meta, {
+    required String tag,
+    required WireGuardSecrets secrets,
+    Map<String, List<String>> resolved = const {},
+  }) {
+    var everyPeerIsLiteral = true;
+    final peers = meta.peers.map((peer) {
+      String address;
+      if (_isIPv4Literal(peer.host)) {
+        address = peer.host;
+      } else {
+        final resolvedAddresses =
+            resolved[peer.host] ?? resolved[peer.host.toLowerCase()];
+        final first = resolvedAddresses?.firstOrNull;
+        if (first != null && _isIPv4Literal(first)) {
+          address = first;
+        } else {
+          address = peer.host;
+          everyPeerIsLiteral = false;
+        }
+      }
+      return <String, Object?>{
+        'address': address,
+        'port': peer.port,
+        'public_key': peer.publicKey,
+        if (peer.hasPresharedKey && secrets.presharedKey != null)
+          'pre_shared_key': secrets.presharedKey,
+        'allowed_ips': peer.allowedIPs,
+        if (peer.keepalive != null)
+          'persistent_keepalive_interval': peer.keepalive,
+      };
+    }).toList();
+    return <String, Object?>{
+      'type': 'wireguard',
+      'tag': tag,
+      'system': false,
+      if (meta.mtu != null) 'mtu': meta.mtu,
+      'address': meta.addresses,
+      'private_key': secrets.privateKey,
+      'domain_resolver': everyPeerIsLiteral
+          ? {'server': 'dns-$tag', 'strategy': 'ipv4_only'}
+          : 'dns-direct',
+      'peers': peers,
+    };
+  }
+
+  static List<String> _wireGuardPeerHosts(List<Tunnel> routed) => [
+    for (final tunnel in routed)
+      if (tunnel.kind case TunnelKindWireGuard(:final meta))
+        for (final peer in meta.peers)
+          if (!_isIPv4Literal(peer.host)) peer.host.toLowerCase(),
+  ];
+
+  static List<String> _uniqueHosts(Iterable<String> hosts) {
+    final result = <String>[];
+    for (final host in hosts) {
+      if (host.isNotEmpty && !result.contains(host)) result.add(host);
+    }
+    return result;
+  }
+
+  static bool _isIPv4Literal(String host) =>
+      !host.contains('/') && IPv4Prefix.parse(host)?.isHost == true;
+
+  /// Exclusions are carved around the TUN subnet because otherwise redirected
+  /// TCP replies to the neighbour address leave through the physical interface.
+  static List<String> routeExcludeAddresses({
+    List<IPv4Prefix> carving = const [],
+  }) {
+    final tunPrefix = IPv4Prefix.parse(tunAddress);
+    final holes = <IPv4Prefix>[?tunPrefix, ...carving];
+    return [
+      for (final text in lanRanges)
+        ...(IPv4Prefix.parse(text)?.subtractingAll(holes) ?? const []).map(
+          (prefix) => prefix.toString(),
+        ),
+    ];
+  }
+
+  static Map<String, Object?> localRuleSet({
+    required String tag,
+    required String path,
+  }) => {'type': 'local', 'tag': tag, 'format': 'source', 'path': path};
+
+  /// IPv4-only: an IPv6 TUN address would make an IPv4-only host appear
+  /// dual-stack and install an unusable IPv6 default route.
+  static Map<String, Object?> tunInbound({
+    List<IPv4Prefix> carving = const [],
+    WayforkPlatform platform = WayforkPlatform.windows,
+  }) => {
+    'type': 'tun',
+    'tag': 'tun-in',
+    'interface_name': platform.tunInterface,
+    'address': [tunAddress],
+    'mtu': 1500,
+    'auto_route': true,
+    'strict_route': false,
+    'route_exclude_address': routeExcludeAddresses(carving: carving),
+    'stack': 'system',
+  };
+
+  /// Maps the stored VLESS transport and TLS metadata to a sing-box outbound.
+  static Map<String, Object?> vlessOutbound(
+    VLESSMeta meta, {
+    required String tag,
+    required String uuid,
+  }) {
+    final outbound = <String, Object?>{
+      'type': 'vless',
+      'tag': tag,
+      'server': meta.server,
+      'server_port': meta.port,
+      'uuid': uuid,
+      if (meta.flow != null) 'flow': meta.flow,
+    };
+    final tls = tlsBlock(
+      security: meta.security,
+      server: meta.server,
+      sni: meta.sni,
+      fingerprint: meta.fingerprint,
+      alpn: meta.alpn,
+      realityPublicKey: meta.realityPublicKey,
+      realityShortID: meta.realityShortID,
+      allowInsecure: meta.allowInsecure,
+    );
+    if (tls != null) outbound['tls'] = tls;
+    final transport = transportBlock(meta.transport);
+    if (transport != null) outbound['transport'] = transport;
+    return outbound;
+  }
+
+  static Map<String, Object?> shadowsocksOutbound(
+    ShadowsocksMeta meta, {
+    required String tag,
+    required String password,
+  }) => {
+    'type': 'shadowsocks',
+    'tag': tag,
+    'server': meta.server,
+    'server_port': meta.port,
+    'method': meta.method,
+    'password': password,
+  };
+
+  static Map<String, Object?> trojanOutbound(
+    TrojanMeta meta, {
+    required String tag,
+    required String password,
+  }) {
+    final outbound = <String, Object?>{
+      'type': 'trojan',
+      'tag': tag,
+      'server': meta.server,
+      'server_port': meta.port,
+      'password': password,
+    };
+    final tls = tlsBlock(
+      security: meta.security,
+      server: meta.server,
+      sni: meta.sni,
+      fingerprint: meta.fingerprint,
+      alpn: meta.alpn,
+      realityPublicKey: meta.realityPublicKey,
+      realityShortID: meta.realityShortID,
+      allowInsecure: meta.allowInsecure,
+    );
+    if (tls != null) outbound['tls'] = tls;
+    final transport = transportBlock(meta.transport);
+    if (transport != null) outbound['transport'] = transport;
+    return outbound;
+  }
+
+  static Map<String, Object?> vmessOutbound(
+    VMessMeta meta, {
+    required String tag,
+    required String uuid,
+  }) {
+    final outbound = <String, Object?>{
+      'type': 'vmess',
+      'tag': tag,
+      'server': meta.server,
+      'server_port': meta.port,
+      'uuid': uuid,
+      'security': meta.security,
+      'alter_id': 0,
+    };
+    final tls = tlsBlock(
+      security: meta.tlsSecurity,
+      server: meta.server,
+      sni: meta.sni,
+      fingerprint: meta.fingerprint,
+      alpn: meta.alpn,
+      realityPublicKey: meta.realityPublicKey,
+      realityShortID: meta.realityShortID,
+      allowInsecure: meta.allowInsecure,
+    );
+    if (tls != null) outbound['tls'] = tls;
+    final transport = transportBlock(meta.transport);
+    if (transport != null) outbound['transport'] = transport;
+    return outbound;
+  }
+
+  static Map<String, Object?>? tlsBlock({
+    required TlsSecurity security,
+    required String server,
+    required String? sni,
+    required String? fingerprint,
+    required List<String> alpn,
+    required String? realityPublicKey,
+    required String? realityShortID,
+    required bool allowInsecure,
+  }) {
+    if (security == TlsSecurity.none) return null;
+    final tls = <String, Object?>{
+      'enabled': true,
+      'server_name': sni ?? server,
+      'insecure': allowInsecure,
+      if (alpn.isNotEmpty) 'alpn': alpn,
+      if (fingerprint != null)
+        'utls': {'enabled': true, 'fingerprint': fingerprint},
+    };
+    if (security == TlsSecurity.reality) {
+      tls['reality'] = {
+        'enabled': true,
+        'public_key': realityPublicKey ?? '',
+        'short_id': realityShortID ?? '',
+      };
+    }
+    return tls;
+  }
+
+  static Map<String, Object?>? transportBlock(ProxyTransport transport) =>
+      switch (transport) {
+        ProxyTransportTCP() => null,
+        ProxyTransportWS(:final path, :final host) => <String, Object?>{
+          'type': 'ws',
+          'path': path,
+          if (host != null) 'headers': <String, Object?>{'Host': host},
+        },
+        ProxyTransportGRPC(:final serviceName) => {
+          'type': 'grpc',
+          'service_name': serviceName,
+        },
+      };
+}

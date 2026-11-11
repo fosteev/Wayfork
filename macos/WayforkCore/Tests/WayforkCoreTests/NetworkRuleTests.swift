@@ -36,25 +36,26 @@ private let discord = "/Applications/Discord.app"
     #expect(try JSONCoding.decoder.decode(Rule.self, from: Data(json.utf8)).network == nil)
 }
 
-@Test func storeSchemaThreeMigratesFromTwoAndRefusesFour() throws {
+@Test func storeSchemaFourMigratesFromTwoAndRefusesFive() throws {
     let v2 = Data(
         "{\"schemaVersion\": 2, \"tunnels\": [], \"rules\": [], \"settings\": {}}".utf8)
-    #expect(try StoreCodec.decode(v2).schemaVersion == 3)
-    #expect(Store.currentSchemaVersion == 3)
-    let v4 = Data("{\"schemaVersion\": 4, \"tunnels\": [], \"rules\": []}".utf8)
-    #expect(throws: StoreCodec.Error.newerSchema(found: 4, supported: 3)) {
+    #expect(try StoreCodec.decode(v2).schemaVersion == 4)
+    #expect(Store.currentSchemaVersion == 4)
+    let v4 = Data("{\"schemaVersion\": 5, \"tunnels\": [], \"rules\": []}".utf8)
+    #expect(throws: StoreCodec.Error.newerSchema(found: 5, supported: 4)) {
         try StoreCodec.decode(v4)
     }
     let store = Fixtures.store(rules: [
         Rule(pattern: discord, match: .app, target: .direct, network: .udp)
     ])
     #expect(try StoreCodec.decode(StoreCodec.encode(store)) == store)
-    #expect(ExportDocument.currentVersion == 3)
+    #expect(ExportDocument.currentVersion == 4)
 }
 
 @Test func validatorRanksNarrowedRules() {
     func issues(_ rules: [Rule]) -> [UUID: [RuleIssue]] {
-        RuleValidator.validate(Fixtures.store(rules: rules))
+        LegacyRuleValidator.validate(
+            Store(tunnels: [Fixtures.work, Fixtures.home], rules: rules, lists: []))
     }
     func app(_ target: RuleTarget, _ network: RuleNetwork? = nil) -> Rule {
         Rule(pattern: discord, match: .app, target: target, network: network)
@@ -144,7 +145,7 @@ private let discord = "/Applications/Discord.app"
     let input = SingBoxConfigGenerator.Input(
         store: store, vlessUUIDs: [Fixtures.homeID: "00000000-0000-4000-8000-0000000000aa"],
         openVPNBinaryPath: "/x/openvpn")
-    let output = SingBoxConfigGenerator.generate(input)
+    let output = FrozenF23Generator.generate(input)
     let config = try #require(
         try JSONSerialization.jsonObject(with: Data(output.config.utf8)) as? [String: Any])
     let route = try #require(config["route"] as? [String: Any])
@@ -184,13 +185,13 @@ private let discord = "/Applications/Discord.app"
     #expect(!QuickAdd.isUpdate(input: "203.0.113.0/24", store: store))
     #expect(QuickAdd.isUpdate(input: "203.0.113.0/24", store: store, network: .tcp))
     guard
-        case .update(let updated) = QuickAdd.evaluate(
+        case .add(let updated) = QuickAdd.evaluate(
             input: "203.0.113.0/24", target: target, store: store, network: .tcp)
     else {
-        Issue.record("expected an update of the narrowed rule")
+        Issue.record("expected a new rule in the destination list")
         return
     }
-    #expect(updated.id == narrowed.id)
+    #expect(updated.id != narrowed.id)
     #expect(updated.network == .tcp)
 }
 

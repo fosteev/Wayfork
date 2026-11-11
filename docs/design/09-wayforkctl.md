@@ -191,3 +191,49 @@ never sees rules in source form); that is a separate milestone, not part of F21.
   README tells users to link it into their `PATH`. Development: `swift build -c release
   --package-path macos/WayforkCore --product wayforkctl` →
   `macos/WayforkCore/.build/release/wayforkctl`.
+
+## Rule lists (F24)
+
+macOS source-rule control extension; implementation and acceptance are tracked in the
+[rule-lists roadmap](../roadmap/rule-lists.md). Existing commands keep their dead-man
+confirmation defaults. Windows gains generated-plan compatibility/`explain` support,
+not source-list mutation commands.
+
+| Command | Effect |
+|---|---|
+| `wayforkctl lists [--json]` | List ID/name, declared target, resolved exit, enabled/menu flags, row count, user priority |
+| `wayforkctl lists set <list> --via <exit\|default>` | Set one list's target; `default` means Same as Everything else |
+| `wayforkctl rules add <pattern> --list <list>` | Add/update within the selected list, inheriting its route |
+| `wayforkctl rules add <pattern> --list <list> --via <exit>` | Add/update a pinned concrete override in that list |
+
+`<list>` is UUID or unique case-insensitive name; UUID wins. Missing/ambiguous selection is
+an error, never an arbitrary first match. `direct` is an explicit exception; `default`
+is the dynamic follow-default binding and is valid for list target setting only. Concrete
+exit names/IDs keep existing resolution rules. `lists.set` is one pending transaction and
+one apply, with `--dry-run`/`--confirm-within`/confirm/revert behavior like `rules.add`.
+No new `--confirm-within 0` usage for assistants.
+
+Protocol adds `lists.list`, `lists.set`; `rules.add` accepts `list`. Replies expose list
+ID/name, declared list target, resolved exit, inheritance/pin, list/row priority and current
+inert warning. `rules.list` keeps row ID/pattern/match/enabled/note/network and adds list
+identity plus override/inherited binding; print exception-tier order then user list/row
+order, with paused rows visibly inactive. Do not claim the old section order is runtime
+order in F24. `explain` uses generated row references, transport filters and outbounds;
+Windows needs no access to source list names to retain correct routing answers.
+
+Legacy `rules add … --via <exit>` chooses the first list explicitly bound to that exit,
+creating an exit-named list when absent. It never selects a follow-default list just
+because today's default equals the requested exit. Legacy updates are scoped to the
+chosen list; duplicate patterns elsewhere are not silently moved. Row lookup includes
+normalized match/pattern/network and list identity. `--list` without `--via` clears an
+existing pin in that list; with `--via` sets it. Error/help text makes that effect explicit.
+
+Pending inverses restore exact list binding or row value/membership/order, not a guessed
+exit cache. List switch inverse restores only if its forward binding still matches; a
+newer GUI edit wins. Include a newly created implicit list in the inverse, removing it
+only if unchanged and empty after row rollback. Reinsert a removed row relative to its
+list neighbor, otherwise at that list's end; if its list was deleted by the GUI, skip and
+log rather than resurrecting a deleted list. Persist inverse state in the pending file
+for launch rollback, including old fields needed for crash recovery. One pending change
+at a time remains the rule. Old-app unknown-method/unsupported-list responses must fail
+clearly; never retry by performing a global unscoped rule update.

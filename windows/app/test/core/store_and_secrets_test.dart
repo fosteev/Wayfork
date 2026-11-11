@@ -65,6 +65,58 @@ void main() {
       expect((await repository.load()).store.settings.logRetentionDays, 4);
     });
 
+    test(
+      'preserves exact legacy bytes before saving schema4 and reports duplicate archives',
+      () async {
+        final source = {
+          'schemaVersion': 3,
+          'tunnels': [Fixtures.work.toJson()],
+          'settings': {},
+          'rules': [
+            Rule(
+              id: '00000000-0000-4000-8000-000000000101',
+              pattern: 'duplicate.example',
+              target: RuleTargetTunnel(Fixtures.workID),
+              isEnabled: false,
+            ).toJson(),
+            Rule(
+              id: '00000000-0000-4000-8000-000000000102',
+              pattern: 'duplicate.example',
+              target: RuleTargetTunnel(Fixtures.workID),
+            ).toJson(),
+          ],
+        };
+        final raw = '  ${jsonEncode(source)}\n';
+        final repository = StoreRepository(directory);
+        await repository.file.writeAsString(raw);
+        final loaded = await repository.load();
+        expect(loaded.store.schemaVersion, 4);
+        expect(
+          loaded.migrationSummary,
+          contains('1 previously inactive duplicate rules'),
+        );
+        expect(await loaded.migrationBackup!.readAsString(), raw);
+        expect(await repository.file.readAsString(), raw);
+        expect(
+          (await repository.load()).migrationBackup!.path,
+          loaded.migrationBackup!.path,
+        );
+        await repository.write(loaded.store);
+        expect(
+          (jsonDecode(await repository.file.readAsString())
+              as Map<String, Object?>)['schemaVersion'],
+          4,
+        );
+        expect(await loaded.migrationBackup!.readAsString(), raw);
+        expect((await repository.load()).migrationSummary, isNull);
+        expect(
+          () => repository.save(loaded.store.copyWith(lists: [])),
+          throwsFormatException,
+        );
+        expect((await repository.load()).store, loaded.store);
+      },
+    );
+
     test('moves a corrupt file aside', () async {
       final file = File('${directory.path}/store.json')
         ..writeAsStringSync('{not json');

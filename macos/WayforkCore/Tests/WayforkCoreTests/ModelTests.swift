@@ -56,7 +56,7 @@ enum Fixtures {
         createdAt: date)
 
     static func store(rules: [Rule] = []) -> Store {
-        Store(tunnels: [work, home], rules: rules)
+        explicitStore(Store(tunnels: [work, home], rules: rules, lists: []))
     }
 }
 
@@ -172,7 +172,7 @@ enum Fixtures {
     #expect(document.tunnels[0].kind.isOpenVPN)
     #expect(document.tunnels[1].kind.vless?.security == .reality)
     #expect(document.rules.count == 3)
-    #expect(document.rules[2].isException)
+    #expect(document.lists.contains { $0.target == .exit(.direct) })
     #expect(document.defaultTunnelID == document.tunnels[1].id)
 }
 
@@ -323,4 +323,23 @@ enum Fixtures {
     #expect(
         !String(decoding: try JSONEncoder().encode(bare.tunnels[0]), as: UTF8.self).contains(
             "localProxy"))
+}
+
+/// Construct explicit F24 fixture membership without invoking migration suppression.
+func explicitStore(_ input: Store) -> Store {
+    var store = input
+    for index in store.rules.indices where store.rules[index].listID == nil {
+        guard let target = store.rules[index].target else { continue }
+        store.rules[index].listID = store.ensureList(for: target)
+    }
+    // Existing tests assert concrete targets; these are deliberate fixture pins.
+    let targets =
+        [.direct] + store.tunnels.map { RuleTarget.tunnel($0.id) }
+        + store.groups.map { RuleTarget.group($0.id) }
+    store.lists.sort { lhs, rhs in
+        let l = targets.firstIndex { lhs.target == .exit($0) } ?? targets.count
+        let r = targets.firstIndex { rhs.target == .exit($0) } ?? targets.count
+        return l < r
+    }
+    return store
 }

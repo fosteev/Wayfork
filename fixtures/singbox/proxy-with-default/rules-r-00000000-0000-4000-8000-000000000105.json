@@ -1,0 +1,10 @@
+{
+  "rules" : [
+    {
+      "domain_regex" : [
+        "^.+\\.intranet\\.example$"
+      ]
+    }
+  ],
+  "version" : 3
+}

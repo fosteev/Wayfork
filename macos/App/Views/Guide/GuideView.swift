@@ -763,9 +763,10 @@ struct GuideView: View {
 
 /// Chosen sites as removable chips, each noting "and subdomains" (docs/design/02-ux.md,
 /// "First-run guide" step 4).
-private struct FlowLayoutChips: View {
+struct FlowLayoutChips: View {
     let tokens: [String]
     let remove: (String) -> Void
+    var hint: (String) -> String = { _ in "and subdomains" }
 
     var body: some View {
         if !tokens.isEmpty {
@@ -778,7 +779,7 @@ private struct FlowLayoutChips: View {
                 ForEach(tokens, id: \.self) { token in
                     HStack(spacing: 4) {
                         Text(token).font(.system(size: 11)).lineLimit(1)
-                        Text("and subdomains").font(.system(size: 9)).foregroundStyle(.secondary)
+                        Text(hint(token)).font(.system(size: 9)).foregroundStyle(.secondary)
                         Button {
                             remove(token)
                         } label: {

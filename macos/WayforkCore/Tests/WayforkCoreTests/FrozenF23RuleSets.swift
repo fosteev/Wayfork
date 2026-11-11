@@ -1,0 +1,149 @@
+// Frozen pre-F24 rule-set renderer for the differential migration oracle.
+import Foundation
+
+@testable import WayforkCore
+
+/// Produces `rules-t-<id>.json` and `rules-direct.json` contents, plus the route-only
+/// `…-ip.json` twins holding the IP rules (docs/design/03-routing.md, "Rule-set files").
+enum FrozenF23RuleSets {
+    public static let version = 3
+
+    /// Tag and file of the Direct rule-set: user exceptions plus the built-in local names.
+    public static let directTag = "rules-direct"
+    public static let directFileName = "rules-direct.json"
+    /// Tag and file of the Direct IP rule-set (F11).
+    public static let directIPTag = "rules-direct-ip"
+    public static let directIPFileName = "rules-direct-ip.json"
+    /// Tag and file of the Direct rule-set narrowed to one transport (F23).
+    public static func directNarrowedTag(_ network: RuleNetwork) -> String {
+        "rules-direct-\(network.rawValue)"
+    }
+    public static func directNarrowedFileName(_ network: RuleNetwork) -> String {
+        "\(directNarrowedTag(network)).json"
+    }
+
+    /// Built-in exceptions: names that must never leave the local network (F8).
+    public static let builtInDirectSuffixes = [
+        ".local", ".lan", ".internal", ".home.arpa", ".localhost",
+    ]
+    public static let builtInDirectDomains = ["localhost"]
+
+    /// Two rule-set files per tunnel (domains + apps, IPs) plus the two Direct files, and
+    /// (F23) a `-tcp` / `-udp` file per exit and network that has a narrowed rule: file
+    /// name → JSON text. Every tunnel in `tunnels` gets its files, even with no rules, and
+    /// the Direct files are always present, so the main config stays unchanged when rules
+    /// come and go.
+    public static func generate(
+        tunnels: [Tunnel], activeRules: [UUID: [Rule]], exceptions: [Rule] = []
+    ) -> [String: String] {
+        generate(
+            exits: tunnels.map(RoutedExit.init), activeRules: activeRules, exceptions: exceptions)
+    }
+
+    /// The same for tunnels and groups alike (F16): `rules-t-<id>` / `rules-g-<id>`.
+    public static func generate(
+        exits: [RoutedExit], activeRules: [UUID: [Rule]], exceptions: [Rule] = []
+    ) -> [String: String] {
+        var files: [String: String] = [
+            directFileName: renderDirect(exceptions: exceptions),
+            directIPFileName: renderIP(rules: exceptions),
+        ]
+        for exit in exits {
+            let rules = activeRules[exit.id] ?? []
+            files[exit.ruleSetFileName] = render(rules: rules)
+            files[exit.ipRuleSetFileName] = renderIP(rules: rules)
+            for network in RuleNetwork.allCases {
+                if let text = renderNarrowed(rules: rules, network: network) {
+                    files[exit.narrowedRuleSetFileName(network)] = text
+                }
+            }
+        }
+        for network in RuleNetwork.allCases {
+            if let text = renderNarrowed(rules: exceptions, network: network) {
+                files[directNarrowedFileName(network)] = text
+            }
+        }
+        return files
+    }
+
+    /// F23: the app and IP rules narrowed to `network`, route-only like the `-ip` files:
+    /// a `process_path_regex` rule and an `ip_cidr` rule (same reserved-range subtraction as
+    /// `renderIP`), each only when non-empty. Nil when there is no such rule, so the caller
+    /// emits neither the file nor its route rule.
+    public static func renderNarrowed(rules: [Rule], network: RuleNetwork) -> String? {
+        let narrowed = rules.filter { $0.network == network }
+        let paths = narrowed.filter(\.isApp).map { RulePattern.appPathRegex($0.pattern) }
+        let ranges = narrowed.filter(\.isIP)
+            .compactMap { IPv4Prefix($0.pattern) }
+            .flatMap { $0.subtracting(all: RulePattern.reservedRanges) }
+            .map(\.description)
+        var ruleObjects: [[String: Any]] = []
+        if !paths.isEmpty { ruleObjects.append(["process_path_regex": paths]) }
+        if !ranges.isEmpty { ruleObjects.append(["ip_cidr": ranges]) }
+        guard !ruleObjects.isEmpty else { return nil }
+        return JSONText.render(["version": version, "rules": ruleObjects])
+    }
+
+    /// `…-ip.json` (F11): the group's IP rules as one `ip_cidr` rule, each range minus the
+    /// reserved ranges a wide pattern may overlap. Never referenced by DNS rules — there
+    /// sing-box would match `ip_cidr` against the answer and skip the domain rules.
+    public static func renderIP(rules: [Rule]) -> String {
+        let ranges = rules.filter { $0.isIP && $0.network == nil }
+            .compactMap { IPv4Prefix($0.pattern) }
+            .flatMap { $0.subtracting(all: RulePattern.reservedRanges) }
+            .map(\.description)
+        let document: [String: Any] = [
+            "version": version,
+            "rules": ranges.isEmpty ? [] : [["ip_cidr": ranges]],
+        ]
+        return JSONText.render(document)
+    }
+
+    /// Rule-set JSON for one tunnel's rules: one rule object for the domain items and, when
+    /// there are app rules (F10), a second one with `process_path_regex` — sing-box ANDs
+    /// items of different kinds inside one rule and ORs the rules of a set.
+    public static func render(rules: [Rule]) -> String {
+        render(rules: rules, domains: [], suffixes: [])
+    }
+
+    /// `rules-direct.json`: the built-in local names first, then the user's exceptions.
+    public static func renderDirect(exceptions: [Rule]) -> String {
+        render(rules: exceptions, domains: builtInDirectDomains, suffixes: builtInDirectSuffixes)
+    }
+
+    private static func render(rules: [Rule], domains: [String], suffixes: [String]) -> String {
+        var domain = domains
+        var domainSuffix = suffixes
+        var domainRegex: [String] = []
+        var processPathRegex: [String] = []
+        for rule in rules where rule.network == nil {
+            switch rule.match {
+            case .exact:
+                domain.append(rule.pattern)
+            case .suffix:
+                domain.append(rule.pattern)
+                domainSuffix.append("." + rule.pattern)
+            case .wildcard:
+                domainRegex.append(RulePattern.wildcardRegex(rule.pattern))
+            case .app:
+                processPathRegex.append(RulePattern.appPathRegex(rule.pattern))
+            case .ip:
+                continue  // `renderIP`
+            }
+        }
+        var domainRule: [String: Any] = [:]
+        if !domain.isEmpty { domainRule["domain"] = domain }
+        if !domainSuffix.isEmpty { domainRule["domain_suffix"] = domainSuffix }
+        if !domainRegex.isEmpty { domainRule["domain_regex"] = domainRegex }
+        var ruleObjects: [[String: Any]] = []
+        if !domainRule.isEmpty { ruleObjects.append(domainRule) }
+        if !processPathRegex.isEmpty {
+            ruleObjects.append(["process_path_regex": processPathRegex])
+        }
+        let document: [String: Any] = [
+            "version": version,
+            "rules": ruleObjects,
+        ]
+        return JSONText.render(document)
+    }
+}

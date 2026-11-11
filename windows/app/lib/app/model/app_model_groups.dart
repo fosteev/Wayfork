@@ -166,11 +166,7 @@ extension AppModelGroups on AppModel {
   String? deleteGroupMessage(String groupID) {
     final group = _store.group(groupID);
     if (group == null) return null;
-    final rules = _store.rulesForGroup(groupID).length;
-    return rules > 0
-        ? 'Delete ${group.name} and its ${StatusText.count(rules, 'site')}? '
-              'The rules go with it; the tunnels stay.'
-        : 'Delete ${group.name}? The tunnels stay.';
+    return 'Delete ${group.name}? ${removedRulesMessage({RuleTargetGroup(groupID)})} The tunnels stay.';
   }
 
   /// Removes the group and its rules (the UI confirms first).
@@ -178,15 +174,14 @@ extension AppModelGroups on AppModel {
     final group = _store.group(groupID);
     if (group == null) return;
     await update(
-      (store) => store.copyWith(
-        groups: store.groups.where((g) => g.id != groupID).toList(),
-        rules: store.rules
-            .where((rule) => rule.target.groupID != groupID)
-            .toList(),
-        defaultTunnelID: store.defaultTunnelID == groupID
-            ? null
-            : store.defaultTunnelID,
-      ),
+      (store) => store
+          .removeRulesBoundTo(RuleTargetGroup(groupID))
+          .copyWith(
+            groups: store.groups.where((g) => g.id != groupID).toList(),
+            defaultTunnelID: store.defaultTunnelID == groupID
+                ? null
+                : store.defaultTunnelID,
+          ),
     );
     if (expandedTunnelID == groupID) expandedTunnelID = null;
     logs.app(LogLevel.info, 'deleted group ${group.name}');

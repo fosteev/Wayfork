@@ -252,6 +252,9 @@ public struct TrafficSnapshot: Codable, Sendable, Hashable {
     public var tunnels: [String: TrafficCounters]
     /// Everything that bypasses the tunnels.
     public var direct: TrafficCounters
+    /// Rates by matched user rule UUID. Nil means an older daemon without this capability;
+    /// an empty dictionary is a supported sample with no attributed traffic.
+    public var rules: [String: TrafficCounters]?
     /// Latency probes by tunnel id (F14); only tunnels the prober has looked at. Absent in
     /// a payload from a build that predates it.
     public var latency: [String: LatencySample]
@@ -277,12 +280,13 @@ public struct TrafficSnapshot: Codable, Sendable, Hashable {
         direct: TrafficCounters, latency: [String: LatencySample] = [:],
         recentHosts: [RecentHost] = [], groups: [String: GroupState] = [:],
         blockedToday: Int? = nil, failedHosts: [FailedHost] = [],
-        exits: [String: ExitStats] = [:]
+        exits: [String: ExitStats] = [:], rules: [String: TrafficCounters]? = nil
     ) {
         self.sampledAt = sampledAt
         self.interval = interval
         self.tunnels = tunnels
         self.direct = direct
+        self.rules = rules
         self.latency = latency
         self.recentHosts = recentHosts
         self.groups = groups
@@ -293,7 +297,7 @@ public struct TrafficSnapshot: Codable, Sendable, Hashable {
 
     private enum CodingKeys: String, CodingKey {
         case sampledAt, interval, tunnels, direct, latency, recentHosts, groups, blockedToday
-        case failedHosts, exits
+        case failedHosts, exits, rules
     }
 
     public init(from decoder: Decoder) throws {
@@ -302,6 +306,7 @@ public struct TrafficSnapshot: Codable, Sendable, Hashable {
         interval = try c.decode(TimeInterval.self, forKey: .interval)
         tunnels = try c.decode([String: TrafficCounters].self, forKey: .tunnels)
         direct = try c.decode(TrafficCounters.self, forKey: .direct)
+        rules = try c.decodeIfPresent([String: TrafficCounters].self, forKey: .rules)
         latency = try c.decodeIfPresent([String: LatencySample].self, forKey: .latency) ?? [:]
         recentHosts = try c.decodeIfPresent([RecentHost].self, forKey: .recentHosts) ?? []
         groups = try c.decodeIfPresent([String: GroupState].self, forKey: .groups) ?? [:]
@@ -312,6 +317,11 @@ public struct TrafficSnapshot: Codable, Sendable, Hashable {
 
     public func counters(forTunnel id: String) -> TrafficCounters {
         tunnels[id] ?? .zero
+    }
+
+    public func counters(forRule id: UUID) -> TrafficCounters? {
+        guard let rules else { return nil }
+        return rules[id.uuidString.lowercased()] ?? .zero
     }
 }
 

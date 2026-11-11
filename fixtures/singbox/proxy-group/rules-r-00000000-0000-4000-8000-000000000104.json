@@ -1,0 +1,13 @@
+{
+  "rules" : [
+    {
+      "domain" : [
+        "video.example.com"
+      ],
+      "domain_suffix" : [
+        ".video.example.com"
+      ]
+    }
+  ],
+  "version" : 3
+}

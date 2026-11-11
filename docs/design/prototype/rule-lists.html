@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wayfork UI prototype — rule lists</title>
+<style>
+body { margin:0; font-family:-apple-system,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif; font-size:13px; line-height:16px; color:rgba(0,0,0,0.85); -webkit-font-smoothing:antialiased; background:#f4f4f4; padding:32px 40px 80px; }
+a { color:#0a60ff; } a:hover { color:#0040c0; }
+h1 { font-size:22px; font-weight:700; margin:0 0 6px; }
+h2 { font-size:15px; font-weight:600; margin:0 0 10px; color:rgba(0,0,0,0.75); }
+.board { margin:36px 0 0; }
+.intro { max-width:760px; color:rgba(0,0,0,0.65); font-size:13px; line-height:18px; }
+.toc { margin:14px 0 0; padding:0 0 0 18px; max-width:720px; }
+.toc li { margin:2px 0; }
+.bd { background:#dcdcdc; padding:20px; box-sizing:border-box; display:flex; flex-direction:column; gap:14px; align-items:flex-start; border-radius:8px; }
+.bd.dk { background:#3a3a3c; }
+.note { font-size:11px; color:rgba(0,0,0,0.55); line-height:14px; max-width:720px; }
+.bd.dk .note { color:rgba(255,255,255,0.7); }
+.mono { font-family:"SF Mono",Menlo,Monaco,Consolas,monospace; }
+
+/* ---- theme tokens: one set, light and dark ---- */
+.t { --bg:rgba(246,246,246,0.97); --win:#ececec; --side:#e3e3e5; --card:#fff; --card2:#f6f6f7; --fg:rgba(0,0,0,0.85); --fg2:rgba(0,0,0,0.52); --fg3:rgba(0,0,0,0.3);
+     --sep:rgba(0,0,0,0.09); --line:rgba(0,0,0,0.14); --field:#fff; --fieldb:rgba(0,0,0,0.16); --btn:#fff; --btnsh:0 0 0 0.5px rgba(0,0,0,0.18),0 0.5px 1px rgba(0,0,0,0.18);
+     --hl:rgba(0,0,0,0.06); --acc:#0a60ff; --onacc:#fff; --ok:#34c759; --okt:#1e8e3e; --warn:#ff9500; --warnt:#a85a00; --bad:#ff3b30; --badt:#d0342c; --dim:#8e8e93;
+     --cardsh:0 0 0 0.5px rgba(0,0,0,0.08),0 1px 2px rgba(0,0,0,0.06); --winsh:0 12px 36px rgba(0,0,0,0.28); color:var(--fg); }
+.t.dark { --bg:rgba(40,40,42,0.97); --win:#2a2a2c; --side:#232325; --card:rgba(255,255,255,0.07); --card2:rgba(255,255,255,0.04); --fg:rgba(255,255,255,0.9); --fg2:rgba(255,255,255,0.56); --fg3:rgba(255,255,255,0.32);
+     --sep:rgba(255,255,255,0.1); --line:rgba(255,255,255,0.16); --field:rgba(255,255,255,0.08); --fieldb:rgba(255,255,255,0.18); --btn:rgba(255,255,255,0.12); --btnsh:0 0 0 0.5px rgba(255,255,255,0.1);
+     --hl:rgba(255,255,255,0.08); --acc:#3d7bff; --onacc:#fff; --ok:#30d158; --okt:#30d158; --warn:#ff9f0a; --warnt:#ffb340; --bad:#ff453a; --badt:#ff6961; --dim:#98989d;
+     --cardsh:0 0 0 0.5px rgba(255,255,255,0.06); --winsh:0 12px 36px rgba(0,0,0,0.6); }
+.sec { color:var(--fg2); } .ter { color:var(--fg3); }
+.okt { color:var(--okt); } .warnt { color:var(--warnt); } .badt { color:var(--badt); }
+
+/* ---- controls ---- */
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:5px; height:20px; padding:0 10px; border-radius:5px; background:var(--btn); box-shadow:var(--btnsh); font-size:13px; color:var(--fg); white-space:nowrap; flex:none; }
+.btn.pri { background:var(--acc); color:var(--onacc); box-shadow:0 0 0 0.5px rgba(0,0,0,0.1),0 0.5px 1px rgba(0,0,0,0.2); }
+.btn.big { height:26px; padding:0 16px; font-weight:500; }
+.btn.sq { width:22px; padding:0; }
+.btn.dis { opacity:0.45; }
+.btn.danger { color:var(--badt); }
+.btn svg { width:12px; height:12px; }
+.tf { display:flex; align-items:center; gap:6px; height:22px; padding:0 7px; background:var(--field); border:1px solid var(--fieldb); border-radius:5px; font-size:13px; box-sizing:border-box; color:var(--fg); }
+.tf.ph { color:var(--fg3); }
+.tf.focus { border-color:transparent; box-shadow:0 0 0 3.5px rgba(10,96,255,0.35),0 0 0 1px var(--acc); }
+.tf.err { border-color:transparent; box-shadow:0 0 0 3px rgba(255,59,48,0.3),0 0 0 1px var(--bad); }
+.tf.round { border-radius:11px; }
+.pop { display:inline-flex; align-items:center; height:20px; padding:0 2px 0 8px; border-radius:5px; background:var(--btn); box-shadow:var(--btnsh); gap:6px; font-size:13px; white-space:nowrap; color:var(--fg); flex:none; }
+.pop .chev { width:16px; height:16px; border-radius:4px; background:var(--acc); display:flex; align-items:center; justify-content:center; flex:none; }
+.pop .chev svg { width:10px; height:10px; }
+.pop.plain { box-shadow:none; background:transparent; padding-left:4px; }
+.pop.plain .chev { background:transparent; }
+.sw { width:26px; height:15px; border-radius:8px; background:var(--hl); position:relative; box-shadow:0 0 0 0.5px rgba(0,0,0,0.1) inset; flex:none; }
+.sw i { position:absolute; top:1px; left:1px; width:13px; height:13px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,0.3); }
+.sw.on { background:var(--acc); } .sw.on i { left:12px; }
+.sw.dis { opacity:0.4; }
+.t.dark .sw { background:rgba(255,255,255,0.2); } .t.dark .sw.on { background:var(--acc); }
+.cb { width:14px; height:14px; border-radius:3.5px; background:var(--field); box-shadow:0 0 0 0.5px rgba(0,0,0,0.25),0 0.5px 1px rgba(0,0,0,0.15); display:inline-flex; align-items:center; justify-content:center; flex:none; }
+.cb.on { background:var(--acc); box-shadow:none; }
+.cb svg { width:10px; height:10px; }
+.rd { width:14px; height:14px; border-radius:50%; background:var(--field); box-shadow:0 0 0 0.5px rgba(0,0,0,0.25),0 0.5px 1px rgba(0,0,0,0.15); display:inline-flex; align-items:center; justify-content:center; flex:none; }
+.rd.on { background:var(--acc); box-shadow:none; }
+.rd.on i { width:5px; height:5px; border-radius:50%; background:#fff; display:block; }
+.seg { display:inline-flex; background:var(--hl); border-radius:6px; padding:2px; gap:2px; }
+.seg span { white-space:nowrap; padding:1px 10px; border-radius:5px; font-size:12px; color:var(--fg2); }
+.seg span.on { background:var(--card); box-shadow:0 0.5px 2px rgba(0,0,0,0.2); color:var(--fg); }
+.t.dark .seg span.on { background:rgba(255,255,255,0.16); }
+.badge { font-size:10px; font-weight:600; padding:1px 5px; border-radius:4px; background:var(--hl); color:var(--fg2); letter-spacing:0.2px; white-space:nowrap; }
+.badge.acc { background:rgba(10,96,255,0.12); color:var(--acc); }
+.chip { font-size:11px; padding:2px 8px; border-radius:10px; background:var(--hl); color:var(--fg2); white-space:nowrap; }
+.chip.warn { background:rgba(255,149,0,0.14); color:var(--warnt); }
+.chip.bad { background:rgba(255,59,48,0.12); color:var(--badt); }
+.chip.ok { background:rgba(52,199,89,0.14); color:var(--okt); }
+.d { width:9px; height:9px; border-radius:50%; flex:none; display:inline-block; }
+.d.ok { background:var(--ok); }
+.d.bad { background:var(--bad); }
+.d.warn { background:var(--warn); }
+.d.off { box-shadow:0 0 0 1.2px var(--dim) inset; }
+.d.half { box-shadow:0 0 0 1.2px var(--warn) inset; background:linear-gradient(90deg,var(--warn) 50%,transparent 50%); }
+.d.grp { border-radius:2px; background:var(--acc); }
+.icn { width:14px; height:14px; flex:none; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.icn.sm { width:12px; height:12px; }
+.ai { width:16px; height:16px; border-radius:4px; display:inline-flex; align-items:center; justify-content:center; font-size:9px; font-weight:700; color:#fff; flex:none; letter-spacing:0; }
+.grip { color:var(--fg3); font-size:12px; letter-spacing:-2px; }
+.link { color:var(--acc); text-decoration:none; }
+
+/* ---- latency ---- */
+.lat { display:inline-flex; align-items:baseline; gap:2px; font-variant-numeric:tabular-nums; white-space:nowrap; font-weight:500; }
+.lat small { font-size:10px; font-weight:400; opacity:0.85; }
+.lat.ok { color:var(--okt); } .lat.warn { color:var(--warnt); } .lat.bad { color:var(--badt); } .lat.none { color:var(--fg3); font-weight:400; }
+.spark { width:64px; height:24px; flex:none; display:block; }
+.spark polyline { fill:none; stroke-width:1.5; stroke-linejoin:round; stroke-linecap:round; }
+.spark .base { stroke:var(--sep); stroke-width:1; }
+.spark .gap { stroke:var(--fg3); stroke-width:1; stroke-dasharray:2 2; }
+.spark.ok polyline.v { stroke:var(--okt); } .spark.warn polyline.v { stroke:var(--warnt); } .spark.bad polyline.v { stroke:var(--badt); }
+.spark circle { fill:currentColor; }
+.spark.ok circle { fill:var(--okt); } .spark.warn circle { fill:var(--warnt); }
+
+/* ---- popover ---- */
+.pv { width:360px; border-radius:12px; padding:12px; box-sizing:border-box; display:flex; flex-direction:column; gap:8px; background:var(--bg); box-shadow:0 0 0 0.5px rgba(0,0,0,0.25),0 12px 32px rgba(0,0,0,0.25); }
+.t.dark .pv { box-shadow:0 0 0 0.5px rgba(255,255,255,0.15),0 12px 32px rgba(0,0,0,0.5); }
+.pv .hd { display:flex; align-items:center; gap:8px; }
+.pv .hd .t { font-weight:600; font-size:13px; flex:1; }
+.pv .sub { font-size:11px; color:var(--fg2); margin-top:-5px; padding-left:26px; line-height:14px; }
+.pv .sep { height:1px; background:var(--sep); }
+.pv .sh { display:flex; align-items:center; font-size:11px; font-weight:600; color:var(--fg2); padding:2px 2px 0; gap:6px; }
+.pv .sh .r { margin-left:auto; font-weight:400; }
+.card { background:var(--card); border-radius:8px; padding:7px 10px; display:flex; flex-direction:column; gap:3px; box-shadow:var(--cardsh); }
+.card .l1 { display:flex; align-items:center; gap:7px; min-height:24px; }
+.card .l1 .n { font-weight:600; }
+.card .l1 .fill { flex:1; }
+.card .l2 { font-size:11px; color:var(--fg2); padding-left:16px; display:flex; gap:6px; align-items:center; white-space:nowrap; line-height:14px; }
+.card .l2 b { font-weight:500; color:var(--fg); }
+.card.dim { opacity:0.55; }
+.card .mem { display:flex; align-items:center; gap:7px; font-size:11px; padding:2px 0 0 16px; color:var(--fg2); min-height:18px; }
+.card .mem .n { color:var(--fg); font-weight:500; width:44px; }
+.card .mem .lat { font-weight:400; margin-left:auto; }
+.card .mem.active .n { color:var(--fg); }
+.card .mem .tick { color:var(--acc); font-weight:600; }
+.pv .ib { width:22px; height:20px; border-radius:5px; background:var(--btn); box-shadow:var(--btnsh); display:flex; align-items:center; justify-content:center; flex:none; }
+.pv .drow { display:flex; align-items:center; gap:7px; padding:0 10px; font-size:11px; color:var(--fg2); min-height:20px; }
+.pv .drow .dn { font-weight:500; color:var(--fg); font-size:12px; }
+.pv .drow .rate { margin-left:auto; }
+.rate { font-size:11px; color:var(--fg2); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.pv .rec { display:flex; align-items:center; gap:8px; min-height:26px; padding:0 4px 0 2px; border-radius:6px; }
+.pv .rec .dom { font-size:12px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pv .rec .app { font-size:11px; color:var(--fg2); white-space:nowrap; }
+.pv .rec .x { color:var(--fg3); font-size:13px; width:12px; text-align:center; }
+.pv .rec.hov { background:var(--hl); }
+.pv .empty { font-size:11px; color:var(--fg2); line-height:14px; padding:6px 10px 8px; background:var(--card2); border-radius:8px; display:flex; gap:8px; align-items:flex-start; }
+.pv .empty svg { margin-top:1px; }
+.pv .ft { display:flex; align-items:center; gap:14px; font-size:12px; color:var(--fg2); }
+.pv .ft span b { font-weight:500; color:var(--fg); }
+.pv .ft .q { margin-left:auto; }
+.pv .qa { display:flex; gap:6px; align-items:center; }
+.pv .qa .tf { flex:1; }
+.pv .first { display:flex; flex-direction:column; align-items:center; text-align:center; gap:8px; padding:18px 12px 14px; }
+.pv .first .h { font-weight:600; font-size:14px; }
+.pv .first p { margin:0; font-size:12px; color:var(--fg2); line-height:16px; max-width:280px; }
+
+/* ---- menu bar strip ---- */
+.mbar { width:520px; height:24px; background:rgba(240,240,240,0.92); border-bottom:1px solid rgba(0,0,0,0.1); display:flex; align-items:center; justify-content:flex-end; gap:2px; padding:0 10px; box-sizing:border-box; border-radius:8px 8px 0 0; font-size:13px; color:rgba(0,0,0,0.85); }
+.mbar > div { height:20px; padding:0 5px; display:flex; align-items:center; border-radius:4px; }
+.mbar .cur { background:rgba(0,0,0,0.12); }
+.t.dark .mbar { background:rgba(50,50,52,0.92); border-color:rgba(255,255,255,0.1); color:rgba(255,255,255,0.9); }
+.t.dark .mbar .cur { background:rgba(255,255,255,0.2); }
+
+/* ---- settings window ---- */
+.win { width:720px; height:480px; background:var(--win); border:1px solid rgba(0,0,0,0.18); border-radius:10px; box-shadow:var(--winsh); overflow:hidden; display:flex; flex-direction:column; box-sizing:border-box; position:relative; }
+.t.dark .win { border-color:rgba(255,255,255,0.12); }
+.tl { display:flex; gap:8px; }
+.tl span { width:12px; height:12px; border-radius:50%; display:block; }
+.titlebar { height:28px; display:flex; align-items:center; padding:0 12px; position:relative; flex:none; }
+.title { position:absolute; left:0; right:0; text-align:center; font-weight:600; font-size:13px; pointer-events:none; }
+.content { flex:1; display:flex; min-height:0; border-top:1px solid var(--sep); }
+.side { width:150px; background:var(--side); border-right:1px solid var(--sep); padding:8px 6px; display:flex; flex-direction:column; gap:2px; flex:none; box-sizing:border-box; }
+.sitem { display:flex; align-items:center; gap:8px; height:28px; padding:0 8px; border-radius:6px; font-size:13px; }
+.sitem svg { width:20px; height:20px; stroke:var(--fg2); fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.sitem.on { background:var(--hl); }
+.main { flex:1; padding:14px 18px 16px; display:flex; flex-direction:column; gap:10px; overflow:hidden; min-width:0; }
+.main > * { flex:none; }
+.ph1 { font-size:20px; font-weight:700; }
+.phd { display:flex; align-items:center; gap:10px; }
+.phd .ph1 { flex:1; }
+.group { background:var(--card); border:1px solid var(--sep); border-radius:6px; overflow:hidden; }
+.row { display:flex; align-items:center; gap:12px; min-height:32px; padding:5px 12px; }
+.row + .row { border-top:1px solid var(--sep); }
+.row .lbl { flex:1; }
+.row .hint { font-size:11px; color:var(--fg2); margin-top:1px; line-height:14px; }
+.gh { font-size:11px; font-weight:600; color:var(--fg2); padding:0 0 4px 2px; }
+.list { display:flex; flex-direction:column; }
+.trow { display:flex; align-items:center; gap:10px; padding:0 12px; min-height:36px; }
+.trow + .trow, .trow + .xp, .xp + .trow, .xp + .trow2, .trow2 + .trow { border-top:1px solid var(--sep); }
+.trow .n { font-weight:600; width:64px; }
+.trow .s { flex:1; color:var(--fg2); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.trow .s b { font-weight:500; color:var(--fg); }
+.trow .chv { color:var(--fg3); width:10px; height:10px; }
+.trow.newg { color:var(--acc); font-size:13px; min-height:32px; border-top:1px solid var(--sep); }
+.xp { background:var(--card2); padding:8px 12px 10px 33px; display:grid; grid-template-columns:96px 1fr; gap:6px 12px; align-items:center; font-size:12px; border-top:1px solid var(--sep); }
+.xp .k { color:var(--fg2); text-align:right; }
+.xp .v { display:flex; align-items:center; gap:8px; min-height:22px; }
+.xp .tf { height:20px; }
+.xp .hint { font-size:11px; color:var(--fg2); }
+.xp .mrow { display:flex; align-items:center; gap:8px; min-height:22px; font-size:12px; }
+.xp .mrow .n { font-weight:500; width:52px; }
+.xp .mrow .lat { margin-left:auto; }
+.rg .h { display:flex; align-items:center; gap:8px; padding:5px 12px; background:var(--card2); font-weight:600; border-bottom:1px solid var(--sep); min-height:20px; }
+.rg .h { white-space:nowrap; }
+.rg .h .hint { font-weight:400; font-size:11px; color:var(--fg2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.rg .r { display:flex; align-items:center; gap:10px; padding:0 12px; height:26px; border-bottom:1px solid var(--sep); font-size:12px; }
+.rg .r:last-child { border-bottom:none; }
+.rg .r .p { width:190px; font-family:"SF Mono",Menlo,Monaco,Consolas,monospace; font-size:12px; }
+.rg .r .m { width:110px; color:var(--fg2); }
+.rg .r .w { flex:1; font-size:11px; color:var(--fg2); }
+.rg .r.empty { color:var(--fg2); height:30px; }
+.rg.dim { opacity:0.55; }
+.strip { background:var(--card); border:1px solid var(--sep); border-radius:6px; overflow:hidden; }
+.strip .h { display:flex; align-items:center; gap:8px; padding:5px 12px; font-weight:600; min-height:20px; border-bottom:1px solid var(--sep); }
+.strip .h .hint { font-weight:400; font-size:11px; color:var(--fg2); }
+.strip .rows { display:flex; flex-direction:column; }
+.strip .rec { display:flex; align-items:center; gap:8px; height:26px; padding:0 12px; font-size:12px; border-bottom:1px solid var(--sep); }
+.strip .rec:last-child { border-bottom:none; }
+.strip .rec .dom { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.strip .rec .app { color:var(--fg2); font-size:11px; }
+.strip .rec .x { color:var(--fg3); }
+.tester { display:flex; align-items:center; gap:8px; font-size:13px; }
+.tester .tf { width:230px; }
+.res { display:flex; align-items:center; gap:8px; font-size:12px; padding:0 0 0 2px; min-height:20px; white-space:nowrap; }
+.states .res { white-space:normal; }
+.res b { font-weight:600; }
+.res .arrow { color:var(--fg3); }
+.disc { font-size:12px; color:var(--fg2); padding-left:14px; display:flex; flex-direction:column; gap:3px; }
+.disc .ln { display:flex; gap:6px; }
+.spin { width:12px; height:12px; border-radius:50%; border:1.5px solid var(--fg3); border-top-color:var(--fg); flex:none; }
+.states { display:flex; flex-direction:column; gap:10px; width:360px; }
+.states .st { background:var(--card); border-radius:6px; box-shadow:var(--cardsh); padding:6px 10px; display:flex; flex-direction:column; gap:4px; }
+.states .cap { font-size:10px; font-weight:600; color:var(--fg3); text-transform:uppercase; letter-spacing:0.4px; }
+
+/* ---- sheet ---- */
+.scrim { position:absolute; inset:0; background:rgba(0,0,0,0.18); }
+.sheet { position:absolute; left:50%; top:0; transform:translateX(-50%); width:440px; background:var(--win); border-radius:0 0 10px 10px; box-shadow:0 10px 30px rgba(0,0,0,0.3),0 0 0 0.5px rgba(0,0,0,0.2); padding:16px 18px 14px; box-sizing:border-box; display:flex; flex-direction:column; gap:12px; }
+.sheet .h { font-weight:600; font-size:14px; }
+.sheet .frm { display:grid; grid-template-columns:72px 1fr; gap:10px 12px; align-items:start; font-size:13px; }
+.sheet .frm .k { color:var(--fg2); text-align:right; padding-top:3px; }
+.sheet .mem { display:flex; align-items:center; gap:8px; height:26px; padding:0 8px; font-size:12px; }
+.sheet .mem + .mem { border-top:1px solid var(--sep); }
+.sheet .mem .n { font-weight:500; flex:1; }
+.sheet .mem.drag { background:var(--card); box-shadow:0 2px 8px rgba(0,0,0,0.2); border-radius:5px; transform:rotate(-0.6deg); }
+.sheet .pol { display:flex; gap:8px; align-items:flex-start; font-size:12px; }
+.sheet .pol .rd { margin-top:1px; }
+.sheet .pol .x { color:var(--fg2); line-height:15px; }
+.sheet .pol b { display:block; color:var(--fg); font-weight:500; }
+.sheet .ft { display:flex; gap:8px; justify-content:flex-end; }
+.callout { background:var(--card); border-radius:8px; box-shadow:var(--cardsh); padding:8px 12px; display:flex; flex-direction:column; gap:6px; font-size:12px; width:300px; box-sizing:border-box; }
+.t.dark .callout { background:var(--win); box-shadow:0 0 0 0.5px rgba(255,255,255,0.15),0 6px 20px rgba(0,0,0,0.4); }
+.callout .cap { font-size:10px; font-weight:600; color:var(--fg3); text-transform:uppercase; letter-spacing:0.4px; }
+
+/* ---- C8 · Can't reach ---- */
+.lw { width:760px; height:520px; }
+.lw .tb { display:flex; align-items:center; gap:8px; padding:6px 12px; border-bottom:1px solid var(--sep); background:var(--side); }
+.lw .body { flex:1; display:flex; flex-direction:column; gap:10px; padding:10px 12px 12px; min-height:0; }
+.strip.fr .h { color:var(--fg); }
+.strip.fr .cols, .strip.fr .rec { display:grid; grid-template-columns:16px 1fr 70px 44px 128px 48px 62px 100px; gap:8px; align-items:center; padding:0 12px; }
+.strip.fr .cols { height:20px; font-size:10px; font-weight:600; color:var(--fg3); text-transform:uppercase; letter-spacing:0.4px; border-bottom:1px solid var(--sep); background:var(--card2); }
+.strip.fr .cols .c1 { grid-column:1 / 3; }
+.strip.fr .rec { height:26px; font-size:12px; border-bottom:1px solid var(--sep); }
+.strip.fr .rec .c3, .strip.fr .rec .c5, .strip.fr .rec .c6 { color:var(--fg2); font-variant-numeric:tabular-nums; }
+.strip.fr .rec .c3 { font-weight:500; color:var(--fg); }
+.strip.fr .rec .c6 { font-size:11px; }
+.strip.fr .rec .act { display:flex; justify-content:flex-end; align-items:center; gap:6px; }
+.strip.fr .rec.sel { background:rgba(10,96,255,0.12); }
+.strip.fr .rec .badt { color:var(--badt); }
+.log { font-family:"SF Mono",Menlo,Monaco,Consolas,monospace; font-size:11px; line-height:16px; display:flex; flex-direction:column; background:var(--card); border:1px solid var(--sep); border-radius:6px; padding:6px 10px; overflow:hidden; white-space:nowrap; }
+.log .src { display:inline-block; width:64px; color:var(--fg3); }
+.log .lv-e { color:var(--badt); }
+.log .lv-w { color:var(--warnt); }
+.log .lv-i { color:var(--fg2); }
+.log .filt { display:flex; align-items:center; gap:6px; font-family:-apple-system,"SF Pro Text",system-ui,sans-serif; font-size:11px; color:var(--fg2); padding-bottom:4px; margin-bottom:4px; border-bottom:1px solid var(--sep); }
+.pv .trouble { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--badt); padding-left:26px; margin-top:-4px; }
+.pv .trouble .link { margin-left:auto; font-weight:500; }
+
+/* ---- C9 · Connections by exit ---- */
+.lw .tb .seg { margin-right:4px; }
+.strip.cx .cols, .strip.cx .rec { display:grid; grid-template-columns:16px 1fr 96px 72px 72px 150px 118px 22px; gap:8px; align-items:center; padding:0 12px; }
+.strip.cx .cols { height:20px; font-size:10px; font-weight:600; color:var(--fg3); text-transform:uppercase; letter-spacing:0.4px; border-bottom:1px solid var(--sep); background:var(--card2); }
+.strip.cx .cols .c1 { grid-column:1 / 3; }
+.strip.cx .cols .num, .strip.cx .rec .num { text-align:right; }
+.strip.cx .rec { height:30px; font-size:12px; border-bottom:1px solid var(--sep); }
+.strip.cx .rec .n { font-weight:600; display:flex; align-items:center; gap:7px; min-width:0; }
+.strip.cx .rec .n .sub { font-weight:400; color:var(--fg2); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.strip.cx .rec .num { font-variant-numeric:tabular-nums; color:var(--fg2); }
+.strip.cx .rec .num.ok { color:var(--fg); }
+.strip.cx .rec .num.fail { font-weight:500; }
+.strip.cx .rec .num.fail.badt { color:var(--badt); }
+.strip.cx .rec .num.fail.zero { color:var(--fg3); font-weight:400; }
+.strip.cx .rate { display:flex; align-items:center; gap:8px; font-variant-numeric:tabular-nums; font-size:11px; color:var(--fg2); }
+.strip.cx .rate .bar { flex:1; height:5px; border-radius:3px; background:var(--hl); overflow:hidden; }
+.strip.cx .rate .bar i { display:block; height:100%; border-radius:3px; background:var(--ok); }
+.strip.cx .rate.warn .bar i { background:var(--warn); } .strip.cx .rate.warn { color:var(--warnt); }
+.strip.cx .rate.bad .bar i { background:var(--bad); } .strip.cx .rate.bad { color:var(--badt); }
+.strip.cx .rate.none { color:var(--fg3); }
+.strip.cx .rec .last { font-size:11px; color:var(--fg2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.strip.cx .rec .last.badt { color:var(--badt); }
+.strip.cx .rec > .chev { width:14px; height:14px; color:var(--fg3); justify-self:end; }
+.strip.cx .rec.open { background:var(--hl); border-bottom:none; }
+.strip.cx .rec.open > .chev { transform:rotate(90deg); color:var(--fg2); }
+.strip.cx .sub-rows { background:var(--card2); border-bottom:1px solid var(--sep); padding:2px 0 4px; }
+.strip.cx .sub-rows .rec { display:grid; grid-template-columns:16px 1fr 70px 44px 128px 100px; height:24px; padding:0 12px 0 36px; border-bottom:none; font-size:12px; }
+.strip.cx .sub-rows .rec .app { color:var(--fg2); font-size:11px; }
+.strip.cx .sub-rows .rec .tries { font-weight:500; text-align:right; font-variant-numeric:tabular-nums; }
+.strip.cx .sub-rows .rec .ago { font-size:11px; color:var(--fg2); text-align:right; }
+.strip.cx .sub-rows .rec .act { display:flex; justify-content:flex-end; gap:6px; }
+.strip.cx .tot { display:grid; grid-template-columns:16px 1fr 96px 72px 72px 150px 118px 22px; gap:8px; align-items:center; padding:0 12px; height:26px; font-size:11px; color:var(--fg2); background:var(--card2); border-top:1px solid var(--sep); }
+.strip.cx .tot .c1 { grid-column:1 / 3; font-weight:600; color:var(--fg); }
+.strip.cx .tot .num { text-align:right; font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+<style>
+/* ---- borrowed from first-run.html ---- */
+.pv .hd .tt { font-weight:600; font-size:13px; flex:1; }
+.gnote { font-size:11px; color:var(--fg2); line-height:14px; }
+.sites { display:flex; flex-wrap:wrap; gap:6px; padding:6px; border:1px solid var(--fieldb); border-radius:6px; background:var(--field); min-height:30px; align-items:center; box-sizing:border-box; }
+.sites.focus { border-color:transparent; box-shadow:0 0 0 3.5px rgba(10,96,255,0.35),0 0 0 1px var(--acc); }
+.stok { font-size:12px; padding:2px 6px 2px 8px; border-radius:5px; background:rgba(10,96,255,0.12); display:inline-flex; gap:5px; align-items:center; white-space:nowrap; }
+.stok small { color:var(--fg2); font-size:11px; }
+.stok .x { color:var(--fg3); }
+.sites .ph { font-size:12px; color:var(--fg3); padding-left:2px; }
+.gs { background:var(--card); border-radius:8px; box-shadow:var(--cardsh); padding:8px 10px 9px; display:flex; flex-direction:column; gap:7px; }
+.gs .gsh { display:flex; align-items:center; gap:6px; font-size:11px; font-weight:600; color:var(--fg2); }
+.gs .gsh .x { margin-left:auto; color:var(--fg3); font-weight:400; font-size:13px; }
+.gs .it { display:flex; gap:8px; align-items:flex-start; font-size:12px; }
+.gs .ck { width:14px; height:14px; border-radius:50%; box-shadow:0 0 0 1.2px var(--fg3) inset; flex:none; margin-top:1px; display:flex; align-items:center; justify-content:center; }
+.gs .ck.on { background:var(--ok); box-shadow:none; }
+.gs .ck svg { width:9px; height:9px; }
+.gs .tx { flex:1; min-width:0; }
+.gs .tx b { display:block; font-weight:500; }
+.gs .tx span { font-size:11px; color:var(--fg2); line-height:14px; }
+.gs .it.done b { color:var(--fg2); font-weight:400; }
+.gs .it .link { font-size:11px; white-space:nowrap; margin-top:1px; }
+.gs .ck.on, .okl .ic { color:#fff; }
+/* ---- rule lists (this prototype only) ---- */
+.cb.on { color:#fff; }
+.pop .d { width:8px; height:8px; }
+.pop .mem { color:var(--fg2); font-size:12px; }
+.pop.sm { height:18px; font-size:12px; gap:5px; }
+.pop.sm .chev { width:14px; height:14px; }
+.lists { display:flex; flex-direction:column; gap:6px; }
+.lst { background:var(--card); border:1px solid var(--sep); border-radius:6px; overflow:hidden; }
+.lst.dim .lh > :not(.sw) { opacity:0.5; }
+.lh { display:flex; align-items:center; gap:8px; min-height:34px; padding:0 10px 0 6px; }
+.lh .tw { width:14px; height:14px; color:var(--fg3); flex:none; }
+.lst.open .lh .tw { transform:rotate(90deg); color:var(--fg2); }
+.lst.open .lh { border-bottom:1px solid var(--sep); background:var(--card2); }
+.lic { width:18px; height:18px; border-radius:5px; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:#fff; flex:none; }
+.lh .nm { font-weight:600; white-space:nowrap; }
+.lh .sum { flex:1; min-width:0; color:var(--fg2); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lh .cnt { font-size:11px; color:var(--fg3); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.lst .r { padding-left:34px !important; }
+.lst .r .p { width:200px; }
+.lst .r .m { width:104px; }
+.lst .add { display:flex; align-items:center; gap:8px; height:30px; padding:0 12px 0 34px; font-size:12px; border-top:1px solid var(--sep); }
+.lst .add .tf { flex:1; height:20px; font-size:12px; }
+.ev { display:flex; align-items:center; gap:8px; padding:6px 10px; background:var(--card); border:1px solid var(--sep); border-radius:6px; font-size:12px; }
+.ev b { font-weight:600; font-size:13px; }
+.ev .hint { color:var(--fg2); flex:1; }
+.own { font-size:11px; padding:1px 7px; border-radius:9px; box-shadow:0 0 0 1px var(--line) inset; color:var(--fg2); white-space:nowrap; display:inline-flex; gap:4px; align-items:center; }
+.menu { background:var(--card); border-radius:7px; box-shadow:0 0 0 0.5px rgba(0,0,0,0.2),0 8px 24px rgba(0,0,0,0.22); padding:5px; font-size:13px; display:flex; flex-direction:column; width:270px; box-sizing:border-box; }
+.t.dark .menu { background:#323234; box-shadow:0 0 0 0.5px rgba(255,255,255,0.15),0 8px 24px rgba(0,0,0,0.5); }
+.mi { display:flex; align-items:center; gap:7px; padding:3px 8px; border-radius:4px; min-height:18px; white-space:nowrap; }
+.mi .ck { width:12px; font-weight:600; flex:none; }
+.mi .sub { margin-left:auto; color:var(--fg2); font-size:11px; }
+.mi.sel { background:var(--acc); color:#fff; } .mi.sel .sub, .mi.sel .lat { color:rgba(255,255,255,0.85); }
+.mi .lat { font-weight:400; font-size:11px; }
+.mi.off { color:var(--fg3); }
+.msh { font-size:11px; font-weight:600; color:var(--fg2); padding:5px 8px 2px; }
+.msep { height:1px; background:var(--sep); margin:4px 6px; }
+.toast { display:flex; align-items:center; gap:10px; background:rgba(30,30,32,0.94); color:#fff; border-radius:8px; padding:7px 12px; font-size:12px; box-shadow:0 6px 18px rgba(0,0,0,0.3); white-space:nowrap; }
+.toast b { font-weight:600; }
+.toast .u { color:#6aa3ff; font-weight:500; margin-left:6px; }
+.pv .lrow { display:flex; align-items:center; gap:8px; min-height:26px; padding:0 4px 0 6px; font-size:12px; }
+.pv .lrow .nm { font-weight:500; flex:1; }
+.pv .lrow.dim .nm, .pv .lrow.dim .lic { opacity:0.45; }
+.pv .lrow .paused { font-size:11px; color:var(--fg3); }
+.sres .r .lsn { display:inline-flex; align-items:center; gap:5px; font-size:11px; color:var(--fg2); width:120px; }
+.sres .r .lsn .lic { width:14px; height:14px; font-size:8px; border-radius:4px; }
+.mark { background:rgba(255,204,0,0.35); border-radius:2px; }
+.cmp { display:grid; grid-template-columns:1fr 1fr; gap:14px; width:100%; }
+.cmp .callout { width:auto; }
+.drag { box-shadow:0 4px 14px rgba(0,0,0,0.22); transform:rotate(-0.8deg); background:var(--card); border-radius:5px; }
+.drop-on { box-shadow:0 0 0 2px var(--acc) inset; background:rgba(10,96,255,0.06) !important; }
+</style>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="logo" viewBox="0 0 18 18"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 16V9.5M9 9.5L4 3.5M9 9.5L14 3.5"/><circle cx="4" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="14" cy="3.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="9" cy="16" r="1.9" fill="currentColor" stroke="none"/></g></symbol>
+  <symbol id="chk" viewBox="0 0 24 24"><path d="M5 12l5 5 9-9" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="updown" viewBox="0 0 24 24"><path d="M7 10l5-5 5 5M7 14l5 5 5-5" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="tw" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="srch" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></g></symbol>
+  <symbol id="clock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></g></symbol>
+  <symbol id="globe" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></g></symbol>
+  <symbol id="pin" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v4M8 3h8l-1 6 3 4H6l3-4z"/></g></symbol>
+</svg>
+
+<h1>Wayfork UI prototype — rule lists</h1>
+<div class="intro">A redraw of <b>Settings › Rules</b>. Today the page has one section per tunnel and per group, empty ones included, and moving “everything for Claude” to another exit means editing four rules one by one. Here the user groups rules by <i>what they are for</i> into <b>lists</b> (Claude, Telegram, Banks…), and each list has <b>one Route via menu</b>. Change it once and every site and app in the list moves. The same menu sits in the popover, so switching a list does not need Settings. Drawn in the <b>variant C</b> style (same tokens, window 720 px, popover 360 px, no scripts). Decisions and open questions are at the bottom.</div>
+<ol class="toc">
+<li><a href="#R1">R1 · Settings › Rules — lists, one expanded</a></li>
+<li><a href="#R2">R2 · Switching a list: the Route via menu, then the toast</a></li>
+<li><a href="#R3">R3 · Popover — lists under the tunnels, switchable in place</a></li>
+<li><a href="#R4">R4 · New list sheet</a></li>
+<li><a href="#R5">R5 · Moving rules, search, a rule with its own exit</a></li>
+<li><a href="#R6">R6 · Before and after, on the maintainer's real setup</a></li>
+</ol>
+
+<!-- ============================ R1 ============================ -->
+<section id="R1" class="board"><h2>R1 · Settings › Rules — lists, one expanded (light)</h2>
+<div class="bd" style="width:780px">
+<div class="t"><div class="win" style="height:640px">
+  <div class="titlebar"><div class="tl"><span style="background:#ff5f57"></span><span style="background:#febc2e"></span><span style="background:#28c840"></span></div><div class="title">Wayfork Settings</div></div>
+  <div class="content">
+    <div class="side">
+      <div class="sitem"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18" cy="17" r="2.5" fill="var(--acc)" stroke="none"/></svg><span>Tunnels</span></div>
+      <div class="sitem on"><svg viewBox="0 0 24 24"><path d="M4 6h5M13 6h7M4 12h11M19 12h1M4 18h3M11 18h9"/><circle cx="11" cy="6" r="2"/><circle cx="17" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg><span>Rules</span></div>
+      <div class="sitem"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/></svg><span>General</span></div>
+    </div>
+    <div class="main" style="gap:8px">
+      <div class="phd"><div class="ph1">Rules</div><div class="tf ph round" style="width:170px"><svg class="icn sm" style="color:var(--fg3)"><use href="#srch"/></svg>Search sites and apps</div><div class="btn"><svg class="icn sm"><use href="#plus"/></svg>New list</div></div>
+
+      <div class="ev"><svg class="icn" style="color:var(--fg2)"><use href="#globe"/></svg><b>Everything else</b><span class="hint">sites and apps that are in no list</span><div class="pop"><span class="d ok"></span><span>Direct</span><span class="chev"><svg><use href="#updown"/></svg></span></div></div>
+
+      <div class="strip"><div class="h" style="border-bottom:none"><svg class="icn sm" style="color:var(--fg2)"><use href="#clock"/></svg><span>Recent</span><span class="hint">5 sites went direct in the last 5 min — add them to a list</span><span style="flex:1"></span><a href="#" class="link" style="font-weight:400;font-size:12px">Show</a></div></div>
+
+      <div class="lists">
+        <!-- Claude, open -->
+        <div class="lst rg open">
+          <div class="lh"><svg class="tw"><use href="#tw"/></svg><span class="lic" style="background:#d97757">C</span><span class="nm">Claude</span><span class="sum"></span><span class="cnt">3 sites · 1 app</span>
+            <div class="pop"><span class="d grp"></span><span>Germany</span><span class="mem">de-vision</span><span class="chev"><svg><use href="#updown"/></svg></span></div><div class="sw on"><i></i></div></div>
+          <div class="r"><div class="cb on"><svg><use href="#chk"/></svg></div><span class="p">claude.ai</span><span class="m">and subdomains</span><span class="w"></span><span class="grip">⠿</span></div>
+          <div class="r"><div class="cb on"><svg><use href="#chk"/></svg></div><span class="p">claude.com</span><span class="m">and subdomains</span><span class="w"></span><span class="grip">⠿</span></div>
+          <div class="r"><div class="cb on"><svg><use href="#chk"/></svg></div><span class="p">anthropic.com</span><span class="m">and subdomains</span><span class="w"></span><span class="grip">⠿</span></div>
+          <div class="r"><div class="cb on"><svg><use href="#chk"/></svg></div><span class="p" style="display:flex;align-items:center;gap:6px;font-family:inherit"><span class="ai" style="background:#1e1e1e">&gt;_</span>Terminal</span><span class="m">the app</span><span class="w"><span class="sec">TCP + UDP</span></span><span class="grip">⠿</span></div>
+          <div class="add"><svg class="icn sm" style="color:var(--fg3)"><use href="#plus"/></svg><div class="tf ph">Add a site, an app or an address range to Claude</div><div class="btn">Choose App…</div></div>
+        </div>
+        <!-- collapsed lists -->
+        <div class="lst">
+          <div class="lh"><svg class="tw"><use href="#tw"/></svg><span class="lic" style="background:#2aa3e0">T</span><span class="nm">Telegram</span><span class="sum">Telegram app, telegram.org, t.me, 149.154.160.0/20</span><span class="cnt">4</span>
+            <div class="pop"><span class="d grp"></span><span>Netherlands</span><span class="mem">ned</span><span class="chev"><svg><use href="#updown"/></svg></span></div><div class="sw on"><i></i></div></div>
+        </div>
+        <div class="lst">
+          <div class="lh"><svg class="tw"><use href="#tw"/></svg><span class="lic" style="background:#e5484d">Y</span><span class="nm">Video</span><span class="sum">youtube.com, googlevideo.com, ytimg.com</span><span class="cnt">3</span>
+            <div class="pop"><span class="d grp"></span><span>USA</span><span class="mem">us-vision</span><span class="chev"><svg><use href="#updown"/></svg></span></div><div class="sw on"><i></i></div></div>
+        </div>
+        <div class="lst">
+          <div class="lh"><svg class="tw"><use href="#tw"/></svg><span class="lic" style="background:#30a46c">B</span><span class="nm">Banks</span><span class="sum">bank.example, gosuslugi.ru, 2 more</span><span class="cnt">4</span>
+            <div class="pop"><span class="d off"></span><span>Direct</span><span class="chev"><svg><use href="#updown"/></svg></span></div><div class="sw on"><i></i></div></div>
+        </div>
+        <div class="lst">
+          <div class="lh"><svg class="tw"><use href="#tw"/></svg><span class="lic" style="background:#6e56cf">W</span><span class="nm">Work</span><span class="sum badt">Office can't connect — these 6 sites wait</span><span class="cnt">6</span>
+            <div class="pop"><span class="d bad"></span><span>Office</span><span class="chev"><svg><use href="#updown"/></svg></span></div><div class="sw on"><i></i></div></div>
+        </div>
+        <div class="lst dim">
+          <div class="lh"><svg class="tw"><use href="#tw"/></svg><span class="lic" style="background:#8e8e93">G</span><span class="nm">Games</span><span class="sum">paused — other lists, then Everything else</span><span class="cnt">2</span>
+            <div class="pop"><span class="d grp"></span><span>Germany</span><span class="chev"><svg><use href="#updown"/></svg></span></div><div class="sw"><i></i></div></div>
+        </div>
+      </div>
+      <div class="note" style="padding-left:2px">Lists are checked top to bottom; drag a list by its header to reorder. A list routed <i>Direct</i> always wins, as <i>Not via any tunnel</i> does today.</div>
+    </div>
+  </div>
+</div></div>
+<div class="note"><b>One section per list, not per exit.</b> Tunnels and groups no rule uses no longer show up as empty sections; they live on the Tunnels page. The list header carries everything that matters at a glance: what is in it (summary when collapsed), how many, where it goes right now (the group and the member in use), and a switch to pause the whole list. <b>Everything else</b> replaces the <i>Default</i> badge hidden on one tunnel's header: one line at the top, one menu. Recent collapses to its header and offers <i>add to a list</i> instead of <i>route via a tunnel</i>. The window is drawn 160 px taller than 480; the real one scrolls.</div>
+</div></section>
+
+<!-- ============================ R2 ============================ -->
+<section id="R2" class="board"><h2>R2 · Switching a list: the Route via menu, then the toast</h2>
+<div class="bd" style="width:900px">
+<div style="display:flex;gap:24px;align-items:flex-start">
+  <div class="callout" style="width:330px"><div class="cap">Claude's header, menu open · light</div>
+    <div class="t" style="margin:0 -12px"><div class="lst" style="border-radius:0;border-left:none;border-right:none"><div class="lh"><svg class="tw"><use href="#tw"/></svg><span class="lic" style="background:#d97757">C</span><span class="nm">Claude</span><span style="flex:1"></span><div class="pop"><span class="d grp"></span><span>Germany</span><span class="mem">de-vision</span><span class="chev"><svg><use href="#updown"/></svg></span></div></div></div></div>
+    <div class="t" style="align-self:flex-end"><div class="menu">
+      <div class="msh">Groups</div>
+      <div class="mi sel"><span class="ck">✓</span><span class="d grp" style="background:#fff"></span>Germany<span class="sub">de-vision · <span class="lat">48 ms</span></span></div>
+      <div class="mi"><span class="ck"></span><span class="d grp"></span>Singapore<span class="sub">sg-trojan · <span class="lat ok">212 ms</span></span></div>
+      <div class="mi"><span class="ck"></span><span class="d grp"></span>USA<span class="sub">us-vision · <span class="lat ok">131 ms</span></span></div>
+      <div class="mi"><span class="ck"></span><span class="d grp"></span>Netherlands<span class="sub">ned · <span class="lat ok">57 ms</span></span></div>
+      <div class="msep"></div>
+      <div class="msh">Tunnels</div>
+      <div class="mi"><span class="ck"></span><span class="d ok"></span>de-vision<span class="sub">48 ms</span></div>
+      <div class="mi"><span class="ck"></span><span class="d ok"></span>de-xhttp<span class="sub">63 ms</span></div>
+      <div class="mi"><span class="ck"></span><span class="d ok"></span>sg-trojan<span class="sub">212 ms</span></div>
+      <div class="mi off"><span class="ck"></span><span class="d bad"></span>Office<span class="sub">can't connect</span></div>
+      <div class="mi"><span class="ck"></span><span style="width:9px"></span>5 more…</div>
+      <div class="msep"></div>
+      <div class="mi"><span class="ck"></span><span class="d off"></span>Direct<span class="sub">not via any tunnel</span></div>
+      <div class="mi"><span class="ck"></span><svg class="icn sm" style="color:var(--fg2)"><use href="#globe"/></svg>Same as Everything else</div>
+    </div></div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:16px;width:500px">
+    <div class="callout" style="width:100%"><div class="cap">Right after picking Singapore — toast at the bottom of the window</div>
+      <div class="t" style="margin:0 -12px"><div class="lst" style="border-radius:0;border-left:none;border-right:none"><div class="lh"><svg class="tw"><use href="#tw"/></svg><span class="lic" style="background:#d97757">C</span><span class="nm">Claude</span><span class="sum">claude.ai, claude.com, anthropic.com, Terminal</span><div class="pop"><span class="d grp"></span><span>Singapore</span><span class="mem">sg-trojan</span><span class="chev"><svg><use href="#updown"/></svg></span></div><div class="sw on"><i></i></div></div></div></div>
+      <div class="toast" style="align-self:center"><span>Claude now goes via <b>Singapore</b> — 3 sites, 1 app</span><span class="u">Undo</span></div>
+      <div class="hint" style="font-size:11px;color:var(--fg2);line-height:14px">One selection, one apply. Route and DNS changes may restart the routing engine; existing connections can be interrupted. Undo restores the old binding for 10 s unless it has since changed.</div>
+    </div>
+    <div class="callout" style="width:100%"><div class="cap">Same header · dark, the list follows Everything else</div>
+      <div class="t dark" style="margin:0 -12px"><div class="lst" style="border-radius:0;border-left:none;border-right:none"><div class="lh"><svg class="tw"><use href="#tw"/></svg><span class="lic" style="background:#d97757">C</span><span class="nm">Claude</span><span class="sum">claude.ai, claude.com, anthropic.com, Terminal</span><div class="pop"><svg class="icn sm" style="color:var(--fg2)"><use href="#globe"/></svg><span>Everything else</span><span class="mem">Direct</span><span class="chev"><svg><use href="#updown"/></svg></span></div><div class="sw on"><i></i></div></div></div></div>
+      <div class="hint" style="font-size:11px;color:var(--fg2);line-height:14px"><i>Same as Everything else</i> keeps the list (and its order) but sends it wherever the top line points. Useful for a list you switch back and forth: no need to empty it.</div>
+    </div>
+  </div>
+</div>
+<div class="note"><b>The menu is the one people already know</b> from the rule rows and the popover, ordered groups → tunnels → Direct, each with the member in use and its latency, so the pick is made by numbers, not by guess. Tunnels that are off or failing are greyed but still pickable. Disabled or unconfigured exits are skipped; a configured exit that is down still fails, as rules do today. Long tunnel lists fold into <i>N more…</i>: group members are usually reached through their group.</div>
+</div></section>
+
+<!-- ============================ R3 ============================ -->
+<section id="R3" class="board"><h2>R3 · Popover — lists under the tunnels, switchable in place (light and dark)</h2>
+<div class="bd" style="width:820px">
+<div style="display:flex;gap:30px;align-items:flex-start">
+  <div class="t"><div class="pv">
+    <div class="hd"><svg style="width:18px;height:18px;color:var(--acc)"><use href="#logo"/></svg><span class="tt">Wayfork</span><div class="sw on"><i></i></div></div>
+    <div class="sub">On · 4 lists via 3 exits, everything else direct</div>
+    <div class="sep"></div>
+    <div class="sh">Tunnels<span class="r">3 of 4 up</span></div>
+    <div class="card"><div class="l1"><span class="d grp"></span><span class="n">Germany</span><span class="fill"></span><span class="lat ok">48<small>ms</small></span></div><div class="l2">Using <b>de-vision</b> · Claude</div></div>
+    <div class="card"><div class="l1"><span class="d grp"></span><span class="n">Netherlands</span><span class="fill"></span><span class="lat ok">57<small>ms</small></span></div><div class="l2">Using <b>ned</b> · Telegram</div></div>
+    <div class="card"><div class="l1"><span class="d bad"></span><span class="n">Office</span><span class="fill"></span><span class="lat none">—</span></div><div class="l2 badt">Can't connect · Work waits</div></div>
+    <div class="sh" style="padding-top:4px">Lists<span class="r"><a class="link" href="#">Edit…</a></span></div>
+    <div class="lrow"><span class="lic" style="background:#d97757">C</span><span class="nm">Claude</span><div class="pop sm"><span class="d grp"></span><span>Germany</span><span class="chev"><svg><use href="#updown"/></svg></span></div></div>
+    <div class="lrow"><span class="lic" style="background:#2aa3e0">T</span><span class="nm">Telegram</span><div class="pop sm"><span class="d grp"></span><span>Netherlands</span><span class="chev"><svg><use href="#updown"/></svg></span></div></div>
+    <div class="lrow"><span class="lic" style="background:#e5484d">Y</span><span class="nm">Video</span><div class="pop sm"><span class="d grp"></span><span>USA</span><span class="chev"><svg><use href="#updown"/></svg></span></div></div>
+    <div class="lrow"><span class="lic" style="background:#6e56cf">W</span><span class="nm">Work</span><div class="pop sm"><span class="d bad"></span><span>Office</span><span class="chev"><svg><use href="#updown"/></svg></span></div></div>
+    <div class="lrow dim"><span class="lic" style="background:#8e8e93">G</span><span class="nm">Games</span><span class="paused">paused</span><div class="sw"><i></i></div></div>
+    <div class="sep"></div>
+    <div class="ft"><span>Settings…</span><span>Logs</span><span class="q">Quit</span></div>
+  </div></div>
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <div class="t dark"><div class="pv" style="width:300px">
+      <div class="sh">Lists<span class="r"><a class="link" href="#">Edit…</a></span></div>
+      <div class="lrow"><span class="lic" style="background:#d97757">C</span><span class="nm">Claude</span><div class="pop sm"><span class="d grp"></span><span>Singapore</span><span class="chev"><svg><use href="#updown"/></svg></span></div></div>
+      <div class="lrow"><span class="lic" style="background:#2aa3e0">T</span><span class="nm">Telegram</span><div class="pop sm"><span class="d grp"></span><span>Netherlands</span><span class="chev"><svg><use href="#updown"/></svg></span></div></div>
+      <div class="toast" style="background:rgba(255,255,255,0.12)"><span>Claude → <b>Singapore</b></span><span class="u">Undo</span></div>
+    </div></div>
+    <div class="callout" style="width:300px"><div class="cap">Which lists show here</div>
+      <span>All of them, up to six; with more, the ones switched most recently, then <i>N more in Settings</i>. A list can be pinned in or hidden from its menu in Settings (<i>Show in menu bar</i>). Banks is hidden here: nobody switches Direct lists.</span>
+    </div>
+  </div>
+</div>
+<div class="note"><b>“Switch a group straight to another tunnel”</b>: this is where it happens day to day. The list row is name + the same Route via menu as in Settings, nothing to expand. Tunnel cards gain one word: which lists use them (<i>· Claude</i>), so the user sees the link from both ends. Switching from here shows the same toast with Undo inside the popover.</div>
+</div></section>
+
+<!-- ============================ R4 ============================ -->
+<section id="R4" class="board"><h2>R4 · New list sheet — name, exit, what goes in</h2>
+<div class="bd" style="width:780px">
+<div class="t"><div class="win" style="height:470px">
+  <div class="titlebar"><div class="tl"><span style="background:#ff5f57"></span><span style="background:#febc2e"></span><span style="background:#28c840"></span></div><div class="title">Wayfork Settings</div></div>
+  <div class="content">
+    <div class="side">
+      <div class="sitem"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18" cy="17" r="2.5" fill="var(--acc)" stroke="none"/></svg><span>Tunnels</span></div>
+      <div class="sitem on"><svg viewBox="0 0 24 24"><path d="M4 6h5M13 6h7M4 12h11M19 12h1M4 18h3M11 18h9"/><circle cx="11" cy="6" r="2"/><circle cx="17" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg><span>Rules</span></div>
+      <div class="sitem"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/></svg><span>General</span></div>
+    </div>
+    <div class="main"><div class="phd"><div class="ph1">Rules</div></div></div>
+  </div>
+  <div class="scrim"></div>
+  <div class="sheet" style="width:470px">
+    <div class="h">New list</div>
+    <div class="frm" style="grid-template-columns:84px 1fr">
+      <span class="k">Name</span><div style="display:flex;gap:8px;align-items:center"><span class="lic" style="background:#f76b15;width:22px;height:22px">N</span><div class="tf focus" style="flex:1">Notion</div></div>
+      <span class="k">Route via</span><div style="display:flex;flex-direction:column;gap:4px"><div class="pop" style="align-self:flex-start"><span class="d grp"></span><span>Germany</span><span class="mem">de-vision</span><span class="chev"><svg><use href="#updown"/></svg></span></div><span class="gnote">Change it later in one click, here or from the menu bar.</span></div>
+      <span class="k">Sites and apps</span><div style="display:flex;flex-direction:column;gap:6px">
+        <div class="sites focus" style="width:100%"><span class="stok">notion.so <small>and subdomains</small><span class="x">×</span></span><span class="stok">notion.site <small>and subdomains</small><span class="x">×</span></span><span class="stok"><span class="ai" style="background:#111;width:13px;height:13px;font-size:8px">N</span>Notion <small>the app</small><span class="x">×</span></span><span class="ph">Type a site, drop an app</span></div>
+        <div class="gs" style="padding:6px 8px;gap:4px;box-shadow:0 0 0 1px var(--sep)">
+          <div class="gsh">From Recent — went direct in the last hour</div>
+          <div class="it" style="align-items:center"><div class="cb on"><svg><use href="#chk"/></svg></div><span style="flex:1">msgstore.www.notion.so</span><span class="sec" style="font-size:11px">Notion</span></div>
+          <div class="it" style="align-items:center"><div class="cb"></div><span style="flex:1">img.notionusercontent.com</span><span class="sec" style="font-size:11px">Notion</span></div>
+          <div class="it" style="align-items:center"><div class="cb"></div><span style="flex:1">api.segment.io</span><span class="sec" style="font-size:11px">Notion</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="ft"><span class="gnote" style="margin-right:auto;align-self:center">Goes to the top of the list order</span><div class="btn">Cancel</div><div class="btn pri">Create</div></div>
+  </div>
+</div></div>
+<div class="note"><b>Three fields, all on one sheet.</b> The token field is the one from the first-run guide (F22 step 4), and it also takes apps (drop from Finder or <i>Choose App…</i>). Recent offers what the named app actually connected to, which is how people find the second and third domain a service needs (<span class="mono">img.notionusercontent.com</span>). Nothing is preset: no bundled “Notion list” to maintain. The icon is the first letter on a color picked from the name; click it to change the color.</div>
+</div></section>
+
+<!-- ============================ R5 ============================ -->
+<section id="R5" class="board"><h2>R5 · Moving rules, search across lists, a rule with its own exit</h2>
+<div class="bd" style="width:1120px">
+<div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
+  <div class="callout" style="width:350px"><div class="cap">Drag a row onto another list's header</div>
+    <div class="t" style="margin:0 -12px;display:flex;flex-direction:column;gap:4px;padding:0 8px">
+      <div class="lst rg open"><div class="lh"><svg class="tw"><use href="#tw"/></svg><span class="lic" style="background:#2aa3e0">T</span><span class="nm">Telegram</span><span style="flex:1"></span><span class="cnt">4</span></div>
+        <div class="r"><div class="cb on"><svg><use href="#chk"/></svg></div><span class="p" style="width:120px">telegram.org</span><span class="m" style="width:auto">and subdomains</span></div>
+        <div class="r" style="opacity:0.35"><div class="cb on"><svg><use href="#chk"/></svg></div><span class="p" style="width:120px">web.whatsapp.com</span><span class="m" style="width:auto">exactly this</span></div>
+      </div>
+      <div class="r drag" style="display:flex;align-items:center;gap:10px;height:26px;padding:0 12px;font-size:12px;margin:-2px 30px -2px 40px"><div class="cb on"><svg><use href="#chk"/></svg></div><span class="mono">web.whatsapp.com</span></div>
+      <div class="lst drop-on"><div class="lh"><svg class="tw"><use href="#tw"/></svg><span class="lic" style="background:#25d366">W</span><span class="nm">WhatsApp</span><span style="flex:1"></span><span class="cnt">2 → 3</span></div></div>
+    </div>
+    <span style="color:var(--fg2);font-size:11px">Or right-click › <b>Move to list ›</b>. Several rows can be selected (⌘-click) and moved at once.</span>
+  </div>
+
+  <div class="callout" style="width:360px"><div class="cap">Search: “anthro” — rows from every list, flat</div>
+    <div class="t" style="margin:0 -12px;padding:0 8px;display:flex;flex-direction:column;gap:6px">
+      <div class="tf round focus" style="width:100%"><svg class="icn sm" style="color:var(--fg3)"><use href="#srch"/></svg>anthro</div>
+      <div class="group rg sres">
+        <div class="r"><span class="p" style="width:150px"><span class="mark">anthro</span>pic.com</span><span class="m" style="width:auto;flex:1">and subdomains</span><span class="lsn"><span class="lic" style="background:#d97757">C</span>Claude → Germany</span></div>
+        <div class="r"><span class="p" style="width:150px">api.<span class="mark">anthro</span>pic.com</span><span class="m" style="width:auto;flex:1">exactly this</span><span class="lsn"><span class="lic" style="background:#8e8e93">O</span>Old rules → Direct</span></div>
+        <div class="r" style="height:auto;padding:4px 12px"><span class="chip warn" style="white-space:normal">api.anthropic.com goes Direct: Old rules is checked before Claude</span></div>
+      </div>
+    </div>
+    <span style="color:var(--fg2);font-size:11px">Answers “where does X go and why” without opening every list. The shadowed chip names the list that wins.</span>
+  </div>
+
+  <div class="callout" style="width:330px"><div class="cap">A rule that keeps its own exit</div>
+    <div class="t" style="margin:0 -12px;padding:0 8px">
+      <div class="lst rg open"><div class="lh"><svg class="tw"><use href="#tw"/></svg><span class="lic" style="background:#5865f2">D</span><span class="nm">Discord</span><span style="flex:1"></span><div class="pop sm"><span class="d grp"></span><span>Germany</span><span class="chev"><svg><use href="#updown"/></svg></span></div></div>
+        <div class="r"><div class="cb on"><svg><use href="#chk"/></svg></div><span class="p" style="display:flex;align-items:center;gap:6px;font-family:inherit;width:auto"><span class="ai" style="background:#5865f2">D</span>Discord</span><span class="sec" style="font-size:11px">TCP only</span><span style="flex:1"></span></div>
+        <div class="r"><div class="cb on"><svg><use href="#chk"/></svg></div><span class="p" style="display:flex;align-items:center;gap:6px;font-family:inherit;width:auto"><span class="ai" style="background:#5865f2">D</span>Discord</span><span class="sec" style="font-size:11px">UDP only</span><span style="flex:1"></span><span class="own"><svg class="icn sm" style="width:10px;height:10px"><use href="#pin"/></svg>Direct</span></div>
+      </div>
+    </div>
+    <span style="color:var(--fg2);font-size:11px">F23's case (calls direct, the rest through a tunnel) stays in one list: a row may pin its own exit (right-click › <b>Route this one via ›</b>). The pin is outlined so it reads as an exception; switching the list leaves it alone.</span>
+  </div>
+</div>
+</div></section>
+
+<!-- ============================ R6 ============================ -->
+<section id="R6" class="board"><h2>R6 · Before and after, on the maintainer's setup (4 groups, 9 single tunnels)</h2>
+<div class="bd" style="width:900px">
+<div class="cmp">
+  <div class="callout"><div class="cap">Today — sections per exit</div>
+    <span>11 sections on the page, 7 of them <i>No sites yet</i> (every group member is listed). The Claude rules sit under <i>germ 5.2</i> mixed with <i>ip.net.coffee</i>; moving them from singapure meant editing each row, one apply per edit (three applies in six seconds in the log on 2026-11-03). The default exit is a <i>Default</i> badge on one header.</span>
+  </div>
+  <div class="callout"><div class="cap">With lists</div>
+    <span>4 lists (Claude, Telegram, IP check, Old rules) and the Everything else line. Tunnels without rules are not on this page. Moving Claude is one menu pick and one apply, from Settings or the popover. Existing rules are converted once into exit-named lists. Preserving existing TCP/UDP priority can require separate narrowed and broad lists per exit. Previously inactive rows remain intact in paused lists for review.</span>
+  </div>
+</div>
+</div></section>
+
+<section class="board"><h2>Decisions drawn here and open questions</h2>
+<div class="intro" style="max-width:860px">
+<ol style="padding-left:18px;margin:0;display:flex;flex-direction:column;gap:6px">
+<li><b>Name: “list”</b>, not “rule group”: <i>group</i> already means a set of tunnels with failover (F16), and two kinds of group on one page would confuse. Alternatives: <i>set</i>, <i>service</i>, <i>profile</i>.</li>
+<li><b>Every rule belongs to exactly one list.</b> A rule's exit = the list's exit unless the row pins its own (R5). No free-standing rules; adding a site from Recent or the popover asks for a list (default: the last one used).</li>
+<li><b>Order</b>: lists routed Direct first (exceptions win, as today), then lists in the user's order, rows in list order. The shadowed check works across lists and names the winner.</li>
+<li><b>Paused list</b> (switch off) = all its rules, including pins, are skipped; lower lists may match before Everything else. Same as unticking every row, but reversible in one click.</li>
+<li><b>Everything else</b> is the old <span class="mono">defaultTunnelID</span>, moved to its own line. A list can point at it (“Same as Everything else”).</li>
+<li><b>Migration</b>: exit-named lists in legacy priority order, splitting narrowed and broad rows when needed to preserve routing. Previously suppressed rows stay in visible paused lists; they can be enabled after review. Generated plan hashes can change; compatibility is checked by routing and DNS outcomes.</li>
+<li><b>wayforkctl</b>: <span class="mono">lists</span>, <span class="mono">lists set &lt;list&gt; --via &lt;exit&gt;</span> with the usual 60 s auto-revert; <span class="mono">rules add … --list &lt;list&gt;</span>.</li>
+</ol>
+<p style="margin:12px 0 4px"><b>Open</b></p>
+<ul style="padding-left:18px;margin:0;display:flex;flex-direction:column;gap:4px">
+<li>Should the popover show lists at all when there is only one? Draft: hide the section with fewer than two lists.</li>
+<li>Export/import of a single list (share “Claude” with a colleague without the tunnels). Cheap with this model; not drawn.</li>
+<li>Windows client: the same model, Fluent UI <i>Expander</i> per list. Design deltas go to <span class="mono">08-windows.md</span> after the macOS version is agreed.</li>
+</ul>
+</div></section>
+</body>
+</html>

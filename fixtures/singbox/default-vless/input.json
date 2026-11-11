@@ -8,58 +8,81 @@
   },
   "store" : {
     "defaultTunnelID" : "00000000-0000-4000-8000-000000000002",
-    "rules" : [
+    "lists" : [
+      {
+        "id" : "00000000-0000-4000-8000-000000000104",
+        "isEnabled" : true,
+        "name" : "Direct",
+        "showInMenu" : true,
+        "target" : "direct"
+      },
       {
         "id" : "00000000-0000-4000-8000-000000000100",
         "isEnabled" : true,
-        "match" : "suffix",
-        "pattern" : "example.com",
-        "tunnelID" : "00000000-0000-4000-8000-000000000001"
-      },
-      {
-        "id" : "00000000-0000-4000-8000-000000000101",
-        "isEnabled" : true,
-        "match" : "exact",
-        "pattern" : "api.other.com",
+        "name" : "Work",
+        "showInMenu" : true,
         "tunnelID" : "00000000-0000-4000-8000-000000000001"
       },
       {
         "id" : "00000000-0000-4000-8000-000000000102",
         "isEnabled" : true,
-        "match" : "wildcard",
-        "pattern" : "*.cdn.example.com",
+        "name" : "Home",
+        "showInMenu" : true,
         "tunnelID" : "00000000-0000-4000-8000-000000000002"
-      },
-      {
-        "id" : "00000000-0000-4000-8000-000000000103",
-        "isEnabled" : false,
-        "match" : "suffix",
-        "pattern" : "disabled.example",
-        "tunnelID" : "00000000-0000-4000-8000-000000000002"
-      },
+      }
+    ],
+    "rules" : [
       {
         "id" : "00000000-0000-4000-8000-000000000104",
         "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000104",
         "match" : "suffix",
-        "pattern" : "bank.example.org",
-        "target" : "direct"
+        "pattern" : "bank.example.org"
       },
       {
         "id" : "00000000-0000-4000-8000-000000000105",
         "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000104",
         "match" : "wildcard",
-        "pattern" : "*.intranet.example",
-        "target" : "direct"
+        "pattern" : "*.intranet.example"
       },
       {
         "id" : "00000000-0000-4000-8000-000000000106",
         "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000104",
         "match" : "suffix",
-        "pattern" : "example.com",
-        "target" : "direct"
+        "pattern" : "example.com"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000100",
+        "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000100",
+        "match" : "suffix",
+        "pattern" : "example.com"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000101",
+        "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000100",
+        "match" : "exact",
+        "pattern" : "api.other.com"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000102",
+        "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000102",
+        "match" : "wildcard",
+        "pattern" : "*.cdn.example.com"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000103",
+        "isEnabled" : false,
+        "listID" : "00000000-0000-4000-8000-000000000102",
+        "match" : "suffix",
+        "pattern" : "disabled.example"
       }
     ],
-    "schemaVersion" : 3,
+    "schemaVersion" : 4,
     "settings" : {
       "autoReconnect" : true,
       "connectOnLaunch" : false,

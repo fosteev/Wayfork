@@ -96,22 +96,22 @@ import Testing
     let legacy = Data(
         "{\"schemaVersion\": 1, \"tunnels\": [], \"rules\": [], \"settings\": {}}".utf8)
     let migrated = try StoreCodec.decode(legacy)
-    #expect(migrated.schemaVersion == 3)
-    #expect(Store.currentSchemaVersion == 3)
+    #expect(migrated.schemaVersion == 4)
+    #expect(Store.currentSchemaVersion == 4)
 
     let store = Fixtures.store(rules: [
         Rule(pattern: "/Applications/Telegram.app", match: .app, tunnelID: Fixtures.workID)
     ])
     let data = try StoreCodec.encode(store)
     let json = String(decoding: data, as: UTF8.self)
-    #expect(json.contains("\"schemaVersion\" : 3"))
+    #expect(json.contains("\"schemaVersion\" : 4"))
     #expect(json.contains("\"match\" : \"app\""))
     #expect(try StoreCodec.decode(data) == store)
 
     let document = ExportDocument(
         exportedAt: Fixtures.date, includesSecrets: false, tunnels: [], rules: store.rules,
-        settings: Settings())
-    #expect(document.version == 3)
+        settings: Settings(), lists: store.lists)
+    #expect(document.version == 4)
     #expect(try ExportDocument.decode(document.encode()).rules == store.rules)
 }
 

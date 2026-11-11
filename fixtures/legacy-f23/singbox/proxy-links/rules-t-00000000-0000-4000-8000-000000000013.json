@@ -1,0 +1,13 @@
+{
+  "rules" : [
+    {
+      "domain" : [
+        "vmess.example"
+      ],
+      "domain_suffix" : [
+        ".vmess.example"
+      ]
+    }
+  ],
+  "version" : 3
+}

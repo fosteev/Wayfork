@@ -129,11 +129,8 @@ extension AppModel {
     /// Asks for confirmation when rules are attached, then removes the group and its rules.
     func deleteGroup(_ groupID: UUID) {
         guard let group = store.group(id: groupID) else { return }
-        let rules = store.rules(forGroup: groupID).count
         let message =
-            rules > 0
-            ? "Delete \(group.name) and its \(StatusText.count(rules, "site"))? The rules go with it; the tunnels stay."
-            : "Delete \(group.name)? The tunnels stay."
+            "Delete \(group.name)? The tunnels stay. " + exitDeletionImpact([.group(groupID)])
         guard Alerts.confirm(title: "Delete group", message: message, destructive: "Delete")
         else { return }
         removeGroups([groupID])
@@ -153,7 +150,7 @@ extension AppModel {
     func removeGroups(_ ids: [UUID]) {
         update { store in
             store.groups.removeAll { ids.contains($0.id) }
-            store.rules.removeAll { rule in rule.target.groupID.map(ids.contains) ?? false }
+            for id in ids { store.removeRules(boundTo: .group(id)) }
             if let id = store.defaultTunnelID, ids.contains(id) { store.defaultTunnelID = nil }
         }
         if let expanded = expandedTunnelID, ids.contains(expanded) { expandedTunnelID = nil }

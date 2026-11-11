@@ -41,13 +41,15 @@ private func input(
         blockListPath: blockList ? RuntimePlanBuilder.blockListPath(bundlePath: bundlePath) : nil)
 }
 
+// Historical F8/F10/F11/F16/F23 structural assertions use the frozen migration oracle.
+// Current F24 output is covered by the golden/check tests and RuleListTests.
 private func generate(
     _ store: Store, uuids: [UUID: String] = [Fixtures.homeID: homeUUID],
     wireGuardKeys: [UUID: WireGuardSecrets] = [:],
     passwords: [UUID: String] = [:], vmessUUIDs: [UUID: String] = [:],
     resolved: [String: [String]] = [:], systemDNS: [String] = [], network: [String] = []
 ) -> SingBoxConfigGenerator.Output {
-    SingBoxConfigGenerator.generate(
+    FrozenF23Generator.generate(
         input(
             store, uuids: uuids, wireGuardKeys: wireGuardKeys, passwords: passwords,
             vmessUUIDs: vmessUUIDs, resolved: resolved,
@@ -72,11 +74,7 @@ private struct GoldenInput: Codable {
 
     init(_ input: SingBoxConfigGenerator.Input) {
         store = input.store
-        // Rule ids never reach the output; number them so the record is stable across runs.
-        for index in store.rules.indices {
-            store.rules[index].id = UUID(
-                uuidString: String(format: "00000000-0000-4000-8000-0000000001%02x", index))!
-        }
+        // configVariants numbers membership and rows before rendering: IDs are F24 inputs.
         vlessUUIDs = Dictionary(
             uniqueKeysWithValues: input.vlessUUIDs.map {
                 ($0.key.uuidString.lowercased(), $0.value)
@@ -591,14 +589,14 @@ private func defaultTunnelStore(defaultID: UUID) -> Store {
     #expect(result.plan.openVPN[0].interface == "utun101")
     #expect(result.plan.openVPN[0].id == Fixtures.workID.uuidString.lowercased())
     #expect(result.plan.openVPN[0].credentials?.username == "u")
-    #expect(result.plan.singBox.ruleSets.count == 4)  // Work (+ -ip) + the two Direct files
+    #expect(result.plan.singBox.ruleSets.count == 3)  // Built-in names + two Work row files
     #expect(result.plan.singBox.configHash == Hashing.sha256Hex(result.plan.singBox.config))
 
     // Same input → identical plan hash; a rule change → different plan, same config hash.
     let again = RuntimePlanBuilder.build(store: store, secrets: secrets, bundlePath: bundlePath)
     #expect(again.plan.planHash == result.plan.planHash)
     var changed = store
-    changed.rules.append(Rule(pattern: "new.example", tunnelID: Fixtures.workID))
+    changed.rules[0].pattern = "new.example"
     let next = RuntimePlanBuilder.build(store: changed, secrets: secrets, bundlePath: bundlePath)
     #expect(next.plan.planHash != result.plan.planHash)
     #expect(next.plan.singBox.configHash == result.plan.singBox.configHash)
@@ -636,7 +634,7 @@ private func defaultTunnelStore(defaultID: UUID) -> Store {
     }
 }
 
-private func configVariants() -> [(String, SingBoxConfigGenerator.Input)] {
+func configVariants() -> [(String, SingBoxConfigGenerator.Input)] {
     var variants: [(String, SingBoxConfigGenerator.Input)] = [
         ("two-tunnels", input(twoTunnelStore()))
     ]
@@ -748,7 +746,11 @@ private func configVariants() -> [(String, SingBoxConfigGenerator.Input)] {
     var noExceptions = twoTunnelStore()
     noExceptions.settings.blockList = BlockListSettings(isEnabled: true)
     variants.append(("block-list-no-exceptions", input(noExceptions, blockList: true)))
-    return variants
+    return variants.map { name, value in
+        var value = value
+        value.store = canonicalGoldenStore(value.store)
+        return (name, value)
+    } + orderedListVariants()
 }
 
 private let groupID = UUID(uuidString: "00000000-0000-4000-8000-0000000000a1")!
@@ -1011,4 +1013,55 @@ private func installPlaceholderBlockList(
     let plainDNS = try #require((plain["dns"] as? [String: Any])?["rules"] as? [[String: Any]])
     // (The DDR refusal is a domain rule too, but it names no server.)
     #expect(!plainDNS.contains { $0["domain"] != nil && $0["server"] != nil })
+}
+
+/// Legacy-style fixture builders append target-only rows. Reconstruct their schema-3 source,
+/// then migrate once with stable row identities before rendering a schema-4 golden.
+func canonicalGoldenStore(_ store: Store) -> Store {
+    var source = store
+    source.rules = store.rules.enumerated().map { index, value in
+        var row = value
+        row.target = store.target(for: row)
+        row.listID = nil
+        row.id = UUID(uuidString: String(format: "00000000-0000-4000-8000-0000000001%02x", index))!
+        return row
+    }
+    source.lists = []
+    return LegacyListMigration.migrate(source)
+}
+
+private func orderedListVariants() -> [(String, SingBoxConfigGenerator.Input)] {
+    let firstID = UUID(uuidString: "00000000-0000-4000-8000-000000000201")!
+    let secondID = UUID(uuidString: "00000000-0000-4000-8000-000000000202")!
+    let thirdID = UUID(uuidString: "00000000-0000-4000-8000-000000000203")!
+    let first = RuleList(id: firstID, name: "Work apps", target: .exit(.tunnel(Fixtures.workID)))
+    let second = RuleList(id: secondID, name: "Home sites", target: .exit(.tunnel(Fixtures.homeID)))
+    let third = RuleList(
+        id: thirdID, name: "Work overrides", target: .exit(.tunnel(Fixtures.workID)))
+    var store = Store(
+        tunnels: [Fixtures.work, Fixtures.home],
+        rules: [
+            Rule(pattern: "/Applications/Chat.app", match: .app, listID: firstID),
+            Rule(pattern: "example.com", listID: secondID),
+            Rule(pattern: "bank.example.com", match: .exact, target: .direct, listID: secondID),
+            Rule(pattern: "api.example.com", match: .exact, listID: thirdID),
+            Rule(pattern: "203.0.113.0/24", match: .ip, listID: thirdID, network: .udp),
+        ], lists: [first, second, third])
+    for index in store.rules.indices {
+        store.rules[index].id = UUID(
+            uuidString: String(format: "00000000-0000-4000-8000-0000000001%02x", index))!
+    }
+    let ordered = input(store)
+    store.lists[0].target = .everythingElse
+    store.rules[0].pattern = "example.com"
+    store.rules[0].match = .suffix
+    store.lists[2].target = .exit(.direct)
+    store.rules[3].target = .tunnel(Fixtures.workID)
+    store.settings.blockList = .init(isEnabled: true, exceptions: ["bank.example.com"])
+    let followDirect = input(store, blockList: true)
+    store.defaultTunnelID = Fixtures.homeID
+    return [
+        ("f24-ordered-lists", ordered), ("f24-follow-direct", followDirect),
+        ("f24-follow-tunnel", input(store, blockList: true)),
+    ]
 }

@@ -75,13 +75,14 @@ public struct ExportDocument: Codable, Sendable, Hashable {
     public static let formatName = "wayfork-export"
     /// 3 since F23 (`Rule.network`); 2 since F10 (app rules); older files import unchanged. F16's `groups` and
     /// `groupID` rules are additive (a pre-F16 build skips such rules as "tunnel not found").
-    public static let currentVersion = 3
+    public static let currentVersion = 4
 
     public var format: String
     public var version: Int
     public var exportedAt: Date
     public var includesSecrets: Bool
     public var tunnels: [ExportedTunnel]
+    public var lists: [RuleList]
     public var rules: [Rule]
     public var settings: Settings
     /// F8; absent in files written before it existed.
@@ -96,7 +97,8 @@ public struct ExportDocument: Codable, Sendable, Hashable {
         rules: [Rule],
         settings: Settings,
         defaultTunnelID: UUID? = nil,
-        groups: [TunnelGroup] = []
+        groups: [TunnelGroup] = [],
+        lists: [RuleList]? = nil
     ) {
         format = ExportDocument.formatName
         version = ExportDocument.currentVersion
@@ -107,17 +109,27 @@ public struct ExportDocument: Codable, Sendable, Hashable {
         self.settings = settings
         self.defaultTunnelID = defaultTunnelID
         self.groups = groups
+        let store = Store(
+            tunnels: tunnels.enumerated().map { i, t in
+                Tunnel(
+                    id: t.id, name: t.name, isEnabled: t.isEnabled, slot: i, kind: t.kind,
+                    createdAt: t.createdAt)
+            }, rules: rules, settings: settings, defaultTunnelID: defaultTunnelID, groups: groups,
+            lists: lists)
+        self.lists = store.lists
+        self.rules = store.rules
     }
 
     private enum CodingKeys: String, CodingKey {
         case format, version, exportedAt, includesSecrets, tunnels, rules, settings
-        case defaultTunnelID, groups
+        case defaultTunnelID, groups, lists
     }
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         format = try c.decode(String.self, forKey: .format)
         version = try c.decode(Int.self, forKey: .version)
+        guard version <= Self.currentVersion else { throw Error.newerVersion(version) }
         exportedAt = try c.decode(Date.self, forKey: .exportedAt)
         includesSecrets = try c.decode(Bool.self, forKey: .includesSecrets)
         tunnels = try c.decode([ExportedTunnel].self, forKey: .tunnels)
@@ -125,6 +137,23 @@ public struct ExportDocument: Codable, Sendable, Hashable {
         settings = try c.decode(Settings.self, forKey: .settings)
         defaultTunnelID = try c.decodeIfPresent(UUID.self, forKey: .defaultTunnelID)
         groups = try c.decodeIfPresent([TunnelGroup].self, forKey: .groups) ?? []
+        if version >= 4 {
+            lists = try c.decode([RuleList].self, forKey: .lists)
+        } else {
+            lists = []
+        }
+        let store = Store(
+            tunnels: tunnels.enumerated().map { i, t in
+                Tunnel(
+                    id: t.id, name: t.name, isEnabled: t.isEnabled, slot: i, kind: t.kind,
+                    createdAt: t.createdAt)
+            }, rules: rules, settings: settings, defaultTunnelID: defaultTunnelID, groups: groups,
+            lists: lists)
+        let migrated = version < 4 ? LegacyListMigration.migrate(store) : store
+        try migrated.validateMembership()
+        lists = migrated.lists
+        rules = migrated.rules
+        version = Self.currentVersion
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -134,6 +163,7 @@ public struct ExportDocument: Codable, Sendable, Hashable {
         try c.encode(exportedAt, forKey: .exportedAt)
         try c.encode(includesSecrets, forKey: .includesSecrets)
         try c.encode(tunnels, forKey: .tunnels)
+        try c.encode(lists, forKey: .lists)
         try c.encode(rules, forKey: .rules)
         try c.encode(settings, forKey: .settings)
         try c.encodeIfPresent(defaultTunnelID, forKey: .defaultTunnelID)
@@ -153,6 +183,7 @@ public struct ExportDocument: Codable, Sendable, Hashable {
     }
 
     public func encode() throws -> Data {
-        try JSONCoding.prettyEncoder.encode(self)
+        try Store(rules: rules, lists: lists).validateMembership()
+        return try JSONCoding.prettyEncoder.encode(self)
     }
 }

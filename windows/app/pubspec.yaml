@@ -21,6 +21,7 @@ dependencies:
   desktop_drop: 0.8.2
   crypto: 3.0.7
   collection: 1.19.1
+  characters: 1.4.1
   ffi: 2.2.0
 
 dev_dependencies:

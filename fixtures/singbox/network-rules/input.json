@@ -7,83 +7,113 @@
 
   },
   "store" : {
-    "rules" : [
+    "lists" : [
+      {
+        "id" : "00000000-0000-4000-8000-000000000105",
+        "isEnabled" : true,
+        "name" : "Direct",
+        "showInMenu" : true,
+        "target" : "direct"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000107",
+        "isEnabled" : true,
+        "name" : "Home — TCP/UDP",
+        "showInMenu" : true,
+        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+      },
       {
         "id" : "00000000-0000-4000-8000-000000000100",
         "isEnabled" : true,
-        "match" : "suffix",
-        "pattern" : "example.com",
-        "tunnelID" : "00000000-0000-4000-8000-000000000001"
-      },
-      {
-        "id" : "00000000-0000-4000-8000-000000000101",
-        "isEnabled" : true,
-        "match" : "exact",
-        "pattern" : "api.other.com",
+        "name" : "Work",
+        "showInMenu" : true,
         "tunnelID" : "00000000-0000-4000-8000-000000000001"
       },
       {
         "id" : "00000000-0000-4000-8000-000000000102",
         "isEnabled" : true,
-        "match" : "wildcard",
-        "pattern" : "*.cdn.example.com",
+        "name" : "Home",
+        "showInMenu" : true,
         "tunnelID" : "00000000-0000-4000-8000-000000000002"
-      },
-      {
-        "id" : "00000000-0000-4000-8000-000000000103",
-        "isEnabled" : false,
-        "match" : "suffix",
-        "pattern" : "disabled.example",
-        "tunnelID" : "00000000-0000-4000-8000-000000000002"
-      },
-      {
-        "id" : "00000000-0000-4000-8000-000000000104",
-        "isEnabled" : true,
-        "match" : "app",
-        "pattern" : "/Applications/Discord.app",
-        "tunnelID" : "00000000-0000-4000-8000-000000000001"
-      },
+      }
+    ],
+    "rules" : [
       {
         "id" : "00000000-0000-4000-8000-000000000105",
         "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000105",
         "match" : "app",
         "network" : "udp",
-        "pattern" : "/Applications/Discord.app",
-        "target" : "direct"
-      },
-      {
-        "id" : "00000000-0000-4000-8000-000000000106",
-        "isEnabled" : true,
-        "match" : "app",
-        "network" : "udp",
-        "pattern" : "/Applications/Discord.app",
-        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+        "pattern" : "/Applications/Discord.app"
       },
       {
         "id" : "00000000-0000-4000-8000-000000000107",
         "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000107",
         "match" : "app",
         "network" : "tcp",
-        "pattern" : "/Applications/Slack.app",
-        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+        "pattern" : "/Applications/Slack.app"
       },
       {
         "id" : "00000000-0000-4000-8000-000000000108",
         "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000107",
         "match" : "ip",
         "network" : "tcp",
-        "pattern" : "203.0.113.0/24",
-        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+        "pattern" : "203.0.113.0/24"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000106",
+        "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000107",
+        "match" : "app",
+        "network" : "udp",
+        "pattern" : "/Applications/Discord.app"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000100",
+        "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000100",
+        "match" : "suffix",
+        "pattern" : "example.com"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000101",
+        "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000100",
+        "match" : "exact",
+        "pattern" : "api.other.com"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000104",
+        "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000100",
+        "match" : "app",
+        "pattern" : "/Applications/Discord.app"
       },
       {
         "id" : "00000000-0000-4000-8000-000000000109",
         "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000100",
         "match" : "ip",
-        "pattern" : "198.51.100.0/24",
-        "tunnelID" : "00000000-0000-4000-8000-000000000001"
+        "pattern" : "198.51.100.0/24"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000102",
+        "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000102",
+        "match" : "wildcard",
+        "pattern" : "*.cdn.example.com"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000103",
+        "isEnabled" : false,
+        "listID" : "00000000-0000-4000-8000-000000000102",
+        "match" : "suffix",
+        "pattern" : "disabled.example"
       }
     ],
-    "schemaVersion" : 3,
+    "schemaVersion" : 4,
     "settings" : {
       "autoReconnect" : true,
       "connectOnLaunch" : false,

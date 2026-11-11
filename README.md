@@ -51,6 +51,7 @@ Windows**, one repository, one rule model, one export format.
 - **Live edits** — a rule change is a hot reload; a tunnel change reconnects that tunnel only.
 - **Status and traffic** — tray/menu bar icon (off · connecting · on · degraded · error),
   a card per tunnel with state, rule count and live down/up rate, plus a Direct row.
+  macOS Settings › Rules also shows sampled down/up rates for each matched rule.
 - **Can't reach** — the Logs window lists the connections that could not be established:
   site, app, tries, why (*no answer*, *refused*, *blocked by your list*, *‹tunnel› is
   down*), via which exit; a click filters the log to that site.

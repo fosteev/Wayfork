@@ -57,26 +57,36 @@ public struct RuntimePlan: Codable, Sendable, Hashable {
         overrideSystemDNS = try c.decodeIfPresent(Bool.self, forKey: .overrideSystemDNS) ?? true
     }
 
-    /// Ids of the tunnels the config routes: every routed tunnel has a `rules-t-<id>.json`
-    /// (docs/design/03-routing.md, "Rule-set files"), so the daemon needs no separate list
-    /// to know whom to probe (F14).
+    /// Routed tunnel definitions, including endpoints and exits with zero user rules.
     public var routedTunnelIDs: [String] {
-        routedIDs(prefix: "rules-t-")
+        routedIDs(prefix: "t-")
     }
 
-    /// Ids of the groups the config routes, from their `rules-g-<id>.json` files (F16).
+    /// Routed group definitions, independent of rule-set file topology.
     public var routedGroupIDs: [String] {
-        routedIDs(prefix: "rules-g-")
+        routedIDs(prefix: "g-")
     }
 
     private func routedIDs(prefix: String) -> [String] {
-        singBox.ruleSets.keys.compactMap { name in
-            guard name.hasPrefix(prefix), name.hasSuffix(".json"),
-                !["-ip.json", "-tcp.json", "-udp.json"].contains(where: name.hasSuffix)
-            else { return nil }
-            return String(name.dropFirst(prefix.count).dropLast(".json".count))
-        }
-        .sorted()
+        guard
+            let root = try? JSONSerialization.jsonObject(with: Data(singBox.config.utf8))
+                as? [String: Any]
+        else { return [] }
+        let definitions =
+            (root["outbounds"] as? [[String: Any]] ?? [])
+            + (root["endpoints"] as? [[String: Any]] ?? [])
+        return Set(
+            definitions.compactMap { definition -> String? in
+                guard let tag = definition["tag"] as? String, tag.hasPrefix(prefix) else {
+                    return nil
+                }
+                let id = String(tag.dropFirst(prefix.count))
+                guard let uuid = UUID(uuidString: id), uuid.uuidString.lowercased() == id else {
+                    return nil
+                }
+                return id
+            }
+        ).sorted()
     }
 
     /// Hash over everything the daemon acts on; reported back as `RuntimeStatus.planHash`.

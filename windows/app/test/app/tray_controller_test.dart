@@ -6,6 +6,9 @@ import 'package:wayfork/app/services/window_controller.dart';
 import 'package:wayfork/app/ui/app_actions.dart';
 import 'package:wayfork/app/ui/app_navigation.dart';
 import 'package:wayfork/core/ipc/payloads.dart';
+import 'package:wayfork/core/model/rule.dart';
+import 'package:wayfork/core/model/rule_list.dart';
+import 'package:wayfork/app/services/tray_menu.dart';
 
 import 'fakes.dart';
 import 'lifecycle_fakes.dart';
@@ -56,6 +59,39 @@ final class TrayHarness {
 }
 
 void main() {
+  test(
+    'native tray changes a list and undoes without opening the window',
+    () async {
+      final app = Harness();
+      await app.startOn();
+      final harness = TrayHarness(app);
+      addTearDown(harness.dispose);
+      await harness.start();
+      await harness.window.hide();
+      final list = app.model.store.lists.first;
+      final order = app.model.store.lists.map((l) => l.id).toList();
+      final count = app.service.applied.length;
+      harness.backend.click('list.${list.id}.${app.sample.home.id}');
+      await waitFor(
+        () =>
+            app.model.store.list(list.id)!.target ==
+            RuleListExit(RuleTargetTunnel(app.sample.home.id)),
+      );
+      await waitFor(() => app.service.applied.length == count + 1);
+      await waitFor(
+        () => harness.backend.menu.whereType<TrayMenuItem>().any(
+          (entry) => entry.key == 'lists.undo',
+        ),
+      );
+      expect(harness.windowBackend.visible, isFalse);
+      harness.backend.click('lists.undo');
+      await waitFor(() => app.model.store.list(list.id)!.target == list.target);
+      await waitFor(() => app.service.applied.length == count + 2);
+      expect(app.model.store.lists.map((l) => l.id), order);
+      expect(harness.windowBackend.visible, isFalse);
+    },
+  );
+
   test('start publishes the icon, the tooltip and the menu once', () async {
     final app = Harness();
     app.service.status = RuntimeStatus.stopped;

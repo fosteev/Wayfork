@@ -1283,6 +1283,96 @@ The port landed in three commits (Dart core d4ac090, Go service 9400543, Flutter
 - Widget tests scroll with `ensureVisible` where the Blocking section and the group
   rows pushed controls below the 600 px test window.
 
+## Named rule lists (WM22, F24)
+
+Design prepared 2026-11-07, approved for implementation 2026-11-08. Local Windows review boards:
+[W-lists](prototype/windows.html#W-lists),
+[tray](prototype/windows.html#W-lists-tray),
+[creation/search](prototype/windows.html#W-lists-new),
+[pins/context menus](prototype/windows.html#W-lists-pins),
+[feedback/migration](prototype/windows.html#W-lists-feedback).
+They translate accepted macOS [R1–R5](prototype/rule-lists.html#R1), using the existing
+Windows NavigationView, Fluent expanders/comboboxes, caption buttons and centred
+ContentDialog. Existing boards remain the pre-F24 reference. The maintainer authorized
+implementation after the concrete board handoff (2026-11-08, "делай roadmap"). Root
+implementation acceptance and the separate live/appearance gate remain in the roadmap.
+Execution and acceptance:
+[rule-lists roadmap, stage 5](../roadmap/rule-lists.md#5-windows-design-and-ui--wm22-part-2).
+
+- **Rules page:** Everything else has its own top line, sharing `defaultTunnelID` with
+  the existing Tunnels toggle. Purpose-list headers show expand/collapse, name/color,
+  count, current exit (group member/latency) and pause. Expanded rows keep the existing
+  match/network, enable, edit, note and warning controls. Drag headers/rows to reorder;
+  use header Move up/down or row Move to list as alternatives. Support Ctrl/Shift
+  multiselection and an end-of-order drop. New list inserts first; add stays inside its
+  chosen list. Remove empty per-exit sections rather than retaining a second hierarchy.
+- **Shared route combobox:** groups, tunnels (overflow into More), Direct, Same as
+  Everything else. Show group member and measured latency; keep unavailable exits
+  pickable with their warning. A follow-default binding displays Everything else and
+  the resolved exit, stays active at its row position and claims matches before lower
+  lists. Changing the default does not turn it into an explicit Direct exception.
+  Pause skips the entire list, including pins: later lists can match before the fallback.
+- **Pins and precedence:** inherited rows need no exit chip. Route this one via creates a
+  concrete override with an outlined pin chip; Use list route removes it. Moving a row
+  inherits its destination unless pinned; a pin survives both moving and list switches.
+  Explicit Direct rows/pins precede blocking, then other rows follow list order and row
+  order. A tunnel pin inside a Direct list stays in that latter tier. TCP/UDP narrowing
+  filters at the row's position; it never jumps a previous broad row. W-lists-pins shows
+  Discord's broad inherited row plus a pinned Direct UDP exception in one list.
+- **Tray:** retain tunnel cards and capped scrolling, add the separate Everything else
+  line and a compact Lists section using the same route mutation. Hide Lists below two
+  total lists; show at most six `showInMenu` lists. Overflow uses most recent user target
+  switch, UUID tie-break, then N more in Settings. This is local UI ordering, never routing
+  precedence. Header Show in tray persists visibility only; hidden lists still match.
+- **Editing and Undo:** each route selection is one store edit and one apply. The
+  ten-second Undo restores the previous binding only while it still owns that edit;
+  a newer edit/deletion invalidates it. Applying can reconnect the routing engine;
+  neither one apply nor per-row files promise disruption limited to this list.
+- **Creation/search/Recent:** ContentDialog has name, optional palette color, route and
+  a token field accepting domains, IP/subnets and apps; Choose App reuses the existing
+  running-app picker with Browse for an `.exe`. From Recent offers selectable rows.
+  Main Recent starts collapsed; its Add and quick add choose a list, initially the last
+  valid used list, else the first enabled; no lists opens creation. An equal pattern in
+  another list is not silently moved/updated. Search is flat, with list identity, resolved
+  binding and warnings naming the winning list/row. Partial overlap does not label the
+  whole broad row unreachable.
+- **Warnings/migration/import/delete:** disabled/missing/missing-secret exits are inert
+  and allow later matches; a runtime-down routed exit remains selected and fails.
+  An unavailable list target does not suppress a valid pin. G1 splits legacy transport
+  priority where needed and archives legacy duplicates only into paused Previously
+  inactive lists hidden from the tray, preserving row data/flags. Show the archived count
+  and review-before-enabling message; shadowed rows stay in normal buckets. Delete-list
+  confirms row count; exit deletion names affected lists/removed rows and keeps missing
+  target shells plus valid pins to other exits, without silently retargeting Direct.
+  Replace import preserves source order; merge appends by identity and previews earlier
+  local-list precedence. No new import mode or single-list sharing is introduced.
+
+**Implementation mapping (2026-11-08):** the existing Windows app opens/toggles the
+main window on tray activation; it has a native notification-area menu, not a separate
+Flutter flyout window. The compact W-lists-tray controls therefore live in Dashboard
+(`DashboardLists`, capped at six lists with capped scrolling), with matching native
+Lists → list → exit submenus. Native Undo works without opening the window. Both call
+`AppModel.setListTarget`; no new window lifecycle or source-rule service API was added.
+Rules uses the existing `RuleEditor` for pattern/match/network, notes and app paths.
+The New list ContentDialog has its own draft: tokens, app picker/drop and Recent do not
+write until Create. Shared-suffix Recent checkboxes represent one suffix token; removing
+that token clears all associated selections. Modal header actions wait for their flyout
+to close before pushing the dialog.
+
+`%LOCALAPPDATA%\Wayfork\rule-lists-ui.json` stores local last-used membership, expanded
+list IDs and target-switch timestamps; `showInMenu` stays in schema/export 4 as specified.
+The preference file has no credentials or routing precedence. It uses the existing
+store's temporary-file/flush/rename convention; malformed/missing UI preferences do not
+prevent routing-store load. Tests use in-memory preferences by default.
+
+Core schema/export 4 and ordered route/DNS behavior are shared contracts in
+[01](01-data-model.md#rule-lists-f24), [02](02-ux.md#rule-lists-f24) and
+[03](03-routing.md#rule-lists-f24). Windows uses the accepted Dart operations and sends
+the generated plan to Go; no source lists or rule-mutation control API enter the service.
+Stage-3 core tests, static prototype renders and stage-5 Flutter widget/model checks are
+separate evidence. No Windows installation, live routing or final native appearance
+acceptance is claimed here.
+
 ## Open items
 
 - **t1/pilot-gps user flow (not a Windows issue) — resolved 2026-08-27.** In S5 the

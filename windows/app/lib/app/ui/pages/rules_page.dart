@@ -7,25 +7,21 @@ import 'package:wayfork/app/model/app_alert.dart';
 import 'package:wayfork/app/model/app_model.dart';
 import 'package:wayfork/app/services/file_picker.dart';
 import 'package:wayfork/app/services/running_apps.dart';
-import 'package:wayfork/app/ui/app_navigation.dart';
 import 'package:wayfork/app/ui/app_scope.dart';
 import 'package:wayfork/app/ui/pages/dashboard_page.dart';
 import 'package:wayfork/app/ui/pick_application_dialog.dart';
 import 'package:wayfork/app/ui/widgets/components.dart';
 import 'package:wayfork/core/app/status_text.dart';
 import 'package:wayfork/core/model/rule.dart';
-import 'package:wayfork/core/model/tunnel.dart';
-import 'package:wayfork/core/model/tunnel_group.dart';
+import 'package:wayfork/core/model/rule_list.dart';
+import 'package:wayfork/app/ui/rule_list_dialog.dart';
+import 'package:wayfork/app/ui/widgets/rule_lists.dart';
 import 'package:wayfork/core/rules/fake_ip.dart';
 import 'package:wayfork/core/rules/rule_pattern.dart';
 import 'package:wayfork/core/rules/rule_validator.dart';
 import 'package:wayfork/core/singbox/rule_set_generator.dart';
 
-/// Rules (docs/design/prototype/windows.html, board 5): the Direct group of
-/// exceptions (F8) on top, then one group per tunnel, inline editing, drag to
-/// reorder or move between groups, and the chips `RuleValidator` produces.
-/// Every edit goes straight into the model, which re-applies on its debounce —
-/// what the model refuses is shown next to the row that caused it.
+/// F24: purpose lists own routing; exit ordering is never a UI grouping key.
 class RulesPage extends StatefulWidget {
   const RulesPage({
     required this.picker,
@@ -33,30 +29,45 @@ class RulesPage extends StatefulWidget {
     required this.onAction,
     super.key,
   });
-
-  /// The common dialog behind the picker's "Browse…" (F10).
   final FilePicker picker;
-
-  /// What the "Application…" picker lists (F10).
   final RunningAppSource runningApps;
-
   final void Function(AppAction action) onAction;
-
   @override
   State<RulesPage> createState() => _RulesPageState();
 }
 
+final class _ListDrag {
+  const _ListDrag(this.id);
+  final String id;
+}
+
+final class _RowsDrag {
+  _RowsDrag(Set<String> ids) : ids = Set.of(ids);
+  final Set<String> ids;
+}
+
 class _RulesPageState extends State<RulesPage> {
   final _search = TextEditingController();
-
-  /// The rule whose pattern is being edited, if any.
   String? _editingRuleID;
+  String? _addingTo;
+  String? _anchor;
+  final _selected = <String>{};
+  final _errors = <String, String>{};
+  bool _initialized = false;
 
-  /// The group whose `+` opened an empty row, if any.
-  RuleTarget? _addingTo;
-
-  /// Message from the model per group, cleared by the next edit there.
-  final _errors = <RuleTarget, String>{};
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final model = AppScope.of(context);
+    if (!_initialized) {
+      _initialized = true;
+      if (!model.listPreferences.initialized && model.store.lists.isNotEmpty) {
+        model.listPreferences.initialized = true;
+        model.listPreferences.expanded.add(model.store.lists.first.id);
+        model.listPreferences.save();
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -64,57 +75,168 @@ class _RulesPageState extends State<RulesPage> {
     super.dispose();
   }
 
-  void _edit(String? ruleID) => setState(() {
-    _editingRuleID = ruleID;
+  void _edit(String? id) => setState(() {
+    _editingRuleID = id;
     _addingTo = null;
     _errors.clear();
   });
-
-  void _add(RuleTarget target) => setState(() {
-    _editingRuleID = null;
-    _addingTo = target;
-    _errors.clear();
-  });
-
-  void _finishEditing() => setState(() {
+  void _done() => setState(() {
     _editingRuleID = null;
     _addingTo = null;
   });
-
-  void _setError(RuleTarget target, String? message) => setState(() {
+  void _error(String listID, String? message) => setState(() {
     if (message == null) {
-      _errors.remove(target);
+      _errors.remove(listID);
     } else {
-      _errors[target] = message;
+      _errors[listID] = message;
     }
   });
+  void _select(String id) {
+    final keys = HardwareKeyboard.instance.logicalKeysPressed;
+    setState(() {
+      final model = AppScope.of(context);
+      if (keys.contains(LogicalKeyboardKey.shiftLeft) ||
+          keys.contains(LogicalKeyboardKey.shiftRight)) {
+        final rows = [
+          for (final list in model.store.lists) ...model.store.rulesIn(list.id),
+        ].map((r) => r.id).toList();
+        final a = rows.indexOf(_anchor ?? id), b = rows.indexOf(id);
+        if (a >= 0 && b >= 0) {
+          _selected.addAll(rows.sublist(a < b ? a : b, (a > b ? a : b) + 1));
+        }
+      } else if (keys.contains(LogicalKeyboardKey.controlLeft) ||
+          keys.contains(LogicalKeyboardKey.controlRight)) {
+        if (!_selected.add(id)) _selected.remove(id);
+        _anchor = id;
+      } else {
+        _selected
+          ..clear()
+          ..add(id);
+        _anchor = id;
+      }
+    });
+  }
 
-  /// F10 on Windows: an `.exe`, not a bundle. The picker lists what is running
-  /// and falls back to the file dialog; either way the path goes through the
-  /// same `addRule` as a typed pattern, so an unusable one is refused with the
-  /// model's own message.
-  Future<void> _chooseApplication(RuleTarget target) async {
+  Future<void> _app(String listID) async {
     final model = AppScope.of(context);
-    _finishEditing();
     final path = await showPickApplicationDialog(
       context,
       apps: widget.runningApps,
       picker: widget.picker,
     );
-    if (path == null || !mounted) return;
+    if (!mounted || path == null || model.store.list(listID) == null) return;
     final error = await model.addRule(
       pattern: path,
       match: RuleMatch.app,
-      target: target,
+      target: const RuleTargetDirect(),
+      listID: listID,
     );
-    if (mounted) _setError(target, error);
+    if (mounted) _error(listID, error);
   }
+
+  Future<void> _rename(RuleList list) async {
+    final controller = TextEditingController(text: list.name);
+    String? error;
+    final model = AppScope.of(context);
+    await showDialog<void>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialog) => ContentDialog(
+          title: const Text('Rename list'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextBox(controller: controller, maxLength: 40),
+              if (error != null) Text(error!),
+            ],
+          ),
+          actions: [
+            Button(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                try {
+                  await model.editRuleList(
+                    list.id,
+                    (l) => l.copyWith(name: controller.text.trim()),
+                  );
+                  if (context.mounted) Navigator.of(context).pop();
+                } on FormatException {
+                  setDialog(
+                    () => error = 'Use a unique name (1–40 characters).',
+                  );
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+  }
+
+  Future<void> _delete(RuleList list) async {
+    final model = AppScope.of(context);
+    final count = model.store.rulesIn(list.id).length;
+    if (await showQuestionDialog(
+          context,
+          title: 'Delete list',
+          message: 'Delete ${list.name} and its $count rules?',
+          confirm: 'Delete',
+        ) &&
+        model.store.list(list.id) != null) {
+      await model.deleteRuleList(list.id);
+    }
+  }
+
+  Widget _row(AppModel model, Rule rule, {bool search = false}) => Opacity(
+    opacity: model.store.list(rule.listID!)?.isEnabled == false ? 0.55 : 1,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (search)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+            child: SecondaryText(
+              '${model.store.list(rule.listID!)?.name} → ${model.listTargetName(model.store.declaredTarget(rule)!)}',
+            ),
+          ),
+        _RuleRow(
+          key: ValueKey(rule.id),
+          rule: rule,
+          issues: model.ruleIssues[rule.id] ?? const [],
+          isEditing: _editingRuleID == rule.id,
+          onEdit: _edit,
+          onEditFinished: _done,
+          onError: (message) => _error(rule.listID!, message),
+          onAction: widget.onAction,
+          selectedIDs: _selected,
+          onSelect: _select,
+        ),
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
     final model = AppScope.of(context);
-    final navigator = NavigationScope.of(context);
-    final tunnels = model.store.tunnels;
+    final theme = FluentTheme.of(context);
+    final needle = _search.text.trim().toLowerCase();
+    final lists = model.store.lists;
+    final filtered = [
+      for (final l in lists)
+        ...model.store
+            .rulesIn(l.id)
+            .where(
+              (r) =>
+                  r.pattern.toLowerCase().contains(needle) ||
+                  (r.note ?? '').toLowerCase().contains(needle) ||
+                  l.name.toLowerCase().contains(needle),
+            ),
+    ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
       child: Column(
@@ -123,359 +245,343 @@ class _RulesPageState extends State<RulesPage> {
           Row(
             children: [
               const PageTitle('Rules'),
-              const Spacer(),
-              SizedBox(
-                width: 220,
+              const SizedBox(width: 12),
+              Expanded(
                 child: TextBox(
                   controller: _search,
                   placeholder: 'Search sites and apps',
-                  prefix: const Padding(
-                    padding: EdgeInsets.only(left: 8),
-                    child: Icon(FluentIcons.search, size: 12),
-                  ),
                   onChanged: (_) => setState(() {}),
                 ),
               ),
+              const SizedBox(width: 8),
+              Button(
+                onPressed: () => unawaited(
+                  showNewRuleList(
+                    context,
+                    model,
+                    picker: widget.picker,
+                    apps: widget.runningApps,
+                  ),
+                ),
+                child: const Text('New list'),
+              ),
             ],
           ),
-          const SizedBox(height: 14),
-          if (tunnels.isEmpty)
-            _NoTunnels(onAddTunnel: () => navigator.go(AppPage.tunnels))
-          else
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (model.store.rules.isEmpty && _addingTo == null) ...[
-                      SecondaryText(
-                        'No sites yet. Everything stays on your normal '
-                        'connection. Add a site here or from the Dashboard.',
-                        maxLines: 2,
-                        overflow: TextOverflow.clip,
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                    if (model.globalState.isRunning)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: RecentStrip(model: model),
-                      ),
-                    for (final group in [
-                      const RuleTargetDirect(),
-                      for (final tunnel in tunnels) RuleTargetTunnel(tunnel.id),
-                      // F16: one section per group, after the tunnels.
-                      for (final tunnelGroup in model.store.groups)
-                        RuleTargetGroup(tunnelGroup.id),
-                    ])
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _RuleGroup(
-                          target: group,
-                          tunnel: model.store.tunnel(group.tunnelID ?? ''),
-                          tunnelGroup: model.store.group(group.groupID ?? ''),
-                          search: _search.text,
-                          editingRuleID: _editingRuleID,
-                          isAdding: _addingTo == group,
-                          error: _errors[group],
-                          onEdit: _edit,
-                          onAdd: () => _add(group),
-                          onChooseApplication: () =>
-                              unawaited(_chooseApplication(group)),
-                          onEditFinished: _finishEditing,
-                          onError: (message) => _setError(group, message),
-                          onAction: widget.onAction,
+          const SizedBox(height: 10),
+          EverythingElseRow(model: model),
+          const SizedBox(height: 8),
+          const ListRouteUndoBar(),
+          if (model.globalState.isRunning) ...[
+            RecentStrip(model: model),
+            const SizedBox(height: 8),
+          ],
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (needle.isNotEmpty) ...[
+                    SecondaryText('${filtered.length} shown'),
+                    GroupCard(
+                      children: [
+                        for (final rule in filtered)
+                          _row(model, rule, search: true),
+                      ],
+                    ),
+                  ] else ...[
+                    if (lists.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Text(
+                          'No lists yet. Create a list for sites, apps or IP ranges.',
                         ),
                       ),
+                    for (final list in lists)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _list(model, list),
+                      ),
+                    DragTarget<_ListDrag>(
+                      onAcceptWithDetails: (d) =>
+                          unawaited(model.reorderRuleList(d.data.id)),
+                      builder: (_, candidate, _) => Container(
+                        key: const ValueKey('list-order-end'),
+                        height: 30,
+                        alignment: Alignment.center,
+                        color: candidate.isEmpty
+                            ? null
+                            : theme.resources.subtleFillColorSecondary,
+                        child: const SecondaryText(
+                          'Drag a list here to move it to the end',
+                        ),
+                      ),
+                    ),
                   ],
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _NoTunnels extends StatelessWidget {
-  const _NoTunnels({required this.onAddTunnel});
-
-  final VoidCallback onAddTunnel;
-
-  @override
-  Widget build(BuildContext context) => Align(
-    alignment: Alignment.topLeft,
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Add a tunnel first; rules point domains at tunnels.'),
-        const SizedBox(height: 10),
-        Button(onPressed: onAddTunnel, child: const Text('Add a tunnel…')),
-      ],
-    ),
-  );
-}
-
-/// One group: the Direct exceptions or a tunnel, with its rows, the row being
-/// added and whatever the model refused last.
-class _RuleGroup extends StatelessWidget {
-  const _RuleGroup({
-    required this.target,
-    required this.tunnel,
-    this.tunnelGroup,
-    required this.search,
-    required this.editingRuleID,
-    required this.isAdding,
-    required this.error,
-    required this.onEdit,
-    required this.onAdd,
-    required this.onChooseApplication,
-    required this.onEditFinished,
-    required this.onError,
-    required this.onAction,
-  });
-
-  final RuleTarget target;
-  final Tunnel? tunnel;
-  final TunnelGroup? tunnelGroup;
-  final String search;
-  final String? editingRuleID;
-  final bool isAdding;
-  final String? error;
-  final void Function(String? ruleID) onEdit;
-  final VoidCallback onAdd;
-  final VoidCallback onChooseApplication;
-  final VoidCallback onEditFinished;
-  final void Function(String? message) onError;
-  final void Function(AppAction action) onAction;
-
-  bool get _isDirect => target.isDirect;
-
-  @override
-  Widget build(BuildContext context) {
-    final model = AppScope.of(context);
-    final rules = model.store.rulesFor(target);
-    final visible = _visible(model, rules);
-    final issues = model.ruleIssues;
-    final tunnel = this.tunnel;
-    final disabled =
-        (tunnel != null && !tunnel.isEnabled) ||
-        (tunnelGroup != null && !tunnelGroup!.isEnabled);
-    return Opacity(
-      opacity: disabled ? 0.55 : 1,
-      child: GroupCard(
-        children: [
-          _header(context, model, rules.length, visible.length),
-          if (rules.isEmpty && !isAdding && !_isDirect)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 7, 12, 8),
-              child: SecondaryText(
-                model.globalState.isRunning
-                    ? 'No sites yet — add one, or pick a tunnel for a site in '
-                          'Recent above.'
-                    : 'No sites yet — add one with "Add site".',
-              ),
-            ),
-          for (final rule in visible)
-            _RuleRow(
-              key: ValueKey(rule.id),
-              rule: rule,
-              issues: issues[rule.id] ?? const [],
-              isEditing: editingRuleID == rule.id,
-              onEdit: onEdit,
-              onEditFinished: onEditFinished,
-              onError: onError,
-              onAction: onAction,
-            ),
-          if (isAdding)
-            RuleEditor(
-              key: ValueKey('new-${_key(target)}'),
-              onSubmit: (pattern, match, network) => model.addRule(
-                pattern: pattern,
-                match: match,
-                target: target,
-                network: network,
-              ),
-              onDone: onEditFinished,
-              hint: 'Enter to add, Esc to discard',
-            ),
-          if (error case final message?)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 5, 12, 6),
-              child: SecondaryText(
-                message,
-                color: FluentTheme.of(
-                  context,
-                ).resources.systemFillColorCritical,
-                maxLines: 2,
-              ),
-            ),
-          if (_isDirect)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 5, 12, 6),
-              child: SecondaryText(
-                'Local names (${RuleSetGenerator.builtInDirectSuffixes.take(4).join(', ')}) '
-                'are always direct.',
-                color: FluentTheme.of(context).resources.textFillColorTertiary,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  List<Rule> _visible(AppModel model, List<Rule> rules) {
-    final needle = search.trim().toLowerCase();
-    if (needle.isEmpty) return rules;
-    return rules
-        .where(
-          (rule) =>
-              rule.pattern.toLowerCase().contains(needle) ||
-              (rule.note ?? '').toLowerCase().contains(needle) ||
-              (rule.isApp &&
-                  RulePattern.appName(
-                    rule.pattern,
-                  ).toLowerCase().contains(needle)),
-        )
-        .toList();
-  }
-
-  Widget _header(BuildContext context, AppModel model, int total, int shown) {
-    final theme = FluentTheme.of(context);
-    return DragTarget<String>(
-      onAcceptWithDetails: (details) =>
-          unawaited(model.moveRule(details.data, to: target)),
-      builder: (context, candidate, _) => Container(
-        color: candidate.isEmpty
-            ? theme.resources.cardBackgroundFillColorSecondary
-            : theme.resources.subtleFillColorSecondary,
-        padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                ..._title(context, model),
-                if (search.trim().isNotEmpty && shown != total) ...[
-                  const SizedBox(width: 6),
-                  SecondaryText(
-                    '$shown shown',
-                    color: theme.resources.textFillColorTertiary,
+                  const SizedBox(height: 8),
+                  const SecondaryText(
+                    'Direct exceptions first, then lists top to bottom and rows in order.',
+                    maxLines: 2,
                   ),
+                  SecondaryText(
+                    'Local names (${RuleSetGenerator.builtInDirectSuffixes.take(4).join(', ')}) are always direct.',
+                    maxLines: 2,
+                  ),
+                  for (final message in _errors.values)
+                    SecondaryText(
+                      message,
+                      color: theme.resources.systemFillColorCritical,
+                      maxLines: 3,
+                    ),
                 ],
-                const Spacer(),
-                // F10: Site adds an empty row in edit mode; Application… opens
-                // the picker.
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _list(AppModel model, RuleList list) {
+    final theme = FluentTheme.of(context);
+    final rows = model.store.rulesIn(list.id);
+    final open = model.listPreferences.expanded.contains(list.id);
+    final index = model.store.lists.indexOf(list);
+    final targetDetail = model.listTargetDetail(list.target);
+    return GroupCard(
+      children: [
+        DragTarget<Object>(
+          onWillAcceptWithDetails: (d) =>
+              d.data is _RowsDrag ||
+              (d.data is _ListDrag && (d.data as _ListDrag).id != list.id),
+          onAcceptWithDetails: (d) {
+            final data = d.data;
+            if (data is _ListDrag) {
+              unawaited(model.reorderRuleList(data.id, before: list.id));
+            } else if (data is _RowsDrag) {
+              unawaited(model.moveRules(data.ids, list.id));
+            }
+          },
+          builder: (_, candidate, _) => Container(
+            color: candidate.isEmpty
+                ? theme.resources.cardBackgroundFillColorSecondary
+                : theme.resources.subtleFillColorSecondary,
+            padding: const EdgeInsets.all(6),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Draggable<_ListDrag>(
+                  data: _ListDrag(list.id),
+                  feedback: _DragFeedback(text: list.name),
+                  child: const Tooltip(
+                    message: 'Drag to reorder lists',
+                    child: Icon(FluentIcons.gripper_dots_vertical, size: 12),
+                  ),
+                ),
+                IconButton(
+                  key: ValueKey('expand-${list.id}'),
+                  icon: Icon(
+                    open ? FluentIcons.chevron_down : FluentIcons.chevron_right,
+                    size: 10,
+                  ),
+                  onPressed: () => model.expandList(list.id, !open),
+                ),
+                Opacity(
+                  opacity: list.isEnabled ? 1 : 0.5,
+                  child: RuleListBadge(list),
+                ),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 150),
+                  child: Text(
+                    list.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                SecondaryText(
+                  '${rows.length} rules${list.isEnabled ? '' : ' · Paused'}',
+                ),
+                RuleRouteMenu(
+                  model: model,
+                  value: list.target,
+                  onChanged: (target) =>
+                      unawaited(model.setListTarget(list.id, target)),
+                ),
+                Tooltip(
+                  message: list.isEnabled
+                      ? 'Pause ${list.name} (including pins)'
+                      : 'Resume ${list.name}',
+                  child: ToggleSwitch(
+                    checked: list.isEnabled,
+                    onChanged: (v) => unawaited(
+                      model.editRuleList(
+                        list.id,
+                        (l) => l.copyWith(isEnabled: v),
+                      ),
+                    ),
+                  ),
+                ),
                 DropDownButton(
-                  leading: const Icon(FluentIcons.add, size: 12),
-                  title: const Text('Add site'),
+                  key: ValueKey('list-menu-${list.id}'),
+                  title: const Text('…'),
                   items: [
-                    MenuFlyoutItem(text: const Text('Site'), onPressed: onAdd),
                     MenuFlyoutItem(
-                      text: const Text('Application…'),
-                      onPressed: onChooseApplication,
+                      text: const Text('Rename…'),
+                      onPressed: () =>
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) unawaited(_rename(list));
+                          }),
+                    ),
+                    MenuFlyoutSubItem(
+                      text: const Text('Color'),
+                      showBehavior: SubItemShowAction.press,
+                      items: (_) => [
+                        for (var color = 0; color < 8; color++)
+                          MenuFlyoutItem(
+                            leading: Container(
+                              width: 14,
+                              height: 14,
+                              color: ruleListColors[color],
+                            ),
+                            text: Text('Color ${color + 1}'),
+                            onPressed: () => unawaited(
+                              model.editRuleList(
+                                list.id,
+                                (l) => l.copyWith(color: color),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    MenuFlyoutItem(
+                      text: const Text('Move up'),
+                      onPressed: index == 0
+                          ? null
+                          : () => unawaited(
+                              model.reorderRuleList(
+                                list.id,
+                                before: model.store.lists[index - 1].id,
+                              ),
+                            ),
+                    ),
+                    MenuFlyoutItem(
+                      text: const Text('Move down'),
+                      onPressed: index == model.store.lists.length - 1
+                          ? null
+                          : () => unawaited(
+                              model.reorderRuleList(
+                                list.id,
+                                before: index + 2 < model.store.lists.length
+                                    ? model.store.lists[index + 2].id
+                                    : null,
+                              ),
+                            ),
+                    ),
+                    MenuFlyoutItem(
+                      text: Text(list.isEnabled ? 'Pause list' : 'Resume list'),
+                      onPressed: () => unawaited(
+                        model.editRuleList(
+                          list.id,
+                          (l) => l.copyWith(isEnabled: !l.isEnabled),
+                        ),
+                      ),
+                    ),
+                    MenuFlyoutItem(
+                      text: Text('${list.showInMenu ? '✓ ' : ''}Show in tray'),
+                      onPressed: () => unawaited(
+                        model.editRuleList(
+                          list.id,
+                          (l) => l.copyWith(showInMenu: !l.showInMenu),
+                        ),
+                      ),
+                    ),
+                    const MenuFlyoutSeparator(),
+                    MenuFlyoutItem(
+                      text: const Text('Delete list…'),
+                      onPressed: () =>
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) unawaited(_delete(list));
+                          }),
                     ),
                   ],
                 ),
               ],
             ),
-          ],
+          ),
         ),
-      ),
-    );
-  }
-
-  /// Glyph, name, badges and the hint that says what the section means
-  /// (docs/design/02-ux.md, "Variant C" › Rules).
-  List<Widget> _title(BuildContext context, AppModel model) {
-    final theme = FluentTheme.of(context);
-    final tunnel = this.tunnel;
-    final group = tunnelGroup;
-    Widget name(String text) => Flexible(
-      child: Text(
-        text,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontWeight: FontWeight.w600),
-      ),
-    );
-    Widget hint(({String text, bool isError}) value) => Flexible(
-      child: Padding(
-        padding: const EdgeInsets.only(left: 6),
-        child: SecondaryText(
-          value.text,
-          color: value.isError ? theme.resources.systemFillColorCritical : null,
-        ),
-      ),
-    );
-    if (group != null) {
-      final summary = model.groupRowSummary(group);
-      return [
-        StatusGlyphView(glyph: summary.glyph),
-        const SizedBox(width: 8),
-        name(group.name),
-        const SizedBox(width: 6),
-        const AccentBadge('Group'),
-        if (model.isEffectiveDefault(group.id)) ...[
-          const SizedBox(width: 6),
-          const AccentBadge('Default'),
+        if (targetDetail == 'Disabled' ||
+            targetDetail == 'Missing secret' ||
+            targetDetail == 'Missing exit' ||
+            targetDetail == 'Not reachable')
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: SecondaryText(
+              targetDetail == 'Not reachable'
+                  ? 'Matched connections fail through this exit; no Direct fallback.'
+                  : '$targetDetail. Inherited rows are skipped; later lists can match. Valid pins still work.',
+              maxLines: 3,
+            ),
+          ),
+        if (!list.isEnabled && open)
+          const Padding(
+            padding: EdgeInsets.all(8),
+            child: SecondaryText(
+              'Paused: all rows, including pins, are skipped. Other lists can match before Everything else.',
+              maxLines: 3,
+            ),
+          ),
+        if (open) ...[
+          for (final rule in rows) _row(model, rule),
+          if (_addingTo == list.id)
+            RuleEditor(
+              key: ValueKey('new-${list.id}'),
+              onSubmit: (pattern, match, network) => model.addRule(
+                pattern: pattern,
+                match: match,
+                network: network,
+                target: const RuleTargetDirect(),
+                listID: list.id,
+              ),
+              onDone: _done,
+              hint: 'Enter to add, Esc to discard',
+            ),
+          DragTarget<_RowsDrag>(
+            onAcceptWithDetails: (d) =>
+                unawaited(model.moveRules(d.data.ids, list.id)),
+            builder: (_, candidate, _) => Container(
+              key: ValueKey('row-order-end-${list.id}'),
+              color: candidate.isEmpty
+                  ? null
+                  : theme.resources.subtleFillColorSecondary,
+              padding: const EdgeInsets.all(6),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: DropDownButton(
+                  key: ValueKey('add-${list.id}'),
+                  title: const Text('Add site or app'),
+                  items: [
+                    MenuFlyoutItem(
+                      text: const Text('Site'),
+                      onPressed: () => setState(() {
+                        _addingTo = list.id;
+                        _editingRuleID = null;
+                      }),
+                    ),
+                    MenuFlyoutItem(
+                      text: const Text('Application…'),
+                      onPressed: () => unawaited(_app(list.id)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ],
-        hint(model.groupHint(group)),
-      ];
-    }
-    if (tunnel != null) {
-      final summary = model.rowSummary(tunnel);
-      final tunnelHint = _tunnelHint(model, tunnel, summary);
-      return [
-        StatusGlyphView(glyph: summary.glyph),
-        const SizedBox(width: 8),
-        name(tunnel.name),
-        if (model.effectiveDefaultTunnel?.id == tunnel.id) ...[
-          const SizedBox(width: 6),
-          const AccentBadge('Default'),
-        ],
-        if (tunnelHint != null) hint(tunnelHint),
-      ];
-    }
-    return [
-      StatusGlyphView(glyph: StatusGlyph.idle),
-      const SizedBox(width: 8),
-      name('Not via any tunnel'),
-      hint((text: model.directGroupHint, isError: false)),
-    ];
+      ],
+    );
   }
-
-  /// Header hint after the tunnel name: what happens to its sites right now.
-  ({String text, bool isError})? _tunnelHint(
-    AppModel model,
-    Tunnel tunnel,
-    TunnelRowSummary summary,
-  ) {
-    if (model.effectiveDefaultTunnel?.id == tunnel.id) {
-      return (
-        text: 'everything without a rule goes here, plus:',
-        isError: false,
-      );
-    }
-    if (!tunnel.isEnabled) {
-      final fallback = model.recentExitName;
-      return (
-        text: fallback == null
-            ? 'off — its sites stay outside a tunnel for now'
-            : 'off — its sites go via $fallback for now',
-        isError: false,
-      );
-    }
-    if (summary.text.startsWith('Not reachable')) {
-      return (text: 'not reachable — its sites wait', isError: true);
-    }
-    if (summary.isError) {
-      return (text: "can't connect — its sites wait", isError: true);
-    }
-    return null;
-  }
-
-  static String _key(RuleTarget target) => target.exitID ?? 'direct';
 }
 
 /// A rule: the enabled checkbox, the pattern (editable in place), its match,
@@ -491,9 +597,13 @@ class _RuleRow extends StatefulWidget {
     required this.onEditFinished,
     required this.onError,
     required this.onAction,
+    required this.selectedIDs,
+    required this.onSelect,
     super.key,
   });
 
+  final Set<String> selectedIDs;
+  final ValueChanged<String> onSelect;
   final Rule rule;
   final List<RuleIssue> issues;
   final bool isEditing;
@@ -619,7 +729,7 @@ class _RuleRowState extends State<_RuleRow> {
           ),
           const SizedBox(width: 8),
           Tooltip(
-            message: 'Drag to reorder or move to another group',
+            message: 'Drag selected rows to reorder or move to another list',
             child: Icon(
               FluentIcons.gripper_dots_vertical,
               size: 10,
@@ -629,13 +739,16 @@ class _RuleRowState extends State<_RuleRow> {
         ],
       ),
     );
-    return DragTarget<String>(
-      onWillAcceptWithDetails: (details) => details.data != rule.id,
+    return DragTarget<_RowsDrag>(
+      onWillAcceptWithDetails: (details) => !details.data.ids.contains(rule.id),
       onAcceptWithDetails: (details) => unawaited(
-        model.moveRule(details.data, to: rule.target, before: rule.id),
+        model.moveRules(details.data.ids, rule.listID!, before: rule.id),
       ),
       builder: (context, candidate, _) => Container(
-        decoration: candidate.isEmpty
+        color: widget.selectedIDs.contains(rule.id)
+            ? theme.resources.subtleFillColorSecondary
+            : null,
+        foregroundDecoration: candidate.isEmpty
             ? null
             : BoxDecoration(
                 border: Border(
@@ -648,10 +761,15 @@ class _RuleRowState extends State<_RuleRow> {
         child: FlyoutTarget(
           controller: _menu,
           child: GestureDetector(
+            onTap: () => widget.onSelect(rule.id),
             onDoubleTap: () => widget.onEdit(rule.id),
             onSecondaryTapUp: (details) => _showMenu(details.globalPosition),
-            child: Draggable<String>(
-              data: rule.id,
+            child: Draggable<_RowsDrag>(
+              data: _RowsDrag(
+                widget.selectedIDs.contains(rule.id)
+                    ? widget.selectedIDs
+                    : {rule.id},
+              ),
               feedback: _DragFeedback(text: rule.pattern),
               childWhenDragging: Opacity(opacity: 0.4, child: row),
               child: row,
@@ -696,56 +814,67 @@ class _RuleRowState extends State<_RuleRow> {
               },
             ),
             MenuFlyoutSubItem(
-              text: const Text('Move to'),
-              // Press, not the default hover: the submenu has to be reachable
-              // from a keyboard and from a test as well as from a mouse.
+              text: const Text('Move to list'),
               showBehavior: SubItemShowAction.press,
               items: (context) => [
-                for (final tunnel in model.store.tunnels)
-                  if (tunnel.id != rule.tunnelID)
-                    MenuFlyoutItem(
-                      text: Text(tunnel.name),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        unawaited(
-                          model.moveRule(
-                            rule.id,
-                            to: RuleTargetTunnel(tunnel.id),
-                          ),
-                        );
-                      },
-                    ),
-                // F16: groups under a separator.
-                if (model.store.groups.any((g) => g.id != rule.target.groupID))
-                  const MenuFlyoutSeparator(),
-                for (final group in model.store.groups)
-                  if (group.id != rule.target.groupID)
-                    MenuFlyoutItem(
-                      text: Text(group.name),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        unawaited(
-                          model.moveRule(
-                            rule.id,
-                            to: RuleTargetGroup(group.id),
-                          ),
-                        );
-                      },
-                    ),
-                if (!rule.target.isDirect) ...[
-                  const MenuFlyoutSeparator(),
+                for (final list in model.store.lists)
                   MenuFlyoutItem(
-                    text: const Text('Not via any tunnel'),
+                    text: Text(list.name),
                     onPressed: () {
                       Navigator.of(context).pop();
                       unawaited(
-                        model.moveRule(rule.id, to: const RuleTargetDirect()),
+                        model.moveRules(
+                          widget.selectedIDs.contains(rule.id)
+                              ? widget.selectedIDs
+                              : {rule.id},
+                          list.id,
+                        ),
                       );
                     },
                   ),
-                ],
               ],
             ),
+            MenuFlyoutSubItem(
+              text: const Text('Route this one via'),
+              showBehavior: SubItemShowAction.press,
+              items: (context) => [
+                for (final group in model.store.groups)
+                  MenuFlyoutItem(
+                    text: Text(group.name),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      unawaited(
+                        model.pinRule(rule.id, RuleTargetGroup(group.id)),
+                      );
+                    },
+                  ),
+                for (final tunnel in model.store.tunnels)
+                  MenuFlyoutItem(
+                    text: Text(tunnel.name),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      unawaited(
+                        model.pinRule(rule.id, RuleTargetTunnel(tunnel.id)),
+                      );
+                    },
+                  ),
+                MenuFlyoutItem(
+                  text: const Text('Direct'),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    unawaited(model.pinRule(rule.id, const RuleTargetDirect()));
+                  },
+                ),
+              ],
+            ),
+            if (rule.target != null)
+              MenuFlyoutItem(
+                text: const Text('Use list route'),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  unawaited(model.pinRule(rule.id, null));
+                },
+              ),
             const MenuFlyoutSeparator(),
             MenuFlyoutItem(
               text: const Text('Delete'),
@@ -767,6 +896,23 @@ class _RuleRowState extends State<_RuleRow> {
     final caution = theme.resources.systemFillColorCaution;
     final critical = theme.resources.systemFillColorCritical;
     return [
+      if (widget.rule.target case final target?)
+        Tooltip(
+          message: 'Keeps its own exit when the list changes',
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: theme.resources.controlStrokeColorDefault,
+              ),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              'Pinned · ${target.isDirect ? 'Direct' : model.targetName(target)}',
+              style: const TextStyle(fontSize: 11),
+            ),
+          ),
+        ),
       if (!widget.rule.isEnabled) const Chip('paused'),
       if (widget.rule.network case final network?)
         Chip(
@@ -791,7 +937,8 @@ class _RuleRowState extends State<_RuleRow> {
           RuleIssueDuplicate() => Chip(
             'duplicate',
             tint: caution,
-            tooltip: 'Same pattern and match as an earlier rule of this group',
+            tooltip:
+                'Same pattern, match and network as an earlier rule of this list',
           ),
           RuleIssueCoversTunnelServer(:final tunnelName) => Chip(
             'warning',
@@ -808,9 +955,10 @@ class _RuleRowState extends State<_RuleRow> {
                 'through the tunnel while Wayfork is on',
           ),
           RuleIssueTunnelDisabled() => SecondaryText(
-            'paused — ${model.targetName(widget.rule.target)} is off',
+            'paused — ${model.targetName(model.store.targetFor(widget.rule) ?? const RuleTargetDirect())} is off',
           ),
           RuleIssueTunnelMissing() => Chip('no tunnel', tint: critical),
+          RuleIssueMissingSecret() => Chip('missing secret', tint: critical),
         },
     ];
   }
@@ -819,10 +967,9 @@ class _RuleRowState extends State<_RuleRow> {
     final earlier = model.store.rules
         .where((rule) => rule.id == by)
         .firstOrNull;
-    if (earlier == null) return 'never used — an earlier group has it';
-    return earlier.target.isDirect
-        ? 'never used — "Not via any tunnel" has it'
-        : 'never used — ${model.targetName(earlier.target)} has it';
+    if (earlier == null) return 'Never used — an earlier rule wins';
+    final list = model.store.list(earlier.listID!);
+    return 'Never used — ${list?.name ?? 'List'} → ${earlier.pattern} wins';
   }
 }
 
@@ -1145,6 +1292,7 @@ class RecentStrip extends StatefulWidget {
 class _RecentStripState extends State<RecentStrip> {
   static const rowLimit = 3;
   bool _showAll = false;
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
@@ -1179,11 +1327,14 @@ class _RecentStripState extends State<RecentStrip> {
                 child: SecondaryText(
                   rows.isEmpty
                       ? 'nothing new in the last $minutes min'
-                      : 'went $went in the last $minutes min — pick a tunnel '
-                            'to make a rule',
+                      : 'went $went in the last $minutes min — add to a list',
                 ),
               ),
-              if (rows.length > rowLimit)
+              HyperlinkButton(
+                onPressed: () => setState(() => _expanded = !_expanded),
+                child: Text(_expanded ? 'Hide' : 'Show'),
+              ),
+              if (_expanded && rows.length > rowLimit)
                 HyperlinkButton(
                   onPressed: () => setState(() => _showAll = !_showAll),
                   child: Text(
@@ -1193,7 +1344,7 @@ class _RecentStripState extends State<RecentStrip> {
             ],
           ),
         ),
-        if (shown.isNotEmpty)
+        if (_expanded && shown.isNotEmpty)
           ConstrainedBox(
             constraints: BoxConstraints(maxHeight: _showAll ? 220 : 120),
             child: SingleChildScrollView(

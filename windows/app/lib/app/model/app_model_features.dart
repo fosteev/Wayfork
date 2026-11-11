@@ -54,11 +54,16 @@ extension AppModelFeatures on AppModel {
   String recentRulePattern(String host) => RulePattern.registrableDomain(host);
 
   /// Creates the suffix rule and drops the row.
-  Future<String?> routeRecent(String host, {required RuleTarget via}) async {
+  Future<String?> routeRecent(
+    String host, {
+    RuleTarget? via,
+    String? listID,
+  }) async {
     final message = await addRule(
       pattern: recentRulePattern(host),
       match: RuleMatch.suffix,
-      target: via,
+      target: via ?? const RuleTargetDirect(),
+      listID: listID,
     );
     if (message != null) return message;
     hideRecent(host);

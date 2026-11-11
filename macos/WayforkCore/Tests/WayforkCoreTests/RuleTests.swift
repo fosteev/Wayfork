@@ -216,6 +216,7 @@ import Testing
         Rule(pattern: "example.com", tunnelID: Fixtures.workID),
         Rule(pattern: "bank.example", target: .direct),
     ]
+    store = explicitStore(store)
     // Direct, tunnels, then groups.
     #expect(
         store.effectiveRules.map(\.pattern) == ["bank.example", "example.com", "video.example.com"])
@@ -244,5 +245,6 @@ import Testing
     #expect(RuleValidator.activeRules(store)[group.id]?.count == 1)
     // A group rule shadowed by an earlier tunnel rule with the same pattern.
     store.rules.append(Rule(pattern: "example.com", target: .group(group.id)))
+    store = explicitStore(store)
     #expect(RuleValidator.validate(store)[store.rules[3].id] == [.shadowed(by: store.rules[1].id)])
 }

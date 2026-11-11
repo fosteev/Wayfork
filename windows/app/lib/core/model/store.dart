@@ -1,3 +1,6 @@
+import 'package:characters/characters.dart';
+import 'package:wayfork/core/model/rule_list.dart';
+import 'package:wayfork/core/model/legacy_list_migration.dart';
 import 'package:collection/collection.dart';
 import 'package:wayfork/core/json_text.dart';
 import 'package:wayfork/core/model/rule.dart';
@@ -8,46 +11,89 @@ import 'package:wayfork/core/model/tunnel_group.dart';
 import 'package:wayfork/core/support/uuid.dart';
 
 final class Store {
-  Store({
+  factory Store({
+    int schemaVersion = currentSchemaVersion,
+    List<Tunnel> tunnels = const [],
+    List<Rule> rules = const [],
+    List<RuleList>? lists,
+    Settings settings = const Settings(),
+    String? defaultTunnelID,
+    List<TunnelGroup> groups = const [],
+  }) {
+    final store = Store._(
+      schemaVersion: schemaVersion,
+      tunnels: tunnels,
+      rules: rules,
+      lists: lists ?? const [],
+      settings: settings,
+      defaultTunnelID: defaultTunnelID,
+      groups: groups,
+    );
+    return lists == null && rules.isNotEmpty
+        ? LegacyListMigration.migrate(store)
+        : store;
+  }
+  Store._({
     this.schemaVersion = currentSchemaVersion,
     List<Tunnel> tunnels = const [],
     List<Rule> rules = const [],
+    List<RuleList> lists = const [],
     this.settings = const Settings(),
     String? defaultTunnelID,
     List<TunnelGroup> groups = const [],
   }) : tunnels = List.unmodifiable(tunnels),
        rules = List.unmodifiable(rules),
+       lists = List.unmodifiable(lists),
        groups = List.unmodifiable(groups),
        defaultTunnelID = defaultTunnelID == null
            ? null
            : _uuid(defaultTunnelID, 'defaultTunnelID');
 
-  factory Store.fromJson(Map<String, Object?> json) => Store(
-    schemaVersion: _int(json, 'schemaVersion'),
-    tunnels: _list(
-      json,
-      'tunnels',
-    ).map((value) => Tunnel.fromJson(_map(value, 'tunnel'))).toList(),
-    rules: _list(
-      json,
-      'rules',
-    ).map((value) => Rule.fromJson(_map(value, 'rule'))).toList(),
-    settings: Settings.fromJson(_map(json['settings'], 'settings')),
-    defaultTunnelID: _optionalString(json, 'defaultTunnelID'),
-    groups: json['groups'] == null
-        ? const []
-        : _list(
-            json,
-            'groups',
-          ).map((value) => TunnelGroup.fromJson(_map(value, 'group'))).toList(),
-  );
+  factory Store.fromJson(Map<String, Object?> json) {
+    final version = _int(json, 'schemaVersion');
+    if (version > currentSchemaVersion) {
+      throw StoreCodecException.newerSchema(
+        found: version,
+        supported: currentSchemaVersion,
+      );
+    }
+    final store = Store._(
+      schemaVersion: version,
+      lists: version >= 4
+          ? _list(
+              json,
+              'lists',
+            ).map((value) => RuleList.fromJson(_map(value, 'list'))).toList()
+          : const [],
+      tunnels: _list(
+        json,
+        'tunnels',
+      ).map((value) => Tunnel.fromJson(_map(value, 'tunnel'))).toList(),
+      rules: _list(
+        json,
+        'rules',
+      ).map((value) => Rule.fromJson(_map(value, 'rule'))).toList(),
+      settings: Settings.fromJson(_map(json['settings'], 'settings')),
+      defaultTunnelID: _optionalString(json, 'defaultTunnelID'),
+      groups: json['groups'] == null
+          ? const []
+          : _list(json, 'groups')
+                .map((value) => TunnelGroup.fromJson(_map(value, 'group')))
+                .toList(),
+    );
 
-  static const currentSchemaVersion = 3;
+    if (version >= 4) {
+      store.validateMembership();
+    }
+    return store;
+  }
+  static const currentSchemaVersion = 4;
   static final empty = Store();
 
   final int schemaVersion;
   final List<Tunnel> tunnels;
   final List<Rule> rules;
+  final List<RuleList> lists;
   final Settings settings;
   final String? defaultTunnelID;
 
@@ -76,7 +122,7 @@ final class Store {
   String? exitName(String id) => tunnel(id)?.name ?? group(id)?.name;
 
   List<Rule> rulesFor(RuleTarget target) =>
-      rules.where((rule) => rule.target == target).toList();
+      rules.where((rule) => targetFor(rule) == target).toList();
 
   List<Rule> rulesForTunnel(String id) => rulesFor(RuleTargetTunnel(id));
 
@@ -96,13 +142,19 @@ final class Store {
   /// then tunnels in store order, then groups in store order (F16), each
   /// section's rules in list order. Rules pointing at a tunnel or group that
   /// no longer exists come last.
-  List<Rule> get effectiveRules {
-    final ordered = <Rule>[...exceptions];
+  List<Rule> get legacyEffectiveRules {
+    final ordered = rules
+        .where((row) => row.target is RuleTargetDirect)
+        .toList();
     for (final tunnel in tunnels) {
-      ordered.addAll(rulesForTunnel(tunnel.id));
+      ordered.addAll(
+        rules.where((row) => row.target == RuleTargetTunnel(tunnel.id)),
+      );
     }
     for (final group in groups) {
-      ordered.addAll(rulesForGroup(group.id));
+      ordered.addAll(
+        rules.where((row) => row.target == RuleTargetGroup(group.id)),
+      );
     }
     final known = {
       ...tunnels.map((tunnel) => tunnel.id),
@@ -114,6 +166,167 @@ final class Store {
       ),
     );
     return ordered;
+  }
+
+  List<Rule> get effectiveRules {
+    final ordered = [for (final list in lists) ...rulesIn(list.id)];
+    return [
+      ...ordered.where(
+        (row) => declaredTarget(row) == const RuleListExit(RuleTargetDirect()),
+      ),
+      ...ordered.where(
+        (row) => declaredTarget(row) != const RuleListExit(RuleTargetDirect()),
+      ),
+    ];
+  }
+
+  RuleList? list(String id) =>
+      lists.where((list) => list.id == Uuid.normalize(id)).firstOrNull;
+  List<Rule> rulesIn(String id) =>
+      rules.where((row) => row.listID == Uuid.normalize(id)).toList();
+  RuleListTarget? declaredTarget(Rule row) => row.target == null
+      ? (row.listID == null ? null : list(row.listID!)?.target)
+      : RuleListExit(row.target!);
+  RuleTarget? targetFor(Rule row) => switch (declaredTarget(row)) {
+    RuleListExit(:final exit) => exit,
+    RuleListEverythingElse() => switch (effectiveDefaultExit) {
+      DefaultExitTunnel(:final tunnel) => RuleTargetTunnel(tunnel.id),
+      DefaultExitGroup(:final group) => RuleTargetGroup(group.id),
+      null => const RuleTargetDirect(),
+    },
+    null => null,
+  };
+  void validateMembership() {
+    if (lists.map((list) => list.id).toSet().length != lists.length ||
+        rules.map((row) => row.id).toSet().length != rules.length) {
+      throw const FormatException('Duplicate list or row ID');
+    }
+    final names = <String>{};
+    for (final list in lists) {
+      if (list.name != list.name.trim() ||
+          list.name.isEmpty ||
+          list.name.characters.length > 40 ||
+          !names.add(list.name.toLowerCase()) ||
+          (list.color != null && (list.color! < 0 || list.color! > 7))) {
+        throw const FormatException('Invalid list name or color');
+      }
+    }
+    final ids = lists.map((list) => list.id).toSet();
+    if (rules.any((row) => !ids.contains(row.listID))) {
+      throw const FormatException('Orphan rule');
+    }
+  }
+
+  String availableListName(String requested) {
+    final base = requested.trim().isEmpty ? 'List' : requested.trim();
+    String prefix(int count) => base.characters.take(count).toString();
+    var candidate = prefix(40);
+    var number = 2;
+    while (lists.any(
+      (list) => list.name.toLowerCase() == candidate.toLowerCase(),
+    )) {
+      final suffix = ' (${number++})';
+      candidate = prefix(40 - suffix.length) + suffix;
+    }
+    return candidate;
+  }
+
+  Store editLists(Store Function(Store) edit) {
+    final next = edit(this);
+    next.validateMembership();
+    return next;
+  }
+
+  Store createList(RuleList list) =>
+      editLists((store) => store.copyWith(lists: [list, ...lists]));
+  Store updateList(String id, RuleList Function(RuleList) edit) {
+    if (list(id) == null) throw const FormatException('Missing list');
+    return editLists(
+      (store) => store.copyWith(
+        lists: lists
+            .map((list) => list.id == Uuid.normalize(id) ? edit(list) : list)
+            .toList(),
+      ),
+    );
+  }
+
+  Store reorderList(String id, int position) => editLists((store) {
+    final found = list(id);
+    if (found == null) throw const FormatException('Missing list');
+    final next = [...lists]..remove(found);
+    next.insert(position.clamp(0, next.length), found);
+    return store.copyWith(lists: next);
+  });
+  Store moveRule(String id, String listID, {int? position}) => editLists((
+    store,
+  ) {
+    if (list(listID) == null) throw const FormatException('Missing list');
+    final index = rules.indexWhere((row) => row.id == Uuid.normalize(id));
+    if (index < 0) throw const FormatException('Missing rule');
+    final next = [...rules];
+    final row = next.removeAt(index).copyWith(listID: Uuid.normalize(listID));
+    final indices = [
+      for (var i = 0; i < next.length; i++)
+        if (next[i].listID == row.listID) i,
+    ];
+    final offset = (position ?? indices.length).clamp(0, indices.length);
+    final insert = offset < indices.length
+        ? indices[offset]
+        : (indices.isEmpty ? next.length : indices.last + 1);
+    next.insert(insert, row);
+    return store.copyWith(rules: next);
+  });
+  Store pinRule(String id, RuleTarget? target) => editLists((store) {
+    if (!rules.any((row) => row.id == Uuid.normalize(id))) {
+      throw const FormatException('Missing rule');
+    }
+    return store.copyWith(
+      rules: rules
+          .map(
+            (row) => row.id == Uuid.normalize(id)
+                ? row.copyWith(target: target)
+                : row,
+          )
+          .toList(),
+    );
+  });
+  Store deleteList(String id) => editLists((store) {
+    if (list(id) == null) throw const FormatException('Missing list');
+    return store.copyWith(
+      lists: lists.where((list) => list.id != Uuid.normalize(id)).toList(),
+      rules: rules.where((row) => row.listID != Uuid.normalize(id)).toList(),
+    );
+  });
+  ({Store store, String listID}) ensureList(RuleTarget target) {
+    final existing = lists
+        .where((list) => list.target == RuleListExit(target))
+        .firstOrNull;
+    if (existing != null) return (store: this, listID: existing.id);
+    final value = RuleList(
+      name: availableListName(
+        target.exitID == null
+            ? 'Direct'
+            : exitName(target.exitID!) ?? 'Unknown exit',
+      ),
+      target: RuleListExit(target),
+    );
+    return (store: createList(value), listID: value.id);
+  }
+
+  Store removeRulesBoundTo(RuleTarget target) {
+    final bound = lists
+        .where((list) => list.target == RuleListExit(target))
+        .map((list) => list.id)
+        .toSet();
+    return copyWith(
+      rules: rules
+          .where(
+            (row) =>
+                row.target != target &&
+                !(row.target == null && bound.contains(row.listID)),
+          )
+          .toList(),
+    );
   }
 
   Tunnel? get effectiveDefaultTunnel {
@@ -210,6 +423,7 @@ final class Store {
   /// byte-identical to one written before F16.
   Map<String, Object?> toJson() => {
     'schemaVersion': schemaVersion,
+    'lists': lists.map((list) => list.toJson()).toList(),
     'tunnels': tunnels.map((tunnel) => tunnel.toJson()).toList(),
     'rules': rules.map((rule) => rule.toJson()).toList(),
     'settings': settings.toJson(),
@@ -223,6 +437,7 @@ final class Store {
     int? schemaVersion,
     List<Tunnel>? tunnels,
     List<Rule>? rules,
+    List<RuleList>? lists,
     Settings? settings,
     Object? defaultTunnelID = _unset,
     List<TunnelGroup>? groups,
@@ -230,6 +445,7 @@ final class Store {
     schemaVersion: schemaVersion ?? this.schemaVersion,
     tunnels: tunnels ?? this.tunnels,
     rules: rules ?? this.rules,
+    lists: lists ?? this.lists,
     settings: settings ?? this.settings,
     defaultTunnelID: identical(defaultTunnelID, _unset)
         ? this.defaultTunnelID
@@ -241,6 +457,7 @@ final class Store {
   bool operator ==(Object other) =>
       other is Store &&
       schemaVersion == other.schemaVersion &&
+      const ListEquality<RuleList>().equals(lists, other.lists) &&
       const ListEquality<Tunnel>().equals(tunnels, other.tunnels) &&
       const ListEquality<Rule>().equals(rules, other.rules) &&
       settings == other.settings &&
@@ -252,6 +469,7 @@ final class Store {
     schemaVersion,
     const ListEquality<Tunnel>().hash(tunnels),
     const ListEquality<Rule>().hash(rules),
+    const ListEquality<RuleList>().hash(lists),
     settings,
     defaultTunnelID,
     const ListEquality<TunnelGroup>().hash(groups),
@@ -348,7 +566,10 @@ abstract final class StoreCodec {
     StoreMigration(fromVersion: 2, apply: (_) {}),
   ];
 
-  static String encode(Store store) => JsonCoding.encodePretty(store.toJson());
+  static String encode(Store store) {
+    store.validateMembership();
+    return JsonCoding.encodePretty(store.toJson());
+  }
 
   static Store decode(String text) {
     try {
@@ -368,7 +589,7 @@ abstract final class StoreCodec {
           supported: Store.currentSchemaVersion,
         );
       }
-      while (version < Store.currentSchemaVersion) {
+      while (version < 3) {
         StoreMigration? migration;
         for (final candidate in migrations) {
           if (candidate.fromVersion == version) migration = candidate;
@@ -380,7 +601,10 @@ abstract final class StoreCodec {
         version++;
         object['schemaVersion'] = version;
       }
-      return Store.fromJson(object);
+      final store = Store.fromJson(object);
+      final result = version < 4 ? LegacyListMigration.migrate(store) : store;
+      result.validateMembership();
+      return result;
     } on StoreCodecException {
       rethrow;
     } on Object {

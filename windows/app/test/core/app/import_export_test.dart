@@ -166,12 +166,14 @@ void main() {
     expect(outcome.store.schemaVersion, 7);
     expect(outcome.store.tunnels.map((t) => t.slot), [0, 1]);
     expect(outcome.store.settings, settings);
-    expect(outcome.store.rules.map((r) => r.pattern), ['valid.example.com']);
+    expect(outcome.store.rules.map((r) => r.pattern), [
+      'valid.example.com',
+      'missing.example.com',
+    ]);
     expect(outcome.tunnelsAdded, 2);
-    expect(outcome.rulesAdded, 1);
-    expect(outcome.rulesSkipped, 1);
-    expect(outcome.warnings, hasLength(1));
-    expect(outcome.warnings[0], contains('missing.example.com'));
+    expect(outcome.rulesAdded, 2);
+    expect(outcome.rulesSkipped, 0);
+    expect(outcome.warnings, isEmpty);
     expect(outcome.secrets, hasLength(4));
     expect(
       outcome.secrets[SecretKey(SecretKind.ovpn, importedOpenVPNID)],
@@ -263,14 +265,23 @@ void main() {
     expect(outcome.store.tunnels[0].isEnabled, isFalse);
     expect(outcome.store.tunnels[0].kind, updated.kind);
     expect(outcome.store.tunnels[2].slot, 1);
-    expect(outcome.store.rules.map((r) => r.id), [existingRuleID, newRuleID]);
-    expect(outcome.store.rules[0].pattern, 'updated.example.com');
+    expect(outcome.store.rules, hasLength(3));
+    expect(outcome.store.rules[0].pattern, 'old.example.com');
+    expect(outcome.store.rules[1].pattern, 'updated.example.com');
+    expect(outcome.store.rules[1].id, isNot(existingRuleID));
+    expect(outcome.store.rules.last.id, newRuleID);
     expect(outcome.store.settings, originalSettings);
     expect(outcome.tunnelsAdded, 1);
     expect(outcome.tunnelsUpdated, 1);
-    expect(outcome.rulesAdded, 1);
-    expect(outcome.rulesUpdated, 1);
-    expect(outcome.warnings, ['Tunnel Work renamed to Work (2)']);
+    expect(outcome.rulesAdded, 2);
+    expect(outcome.rulesUpdated, 0);
+    expect(outcome.warnings, contains('Tunnel Work renamed to Work (2)'));
+    expect(
+      outcome.warnings,
+      contains(
+        'Existing earlier lists can take precedence over imported rules',
+      ),
+    );
   });
 
   test('merge skips a new tunnel when all slots are taken', () {
@@ -375,9 +386,9 @@ void main() {
       mode: ImportMode.replace,
     );
     expect(replaced.store.defaultTunnelID, importedVLESSID);
-    expect(replaced.store.rules.map((r) => r.target), [
-      RuleTargetTunnel(importedOpenVPNID),
+    expect(replaced.store.rules.map(replaced.store.targetFor), [
       const RuleTargetDirect(),
+      RuleTargetTunnel(importedOpenVPNID),
     ]);
     expect(replaced.rulesSkipped, 0);
 
@@ -436,7 +447,10 @@ void main() {
       exportedAt: importDate,
     );
     expect(exported.defaultTunnelID, importedOpenVPNID);
-    expect(exported.rules.any((r) => r.isException), isTrue);
+    expect(
+      Store(rules: exported.rules, lists: exported.lists).exceptions,
+      hasLength(1),
+    );
   });
 
   test('import carries groups, drops the ones left too small (F16)', () {
@@ -471,11 +485,14 @@ void main() {
       mode: ImportMode.replace,
     );
     expect(outcome.store.groups.map((g) => g.name).toList(), ['Streaming']);
-    expect(outcome.store.rules.length, 1);
-    expect(outcome.rulesSkipped, 1);
+    expect(outcome.store.rules.length, 2);
+    expect(outcome.rulesSkipped, 0);
     expect(outcome.store.defaultTunnelID, group.id);
     expect(outcome.warnings, contains(startsWith('Group Backup skipped')));
-    expect(outcome.warnings, contains(contains('group 2000… not found')));
+    expect(
+      outcome.store.targetFor(outcome.store.rules.last),
+      RuleTargetGroup(tooSmall.id),
+    );
   });
 
   test('import carries local proxy ports and drops collisions (F17)', () {

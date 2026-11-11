@@ -19,6 +19,8 @@ public enum ControlPaths {
 public enum ControlMethod: String, Codable, Sendable, CaseIterable {
     case status
     case failed
+    case listsList = "lists.list"
+    case listsSet = "lists.set"
     case rulesList = "rules.list"
     case rulesAdd = "rules.add"
     case rulesRemove = "rules.remove"
@@ -33,6 +35,7 @@ public struct ControlParams: Codable, Sendable, Hashable {
     public var pattern: String?
     /// `rules.add`, `rules.list`: a tunnel or group name or id, or `direct`.
     public var via: String?
+    public var list: String?
     public var level: LogLevel?
     /// `reconnect`: a tunnel name or id.
     public var tunnel: String?
@@ -45,8 +48,9 @@ public struct ControlParams: Codable, Sendable, Hashable {
     public init(
         pattern: String? = nil, via: String? = nil, level: LogLevel? = nil,
         tunnel: String? = nil, confirmWithin: Int? = nil, dryRun: Bool? = nil,
-        network: RuleNetwork? = nil
+        network: RuleNetwork? = nil, list: String? = nil
     ) {
+        self.list = list
         self.network = network
         self.pattern = pattern
         self.via = via
@@ -171,12 +175,34 @@ public struct ControlRuleInfo: Codable, Sendable, Hashable {
     public var match: RuleMatch
     /// The exit's name, or `direct`.
     public var via: String
+    public var listID: UUID?
+    public var listName: String?
+    public var listPriority: Int?
+    public var rowPriority: Int?
+    public var pinned: Bool?
+    public var listEnabled: Bool?
+    public var declaredTarget: RuleListTarget?
+    public var listTarget: RuleListTarget?
+    public var override: RuleListTarget?
+    public var warning: String?
     public var enabled: Bool
     public var note: String?
     /// F23; omitted when the rule covers both transports.
     public var network: RuleNetwork?
 
-    public init(_ rule: Rule, via: String) {
+    public init(_ rule: Rule, via: String, store: Store? = nil, warning: String? = nil) {
+        listID = rule.listID
+        pinned = rule.target != nil
+        override = rule.target.map(RuleListTarget.exit)
+        self.warning = warning
+        if let store, let listID = rule.listID, let list = store.list(id: listID) {
+            listName = list.name
+            listPriority = store.lists.firstIndex { $0.id == listID }
+            rowPriority = store.rules(in: listID).firstIndex { $0.id == rule.id }
+            listEnabled = list.isEnabled
+            listTarget = list.target
+            declaredTarget = store.declaredTarget(for: rule)
+        }
         network = rule.network
         id = rule.id
         pattern = rule.pattern
@@ -238,5 +264,33 @@ public struct ControlChangeReply: Codable, Sendable, Hashable {
         self.applyError = applyError
         self.pending = pending
         self.skipped = skipped
+    }
+}
+
+/// Serializes the async durable finalization of a pending change. GUI store edits remain
+/// allowed, but confirm and timeout/revert cannot both own the same journal.
+public struct ControlResolutionGate: Sendable {
+    public enum Action: Sendable { case confirm, revert }
+    private var owner: PendingControlChange?
+    public private(set) var action: Action?
+    public var isBusy: Bool { owner != nil }
+
+    public init() {}
+
+    public mutating func begin(_ action: Action, pending: PendingControlChange) -> Bool {
+        guard owner == nil else { return false }
+        owner = pending
+        self.action = action
+        return true
+    }
+
+    public func owns(_ pending: PendingControlChange, current: PendingControlChange?) -> Bool {
+        owner == pending && current == pending
+    }
+
+    public mutating func end(_ pending: PendingControlChange) {
+        guard owner == pending else { return }
+        owner = nil
+        action = nil
     }
 }

@@ -70,7 +70,7 @@ void main() {
     expect(result.plan.openVPN[0].interface, 'Wayfork-1');
     expect(result.plan.openVPN[0].id, Fixtures.workID);
     expect(result.plan.openVPN[0].credentials?.username, 'u');
-    expect(result.plan.singBox.ruleSets, hasLength(4));
+    expect(result.plan.singBox.ruleSets, hasLength(3));
     expect(
       result.plan.singBox.configHash,
       Hashing.sha256Hex(result.plan.singBox.config),
@@ -90,7 +90,7 @@ void main() {
     final changed = store.copyWith(
       rules: [
         ...store.rules,
-        Rule.tunnel(pattern: 'new.example', tunnelID: Fixtures.workID),
+        Rule(pattern: 'new.example', listID: store.rules.first.listID),
       ],
     );
     final next = RuntimePlanBuilder.build(
@@ -100,7 +100,7 @@ void main() {
       platform: WayforkPlatform.windows,
     );
     expect(next.plan.planHash, isNot(result.plan.planHash));
-    expect(next.plan.singBox.configHash, result.plan.singBox.configHash);
+    expect(next.plan.singBox.configHash, isNot(result.plan.singBox.configHash));
   });
 
   test('plan carries runtime settings and caller network inputs', () {

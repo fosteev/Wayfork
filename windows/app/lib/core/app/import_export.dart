@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import 'package:wayfork/core/support/uuid.dart';
 import 'package:wayfork/core/json_text.dart';
 import 'package:wayfork/core/model/export_document.dart';
 import 'package:wayfork/core/model/rule.dart';
@@ -223,31 +226,103 @@ abstract final class StoreImporter {
     final exitIDs = {...tunnelIDs, ...result.groups.map((group) => group.id)};
 
     var rulesAdded = 0;
-    var rulesUpdated = 0;
-    var rulesSkipped = 0;
+    const rulesUpdated = 0;
+    const rulesSkipped = 0;
     final rules = mode == ImportMode.replace ? <Rule>[] : [...result.rules];
-    for (final rule in document.rules) {
-      final exitID = rule.exitID;
-      if (exitID != null && !exitIDs.contains(exitID)) {
-        final what = rule.target.groupID == null ? 'tunnel' : 'group';
+    var lists = mode == ImportMode.replace
+        ? [...document.lists]
+        : [...result.lists];
+    final listIDs = <String, String>{};
+    ImportOutcome invalid(String reason) => ImportOutcome(
+      store: to,
+      secrets: const {},
+      warnings: [reason],
+      tunnelsAdded: 0,
+      tunnelsUpdated: 0,
+      rulesAdded: 0,
+      rulesUpdated: 0,
+      rulesSkipped: document.rules.length,
+    );
+    if (mode == ImportMode.merge) {
+      if (document.lists.isNotEmpty && result.lists.isNotEmpty) {
         warnings.add(
-          'Rule ${rule.pattern} skipped: $what ${_short(exitID)}… not found',
+          'Existing earlier lists can take precedence over imported rules',
         );
-        rulesSkipped += 1;
-        continue;
       }
-      final index = mode == ImportMode.merge
-          ? rules.indexWhere((existing) => existing.id == rule.id)
-          : -1;
-      if (index >= 0) {
-        rules[index] = rule;
-        rulesUpdated += 1;
-      } else {
-        rules.add(rule);
-        rulesAdded += 1;
+      for (final source in document.lists) {
+        if (lists.contains(source)) {
+          listIDs[source.id] = source.id;
+          continue;
+        }
+        var imported = source;
+        final sameID = lists.where((list) => list.id == source.id).firstOrNull;
+        // A previous import may have disambiguated only its display name. Recognize
+        // that deterministic name without treating an arbitrary edit as identical.
+        if (sameID != null &&
+            source.copyWith(name: sameID.name) == sameID &&
+            sameID.name ==
+                result
+                    .copyWith(
+                      lists: lists
+                          .where((list) => list.id != source.id)
+                          .toList(),
+                    )
+                    .availableListName(source.name)) {
+          listIDs[source.id] = source.id;
+          continue;
+        }
+        if (sameID != null) {
+          imported = imported.copyWith(
+            id: _remappedID(source.id, source.toJson()),
+          );
+          final existing = lists
+              .where((list) => list.id == imported.id)
+              .firstOrNull;
+          if (existing != null) {
+            if (imported.copyWith(name: existing.name) == existing) {
+              listIDs[source.id] = existing.id;
+              continue;
+            }
+            return invalid('List identity collision: import left unchanged');
+          }
+          warnings.add('List ${source.name} imported with a new ID');
+        }
+        imported = imported.copyWith(
+          name: result.copyWith(lists: lists).availableListName(source.name),
+        );
+        if (imported.name != source.name) {
+          warnings.add('List ${source.name} renamed to ${imported.name}');
+        }
+        listIDs[source.id] = imported.id;
+        lists = [...lists, imported];
       }
     }
-    result = result.copyWith(rules: rules);
+    for (final source in document.rules) {
+      var rule = source.copyWith(
+        listID: listIDs[source.listID] ?? source.listID,
+      );
+      if (rules.contains(rule)) continue;
+      if (mode == ImportMode.merge &&
+          rules.any((existing) => existing.id == rule.id)) {
+        rule = rule.copyWith(id: _remappedID(source.id, rule.toJson()));
+        if (rules.contains(rule)) continue;
+        if (rules.any((existing) => existing.id == rule.id)) {
+          return invalid('Rule identity collision: import left unchanged');
+        }
+      }
+      if (mode == ImportMode.merge &&
+          rules.any((existing) => existing.copyWith(id: rule.id) == rule)) {
+        continue;
+      }
+      rules.add(rule);
+      rulesAdded++;
+    }
+    result = result.copyWith(rules: rules, lists: lists);
+    try {
+      result.validateMembership();
+    } on Object catch (error) {
+      return invalid('Invalid list membership: $error');
+    }
 
     // F8: the file's default replaces the current one only when it names a
     // tunnel that made it in; on Replace the fresh store has none to begin with.
@@ -273,6 +348,16 @@ abstract final class StoreImporter {
       rulesUpdated: rulesUpdated,
       rulesSkipped: rulesSkipped,
     );
+  }
+
+  static String _remappedID(String id, Map<String, Object?> content) {
+    final hash = sha256
+        .convert(
+          utf8.encode(Uuid.encode(id) + JsonCoding.encodeCompact(content)),
+        )
+        .toString()
+        .substring(0, 32);
+    return '${hash.substring(0, 8)}-${hash.substring(8, 12)}-${hash.substring(12, 16)}-${hash.substring(16, 20)}-${hash.substring(20)}';
   }
 
   static String _short(String id) => id.substring(0, 4);
@@ -346,6 +431,16 @@ abstract final class StoreImporter {
     }
     final uuid = tunnelSecrets.uuid;
     if (uuid != null) into[SecretKey(SecretKind.uuid, id)] = uuid;
+    final password = tunnelSecrets.password;
+    if (password != null) into[SecretKey(SecretKind.password, id)] = password;
+    final privateKey = tunnelSecrets.privateKey;
+    if (privateKey != null) {
+      into[SecretKey(SecretKind.privateKey, id)] = privateKey;
+    }
+    final presharedKey = tunnelSecrets.presharedKey;
+    if (presharedKey != null) {
+      into[SecretKey(SecretKind.presharedKey, id)] = presharedKey;
+    }
   }
 }
 
@@ -401,6 +496,7 @@ abstract final class StoreExporter {
       includesSecrets: includeSecrets,
       tunnels: tunnels,
       rules: store.rules,
+      lists: store.lists,
       settings: store.settings,
       defaultTunnelID: store.defaultTunnelID,
       groups: store.groups,

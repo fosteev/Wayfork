@@ -12,8 +12,8 @@ public enum RuleEditing {
     /// Normalizes `input` for `match` and rejects duplicates (same pattern, match and F23
     /// network) within `target`'s group.
     public static func normalize(
-        _ input: String, match: RuleMatch, target: RuleTarget, store: Store,
-        excluding ruleID: UUID?, network: RuleNetwork? = nil
+        _ input: String, match: RuleMatch, target: RuleTarget?, store: Store,
+        excluding ruleID: UUID?, network: RuleNetwork? = nil, listID: UUID? = nil
     ) -> Result<String, Failure> {
         let pattern: String
         do {
@@ -23,8 +23,11 @@ public enum RuleEditing {
         } catch {
             return .failure(.pattern(.invalidHostname(input)))
         }
+        let membership =
+            listID ?? ruleID.flatMap { id in store.rules.first { $0.id == id }?.listID }
+            ?? store.lists.first { $0.target == target.map(RuleListTarget.exit) }?.id
         let duplicate = store.rules.contains {
-            $0.id != ruleID && $0.target == target && $0.pattern == pattern
+            $0.id != ruleID && $0.listID == membership && $0.pattern == pattern
                 && $0.match == match
                 && $0.network == Rule.normalizedNetwork(network, for: match)
         }
@@ -68,7 +71,7 @@ public enum QuickAdd {
     /// the popover (no network) never touches a narrowed rule.
     public static func evaluate(
         input: String, target: RuleTarget, store: Store, network: RuleNetwork? = nil,
-        match explicitMatch: RuleMatch? = nil
+        match explicitMatch: RuleMatch? = nil, listID: UUID? = nil
     ) -> Outcome {
         let match = explicitMatch ?? RulePattern.inferMatch(input)
         let pattern: String
@@ -79,15 +82,30 @@ public enum QuickAdd {
         } catch {
             return .invalid(RuleEditing.message(for: .invalidHostname(input)))
         }
+        let membership = listID ?? store.lists.first { $0.target == .exit(target) }?.id
         if var existing = store.rules.first(where: {
-            $0.pattern == pattern && $0.network == network
+            $0.listID == membership && $0.pattern == pattern && $0.match == match
+                && $0.network == network
         }) {
-            existing.target = target
+            existing.target = nil
             existing.match = match
             existing.isEnabled = true
             return .update(existing)
         }
-        return .add(Rule(pattern: pattern, match: match, target: target, network: network))
+        return .add(
+            Rule(
+                pattern: pattern, match: match, target: membership == nil ? target : nil,
+                listID: membership, network: network))
+    }
+
+    public static func evaluate(
+        input: String, listID: UUID, store: Store, network: RuleNetwork? = nil,
+        match: RuleMatch? = nil
+    ) -> Outcome {
+        guard store.list(id: listID) != nil else { return .invalid("Choose a rule list") }
+        return evaluate(
+            input: input, target: .direct, store: store, network: network,
+            match: match, listID: listID)
     }
 
     /// True when the input names a rule that already exists (the button reads "Update").

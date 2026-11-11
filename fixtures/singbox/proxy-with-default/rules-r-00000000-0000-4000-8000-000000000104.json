@@ -1,0 +1,13 @@
+{
+  "rules" : [
+    {
+      "domain" : [
+        "bank.example.org"
+      ],
+      "domain_suffix" : [
+        ".bank.example.org"
+      ]
+    }
+  ],
+  "version" : 3
+}

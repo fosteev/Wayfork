@@ -1,3 +1,4 @@
+import 'package:wayfork/core/model/rule_list.dart';
 import 'package:wayfork/core/model/rule.dart';
 import 'package:wayfork/core/model/store.dart';
 import 'package:wayfork/core/rules/rule_pattern.dart';
@@ -106,81 +107,34 @@ abstract final class RuleValidator {
   static Map<String, List<RuleIssue>> validate(
     Store store, {
     List<LocalNetwork> localNetworks = const [],
+    Set<String>? routedExitIDs,
   }) {
     final issues = <String, List<RuleIssue>>{};
     final tunnelsByID = {for (final tunnel in store.tunnels) tunnel.id: tunnel};
     final groupsByID = {for (final group in store.groups) group.id: group};
-    // Section order for shadowing: Direct first, then tunnels, then groups
-    // (F16), each in store order.
-    final groupOrder = <RuleTarget, int>{const RuleTargetDirect(): 0};
-    for (var index = 0; index < store.tunnels.length; index++) {
-      groupOrder[RuleTargetTunnel(store.tunnels[index].id)] = index + 1;
-    }
-    for (var index = 0; index < store.groups.length; index++) {
-      groupOrder[RuleTargetGroup(store.groups[index].id)] =
-          store.tunnels.length + index + 1;
-    }
-    bool isSectionActive(RuleTarget target) => switch (target) {
-      RuleTargetDirect() => true,
-      RuleTargetTunnel(:final tunnelID) =>
-        tunnelsByID[tunnelID]?.isEnabled == true,
-      RuleTargetGroup(:final groupID) => switch (groupsByID[groupID]) {
-        null => false,
-        final group =>
-          group.isEnabled && store.enabledMembers(group).isNotEmpty,
-      },
-    };
-
-    final seen = <_RuleKey, String>{};
-    final duplicates = <String>{};
-    for (final rule in store.rules) {
-      final key = _RuleKey(rule, rule.target);
+    final candidates = _resolvedCandidates(store, routedExitIDs: routedExitIDs);
+    final seen = <String, String>{};
+    final earlier = <ResolvedRule>[];
+    for (final row in candidates) {
+      final rule = row.rule;
+      final key = _key(row);
       final first = seen[key];
       if (first != null) {
         (issues[rule.id] ??= []).add(RuleIssue.duplicate(first));
-        duplicates.add(rule.id);
-      } else {
-        seen[key] = rule.id;
-      }
-    }
-
-    // Shadowing: an active rule is shadowed by an earlier one in the
-    // effective order with the same pattern and match whose network covers
-    // its own (F23). The order is a rank (Direct both 0, Direct narrowed 1,
-    // exit narrowed 2, exit both 3), then the section order; without narrowed
-    // rules that is the plain section order.
-    final active = <_PatternKey, List<_Candidate>>{};
-    for (final rule in store.effectiveRules) {
-      final activeGroup = isSectionActive(rule.target);
-      final group = groupOrder[rule.target];
-      if (!rule.isEnabled ||
-          duplicates.contains(rule.id) ||
-          !activeGroup ||
-          group == null) {
         continue;
       }
-      final narrowed = rule.network != null;
-      final rank = rule.isException ? (narrowed ? 1 : 0) : (narrowed ? 2 : 3);
-      (active[_PatternKey(rule)] ??= []).add(
-        _Candidate(rule.id, rule.network, rank, group),
-      );
-    }
-    for (final candidates in active.values) {
-      for (final candidate in candidates) {
-        _Candidate? earlier;
-        for (final other in candidates) {
-          if (other.ruleID != candidate.ruleID &&
-              other.precedes(candidate) &&
-              (other.network == null || other.network == candidate.network)) {
-            earlier = other;
-            break;
-          }
+      seen[key] = rule.id;
+      ResolvedRule? winner;
+      for (final other in earlier) {
+        if (_covers(other.rule, rule)) {
+          winner = other;
+          break;
         }
-        if (earlier != null) {
-          (issues[candidate.ruleID] ??= []).add(
-            RuleIssue.shadowed(earlier.ruleID),
-          );
-        }
+      }
+      if (winner != null) {
+        (issues[rule.id] ??= []).add(RuleIssue.shadowed(winner.rule.id));
+      } else {
+        earlier.add(row);
       }
     }
 
@@ -205,7 +159,7 @@ abstract final class RuleValidator {
     }
 
     for (final rule in store.rules) {
-      final exitID = rule.exitID;
+      final exitID = store.targetFor(rule)?.exitID;
       if (exitID == null) continue;
       final tunnel = tunnelsByID[exitID];
       final group = groupsByID[exitID];
@@ -219,6 +173,16 @@ abstract final class RuleValidator {
         }
       } else {
         (issues[rule.id] ??= []).add(const RuleIssue.tunnelMissing());
+      }
+      if (routedExitIDs != null &&
+          !routedExitIDs.contains(exitID) &&
+          !(issues[rule.id]?.any(
+                (issue) =>
+                    issue is RuleIssueTunnelMissing ||
+                    issue is RuleIssueTunnelDisabled,
+              ) ??
+              false)) {
+        (issues[rule.id] ??= []).add(const RuleIssueMissingSecret());
       }
       if (rule.isIP) {
         final range = IPv4Prefix.parse(rule.pattern);
@@ -279,71 +243,138 @@ abstract final class RuleValidator {
     final id = store.defaultTunnelID;
     if (id == null) return null;
     final tunnel = store.tunnel(id);
-    if (tunnel == null) return DefaultTunnelIssue.missing;
-    if (!tunnel.isEnabled) return DefaultTunnelIssue.disabled;
-    return missingSecrets.contains(id)
+    if (tunnel != null) {
+      if (!tunnel.isEnabled) return DefaultTunnelIssue.disabled;
+      return missingSecrets.contains(id)
+          ? DefaultTunnelIssue.missingSecret
+          : null;
+    }
+    final group = store.group(id);
+    if (group == null) return DefaultTunnelIssue.missing;
+    final members = store.enabledMembers(group);
+    if (!group.isEnabled || members.isEmpty) return DefaultTunnelIssue.disabled;
+    return members.every((member) => missingSecrets.contains(member.id))
         ? DefaultTunnelIssue.missingSecret
         : null;
   }
 
-  static List<Rule> _activeRulesInOrder(Store store) {
-    final issues = validate(store);
-    return store.effectiveRules.where((rule) {
-      if (!rule.isEnabled) return false;
-      final blocking = issues[rule.id]?.any(
-        (issue) =>
-            issue is RuleIssueDuplicate ||
-            issue is RuleIssueShadowed ||
-            issue is RuleIssueTunnelDisabled ||
-            issue is RuleIssueTunnelMissing,
-      );
-      return blocking != true;
-    }).toList();
+  static List<Rule> _activeRulesInOrder(Store store) => resolvedRules(
+    store,
+  ).map((row) => row.rule.copyWith(target: row.target)).toList();
+
+  static String _key(ResolvedRule row) =>
+      '${row.listID}|${row.rule.match.jsonValue}|${row.rule.pattern}|${row.rule.network?.jsonValue ?? 'both'}';
+  static bool _covers(Rule earlier, Rule later) =>
+      earlier.pattern == later.pattern &&
+      earlier.match == later.match &&
+      (earlier.network == null || earlier.network == later.network);
+
+  static List<ResolvedRule> resolvedRules(
+    Store store, {
+    Set<String>? routedExitIDs,
+  }) {
+    final seen = <String>{};
+    final active = <ResolvedRule>[];
+    for (final row in _resolvedCandidates(
+      store,
+      routedExitIDs: routedExitIDs,
+    )) {
+      if (!seen.add(_key(row)) ||
+          active.any((other) => _covers(other.rule, row.rule))) {
+        continue;
+      }
+      active.add(row);
+    }
+    return active;
+  }
+
+  static Set<String> availableExitIDs(
+    Store store, {
+    Set<String> missingSecrets = const {},
+  }) {
+    final enabled = store.tunnels
+        .where(
+          (tunnel) => tunnel.isEnabled && !missingSecrets.contains(tunnel.id),
+        )
+        .map((tunnel) => tunnel.id)
+        .toSet();
+    return {
+      ...enabled,
+      ...store.groups
+          .where(
+            (group) => group.isEnabled && group.members.any(enabled.contains),
+          )
+          .map((group) => group.id),
+    };
+  }
+
+  static List<ResolvedRule> _resolvedCandidates(
+    Store store, {
+    Set<String>? routedExitIDs,
+  }) {
+    final available = routedExitIDs ?? availableExitIDs(store);
+    final rows = <ResolvedRule>[];
+    for (final list in store.lists.where((list) => list.isEnabled)) {
+      for (final rule
+          in store.rulesIn(list.id).where((rule) => rule.isEnabled)) {
+        final binding = rule.target == null
+            ? list.target
+            : RuleListExit(rule.target!);
+        final RuleTarget target;
+        if (binding case RuleListExit(:final exit)) {
+          target = exit;
+        } else {
+          final id = store.defaultTunnelID;
+          target = id != null && available.contains(id)
+              ? (store.tunnel(id) != null
+                    ? RuleTargetTunnel(id)
+                    : RuleTargetGroup(id))
+              : const RuleTargetDirect();
+        }
+        if (target.exitID != null && !available.contains(target.exitID)) {
+          continue;
+        }
+        rows.add(
+          ResolvedRule(
+            rule: rule,
+            listID: list.id,
+            target: target,
+            isException: binding == const RuleListExit(RuleTargetDirect()),
+          ),
+        );
+      }
+    }
+    return [
+      ...rows.where((row) => row.isException),
+      ...rows.where((row) => !row.isException),
+    ];
   }
 }
 
-final class _RuleKey {
-  const _RuleKey._(this.pattern, this.match, this.network, this.target);
-  factory _RuleKey(Rule rule, RuleTarget target) =>
-      _RuleKey._(rule.pattern, rule.match, rule.network, target);
+final class RuleIssueMissingSecret extends RuleIssue {
+  const RuleIssueMissingSecret();
+  @override
+  bool operator ==(Object other) => other is RuleIssueMissingSecret;
+  @override
+  int get hashCode => runtimeType.hashCode;
+}
 
-  final String pattern;
-  final RuleMatch match;
-  final RuleNetwork? network;
+final class ResolvedRule {
+  const ResolvedRule({
+    required this.rule,
+    required this.listID,
+    required this.target,
+    required this.isException,
+  });
+  final Rule rule;
+  final String listID;
   final RuleTarget target;
-
-  @override
-  bool operator ==(Object other) =>
-      other is _RuleKey &&
-      pattern == other.pattern &&
-      match == other.match &&
-      network == other.network &&
-      target == other.target;
-  @override
-  int get hashCode => Object.hash(pattern, match, network, target);
-}
-
-final class _PatternKey {
-  _PatternKey(Rule rule) : pattern = rule.pattern, match = rule.match;
-
-  final String pattern;
-  final RuleMatch match;
-
-  @override
-  bool operator ==(Object other) =>
-      other is _PatternKey && pattern == other.pattern && match == other.match;
-  @override
-  int get hashCode => Object.hash(pattern, match);
-}
-
-final class _Candidate {
-  const _Candidate(this.ruleID, this.network, this.rank, this.group);
-
-  final String ruleID;
-  final RuleNetwork? network;
-  final int rank;
-  final int group;
-
-  bool precedes(_Candidate other) =>
-      rank < other.rank || (rank == other.rank && group < other.group);
+  final bool isException;
+  String get outboundTag => switch (target) {
+    RuleTargetDirect() => 'direct',
+    RuleTargetTunnel(:final tunnelID) => 't-$tunnelID',
+    RuleTargetGroup(:final groupID) => 'g-$groupID',
+  };
+  String get tag => 'rules-r-${rule.id}';
+  String get fileName => '$tag.json';
 }

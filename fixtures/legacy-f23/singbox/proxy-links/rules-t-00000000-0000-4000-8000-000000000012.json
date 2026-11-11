@@ -1,0 +1,13 @@
+{
+  "rules" : [
+    {
+      "domain" : [
+        "trojan.example"
+      ],
+      "domain_suffix" : [
+        ".trojan.example"
+      ]
+    }
+  ],
+  "version" : 3
+}

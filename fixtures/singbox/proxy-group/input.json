@@ -24,51 +24,74 @@
         "policy" : "fastest"
       }
     ],
-    "rules" : [
+    "lists" : [
       {
         "id" : "00000000-0000-4000-8000-000000000100",
         "isEnabled" : true,
-        "match" : "suffix",
-        "pattern" : "example.com",
-        "tunnelID" : "00000000-0000-4000-8000-000000000001"
-      },
-      {
-        "id" : "00000000-0000-4000-8000-000000000101",
-        "isEnabled" : true,
-        "match" : "exact",
-        "pattern" : "api.other.com",
+        "name" : "Work",
+        "showInMenu" : true,
         "tunnelID" : "00000000-0000-4000-8000-000000000001"
       },
       {
         "id" : "00000000-0000-4000-8000-000000000102",
         "isEnabled" : true,
-        "match" : "wildcard",
-        "pattern" : "*.cdn.example.com",
-        "tunnelID" : "00000000-0000-4000-8000-000000000002"
-      },
-      {
-        "id" : "00000000-0000-4000-8000-000000000103",
-        "isEnabled" : false,
-        "match" : "suffix",
-        "pattern" : "disabled.example",
+        "name" : "Home",
+        "showInMenu" : true,
         "tunnelID" : "00000000-0000-4000-8000-000000000002"
       },
       {
         "groupID" : "00000000-0000-4000-8000-0000000000A1",
         "id" : "00000000-0000-4000-8000-000000000104",
         "isEnabled" : true,
+        "name" : "Streaming",
+        "showInMenu" : true
+      }
+    ],
+    "rules" : [
+      {
+        "id" : "00000000-0000-4000-8000-000000000100",
+        "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000100",
+        "match" : "suffix",
+        "pattern" : "example.com"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000101",
+        "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000100",
+        "match" : "exact",
+        "pattern" : "api.other.com"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000102",
+        "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000102",
+        "match" : "wildcard",
+        "pattern" : "*.cdn.example.com"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000103",
+        "isEnabled" : false,
+        "listID" : "00000000-0000-4000-8000-000000000102",
+        "match" : "suffix",
+        "pattern" : "disabled.example"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000104",
+        "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000104",
         "match" : "suffix",
         "pattern" : "video.example.com"
       },
       {
-        "groupID" : "00000000-0000-4000-8000-0000000000A1",
         "id" : "00000000-0000-4000-8000-000000000105",
         "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000104",
         "match" : "wildcard",
         "pattern" : "*.stream.example.net"
       }
     ],
-    "schemaVersion" : 3,
+    "schemaVersion" : 4,
     "settings" : {
       "autoReconnect" : true,
       "connectOnLaunch" : false,

@@ -1,3 +1,4 @@
+import 'package:wayfork/core/rules/rule_validator.dart';
 import 'package:wayfork/core/json_text.dart';
 import 'package:wayfork/core/model/rule.dart';
 import 'package:wayfork/core/model/tunnel.dart';
@@ -73,6 +74,31 @@ abstract final class RuleSetGenerator {
       if (text != null) files[directNarrowedFileName(network)] = text;
     }
     return files;
+  }
+
+  static Map<String, String> generateRows(
+    List<ResolvedRule> rows, {
+    WayforkPlatform platform = WayforkPlatform.windows,
+  }) => {
+    directFileName: renderDirect(platform: platform),
+    for (final row in rows)
+      if (renderRow(row.rule, platform: platform) case final String text)
+        row.fileName: text,
+  };
+  static String? renderRow(
+    Rule rule, {
+    WayforkPlatform platform = WayforkPlatform.windows,
+  }) {
+    final broad = rule.copyWith(network: null);
+    if (rule.isIP) {
+      final range = IPv4Prefix.parse(rule.pattern);
+      if (range == null ||
+          range.subtractingAll(RulePattern.reservedRanges).isEmpty) {
+        return null;
+      }
+      return renderIP([broad]);
+    }
+    return render([broad], platform: platform);
   }
 
   /// F23: the app and IP rules narrowed to `network`, route-only like the

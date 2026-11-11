@@ -1,0 +1,13 @@
+{
+  "rules" : [
+    {
+      "domain" : [
+        "example.com"
+      ],
+      "domain_suffix" : [
+        ".example.com"
+      ]
+    }
+  ],
+  "version" : 3
+}

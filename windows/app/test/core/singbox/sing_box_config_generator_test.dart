@@ -14,6 +14,8 @@ import 'package:wayfork/core/singbox/sing_box_config_generator.dart';
 import 'package:wayfork/core/support/ipv4_prefix.dart';
 
 import '../fixtures.dart';
+import 'frozen_f23_generator.dart';
+import 'package:wayfork/core/model/legacy_list_migration.dart';
 
 const _bundlePath = '/Applications/Wayfork.app';
 const _windowsInstallDir = r'C:\Program Files\Wayfork';
@@ -342,9 +344,10 @@ void main() {
     );
     expect(_generate(unknown).defaultTunnel, isNull);
 
-    final exceptionsOnly = _twoTunnelStore().copyWith(
+    final exceptionsBase = _twoTunnelStore();
+    final exceptionsOnly = exceptionsBase.copyWith(
       rules: [
-        ..._twoTunnelStore().rules,
+        ...exceptionsBase.rules,
         Rule(pattern: 'bank.example.org', target: const RuleTargetDirect()),
       ],
     );
@@ -459,6 +462,26 @@ void main() {
       platform: WayforkPlatform.windows,
       installDir: _windowsInstallDir,
     );
+    // Current list variants must reach the pinned engine too, with native app paths.
+    for (final name in [
+      'f24-ordered-lists',
+      'f24-follow-direct',
+      'f24-follow-tunnel',
+    ]) {
+      final json = _json(Fixtures.text('singbox/$name/input.json'));
+      json['openVPNBinaryPath'] = r'C:\Program Files\Wayfork\bin\openvpn.exe';
+      final store = json['store']! as Map<String, Object?>;
+      for (final row
+          in (store['rules']! as List<Object?>).cast<Map<String, Object?>>()) {
+        if (row['match'] == 'app') {
+          row['pattern'] = r'C:\Program Files\Chat\chat.exe';
+        }
+      }
+      variants[name] = SingBoxInput.fromJson(
+        json,
+        platform: WayforkPlatform.windows,
+      );
+    }
     for (final entry in variants.entries) {
       final output = SingBoxConfigGenerator.generate(entry.value);
       final directory = await Directory.systemTemp.createTemp(
@@ -795,7 +818,7 @@ SingBoxOutput _generate(
   Map<String, List<String>> resolved = const {},
   List<String> systemDNS = const [],
   List<String> network = const [],
-}) => SingBoxConfigGenerator.generate(
+}) => FrozenF23Generator.generate(
   _input(
     store,
     uuids: uuids,
@@ -960,16 +983,19 @@ Map<String, SingBoxInput> _configVariants({
 Map<String, Object?> _goldenInputJson(SingBoxInput input) {
   final rules = <Rule>[];
   for (var index = 0; index < input.store.rules.length; index++) {
+    final row = input.store.rules[index];
     rules.add(
-      input.store.rules[index].copyWith(
-        id:
-            '00000000-0000-4000-8000-0000000001'
-            '${index.toRadixString(16).padLeft(2, '0')}',
+      row.copyWith(
+        target: input.store.targetFor(row),
+        listID: null,
+        id: '00000000-0000-4000-8000-0000000001${index.toRadixString(16).padLeft(2, '0')}',
       ),
     );
   }
   return SingBoxInput(
-    store: input.store.copyWith(rules: rules),
+    store: LegacyListMigration.migrate(
+      input.store.copyWith(rules: rules, lists: []),
+    ),
     vlessUUIDs: input.vlessUUIDs,
     openVPNBinaryPath: input.openVPNBinaryPath,
     resolvedServerAddresses: input.resolvedServerAddresses,

@@ -66,6 +66,10 @@ final class AppModel {
     var hiddenFailedHosts: Set<String> = []
     /// Last tunnel used by quick add.
     var quickAddTarget: RuleTarget?
+    var controlResolution = ControlResolutionGate()
+    var listRouteUndo: ListRouteUndo?
+    var listUndoTask: Task<Void, Never>?
+    var pendingListInput = ""
     /// Set by the scenes; `openWindow` is only reachable from views.
     var windowOpener: ((String) -> Void)?
 
@@ -186,7 +190,9 @@ final class AppModel {
     var settings: Settings { store.settings }
 
     var ruleIssues: [UUID: [RuleIssue]] {
-        RuleValidator.validate(store, localNetworks: localNetworks)
+        RuleValidator.validate(
+            store, localNetworks: localNetworks,
+            routedExitIDs: RuleValidator.availableExitIDs(store, missingSecrets: missingSecrets))
     }
 
     /// The Mac's own networks for the "covers your LAN" chip (F11), looked up at most every
@@ -304,6 +310,10 @@ final class AppModel {
         do {
             let result = try await repository.load()
             store = result.store
+            if let summary = result.migrationSummary {
+                logs.app(.info, summary)
+                Alerts.show(title: "Rules upgraded to lists", message: summary)
+            }
             if let backup = result.corruptBackup {
                 logs.app(.error, "store.json was unreadable; backup at \(backup.path)")
                 if Alerts.show(
@@ -326,7 +336,7 @@ final class AppModel {
         } catch {
             logs.app(.error, "cannot load store: \(error)")
         }
-        revertLeftoverControlChange()
+        await revertLeftoverControlChange()
         startControlServer()
         try? secrets.removeOrphans(keeping: store)
         seedFromDirectory()
@@ -781,6 +791,16 @@ final class AppModel {
         var changed = store
         mutate(&changed)
         guard changed != store else { return }
+        do { try changed.validateMembership() } catch {
+            logs.app(.error, "store edit rejected: \(error)")
+            return
+        }
+        if let undo = listRouteUndo,
+            changed.list(id: undo.listID)?.target != store.list(id: undo.listID)?.target
+        {
+            listUndoTask?.cancel()
+            listRouteUndo = nil
+        }
         let tunnelsChanged = changed.tunnels != store.tunnels
         store = changed
         if !persistenceDisabled {
@@ -789,6 +809,19 @@ final class AppModel {
         if tunnelsChanged { recomputeMissingSecrets() }
         logs.minimumLevel = changed.settings.logLevel
         secretsChanged()
+    }
+
+    func persistControlStore() async throws {
+        guard !persistenceDisabled else {
+            throw ControlError(.internal, "store persistence is disabled")
+        }
+        // A GUI edit may run while the repository actor writes. Persist its newer value
+        // too, before deleting the journal; never replace the in-memory store after await.
+        while true {
+            let snapshot = store
+            try await repository.write(snapshot)
+            if snapshot == store { return }
+        }
     }
 
     /// Call after Keychain writes too: they change the plan without touching the store.

@@ -7,51 +7,74 @@
 
   },
   "store" : {
-    "rules" : [
+    "lists" : [
+      {
+        "id" : "00000000-0000-4000-8000-000000000105",
+        "isEnabled" : true,
+        "name" : "Direct",
+        "showInMenu" : true,
+        "target" : "direct"
+      },
       {
         "id" : "00000000-0000-4000-8000-000000000100",
         "isEnabled" : true,
-        "match" : "suffix",
-        "pattern" : "example.com",
-        "tunnelID" : "00000000-0000-4000-8000-000000000001"
-      },
-      {
-        "id" : "00000000-0000-4000-8000-000000000101",
-        "isEnabled" : true,
-        "match" : "exact",
-        "pattern" : "api.other.com",
+        "name" : "Work",
+        "showInMenu" : true,
         "tunnelID" : "00000000-0000-4000-8000-000000000001"
       },
       {
         "id" : "00000000-0000-4000-8000-000000000102",
         "isEnabled" : true,
-        "match" : "wildcard",
-        "pattern" : "*.cdn.example.com",
+        "name" : "Home",
+        "showInMenu" : true,
         "tunnelID" : "00000000-0000-4000-8000-000000000002"
+      }
+    ],
+    "rules" : [
+      {
+        "id" : "00000000-0000-4000-8000-000000000105",
+        "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000105",
+        "match" : "app",
+        "pattern" : "/Applications/Bank (Beta).app"
       },
       {
-        "id" : "00000000-0000-4000-8000-000000000103",
-        "isEnabled" : false,
+        "id" : "00000000-0000-4000-8000-000000000100",
+        "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000100",
         "match" : "suffix",
-        "pattern" : "disabled.example",
-        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+        "pattern" : "example.com"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000101",
+        "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000100",
+        "match" : "exact",
+        "pattern" : "api.other.com"
       },
       {
         "id" : "00000000-0000-4000-8000-000000000104",
         "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000100",
         "match" : "app",
-        "pattern" : "/Applications/Telegram.app",
-        "tunnelID" : "00000000-0000-4000-8000-000000000001"
+        "pattern" : "/Applications/Telegram.app"
       },
       {
-        "id" : "00000000-0000-4000-8000-000000000105",
+        "id" : "00000000-0000-4000-8000-000000000102",
         "isEnabled" : true,
-        "match" : "app",
-        "pattern" : "/Applications/Bank (Beta).app",
-        "target" : "direct"
+        "listID" : "00000000-0000-4000-8000-000000000102",
+        "match" : "wildcard",
+        "pattern" : "*.cdn.example.com"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000103",
+        "isEnabled" : false,
+        "listID" : "00000000-0000-4000-8000-000000000102",
+        "match" : "suffix",
+        "pattern" : "disabled.example"
       }
     ],
-    "schemaVersion" : 3,
+    "schemaVersion" : 4,
     "settings" : {
       "autoReconnect" : true,
       "connectOnLaunch" : false,

@@ -225,12 +225,13 @@ private func openVPNSecrets() -> PlanSecrets {
 
 @Test func theXrayRuntimeChangesThePlanHashButNotTheSingBoxHash() {
     let secrets = openVPNSecrets()
+    let source = xhttpStore()
     let first = RuntimePlanBuilder.build(
-        store: xhttpStore(), secrets: secrets, bundlePath: bundlePath)
+        store: source, secrets: secrets, bundlePath: bundlePath)
     var changedSecrets = secrets
     changedSecrets.vlessUUIDs[Fixtures.homeID] = "00000000-0000-4000-8000-0000000000bb"
     let second = RuntimePlanBuilder.build(
-        store: xhttpStore(), secrets: changedSecrets, bundlePath: bundlePath)
+        store: source, secrets: changedSecrets, bundlePath: bundlePath)
     #expect(first.plan.singBox.configHash == second.plan.singBox.configHash)
     #expect(first.plan.planHash != second.plan.planHash)
     #expect(first.plan.xray[0].configHash != second.plan.xray[0].configHash)
@@ -367,11 +368,6 @@ private struct XrayGoldenInput: Codable {
 
     init(store: Store, resolved: [String: [String]]) {
         self.store = store
-        // Rule ids never reach the output; number them so the record is stable across runs.
-        for index in self.store.rules.indices {
-            self.store.rules[index].id = UUID(
-                uuidString: String(format: "00000000-0000-4000-8000-0000000001%02x", index))!
-        }
         vlessUUIDs = [Fixtures.homeID.uuidString.lowercased(): xhttpUUID]
         bundlePath = bundlePathForGolden
         resolvedServerAddresses = resolved
@@ -387,6 +383,7 @@ private let bundlePathForGolden = bundlePath
 private func goldenFiles(
     _ store: Store, resolved: [String: [String]]
 ) throws -> [String: String] {
+    let store = canonicalGoldenStore(store)
     let input = XrayGoldenInput(store: store, resolved: resolved)
     let result = RuntimePlanBuilder.build(
         store: store,

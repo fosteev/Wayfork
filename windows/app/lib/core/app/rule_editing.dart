@@ -1,3 +1,4 @@
+import 'package:wayfork/core/model/rule_list.dart';
 import 'package:wayfork/core/model/rule.dart';
 import 'package:wayfork/core/model/store.dart';
 import 'package:wayfork/core/platform.dart';
@@ -93,7 +94,8 @@ abstract final class RuleEditing {
   static RuleEditingResult normalize(
     String input, {
     required RuleMatch match,
-    required RuleTarget target,
+    RuleTarget? target,
+    String? listID,
     required Store store,
     String? excluding,
     RuleNetwork? network,
@@ -106,9 +108,19 @@ abstract final class RuleEditing {
     } on RulePatternException catch (error) {
       return RuleEditingResult.failure(RuleEditingFailure.pattern(error.kind));
     }
+    final membership =
+        listID ??
+        store.rules.where((row) => row.id == excluding).firstOrNull?.listID ??
+        store.lists
+            .where(
+              (list) =>
+                  list.target == (target == null ? null : RuleListExit(target)),
+            )
+            .firstOrNull
+            ?.id;
     final duplicate = store.rules.any((rule) {
       if (rule.id == excluding ||
-          rule.target != target ||
+          rule.listID != membership ||
           rule.match != match ||
           rule.network != wanted) {
         return false;
@@ -209,23 +221,43 @@ abstract final class QuickAdd {
     required RuleTarget target,
     required Store store,
     RuleNetwork? network,
+    String? listID,
+    RuleMatch? explicitMatch,
   }) {
-    final match = RulePattern.inferMatch(input);
+    final match = explicitMatch ?? RulePattern.inferMatch(input);
     final String pattern;
     try {
       pattern = RulePattern.normalize(input, match: match);
     } on RulePatternException catch (error) {
       return QuickAddOutcome.invalid(RuleEditing.patternMessage(error.kind));
     }
+    if (listID != null && store.list(listID) == null) {
+      return const QuickAddOutcome.invalid('Choose a rule list');
+    }
+    final membership =
+        listID ??
+        store.lists
+            .where((list) => list.target == RuleListExit(target))
+            .firstOrNull
+            ?.id;
     for (final existing in store.rules) {
-      if (existing.pattern == pattern && existing.network == network) {
+      if (existing.listID == membership &&
+          existing.pattern == pattern &&
+          existing.match == match &&
+          existing.network == network) {
         return QuickAddOutcome.update(
-          existing.copyWith(target: target, match: match, isEnabled: true),
+          existing.copyWith(target: null, match: match, isEnabled: true),
         );
       }
     }
     return QuickAddOutcome.add(
-      Rule(pattern: pattern, match: match, target: target, network: network),
+      Rule(
+        pattern: pattern,
+        match: match,
+        target: membership == null ? target : null,
+        listID: membership,
+        network: network,
+      ),
     );
   }
 

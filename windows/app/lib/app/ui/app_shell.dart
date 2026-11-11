@@ -54,6 +54,9 @@ class AppShell extends StatelessWidget {
     );
     return DropTarget(
       onDragDone: (details) {
+        if (details.files.every((f) => f.path.toLowerCase().endsWith('.exe'))) {
+          return;
+        }
         navigator.go(AppPage.tunnels);
         unawaited(
           importer.importDropped(details.files.map((file) => file.path)),

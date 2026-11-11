@@ -1,0 +1,22 @@
+{
+  "rules" : [
+    {
+      "domain" : [
+        "localhost"
+      ],
+      "domain_suffix" : [
+        ".local",
+        ".lan",
+        ".internal",
+        ".home.arpa",
+        ".localhost"
+      ]
+    },
+    {
+      "process_path_regex" : [
+        "^/Applications/Bank \\(Beta\\)\\.app/"
+      ]
+    }
+  ],
+  "version" : 3
+}

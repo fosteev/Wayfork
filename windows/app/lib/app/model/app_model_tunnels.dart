@@ -424,24 +424,8 @@ extension AppModelTunnels on AppModel {
     if (tunnel == null) return null;
     // F16: the tunnel leaves every group; a group left with one member goes too.
     final doomed = groupsLeftTooSmall(without: tunnelID);
-    final rules =
-        ruleCountForTunnel(tunnelID) +
-        doomed.fold<int>(
-          0,
-          (sum, group) => sum + _store.rulesForGroup(group.id).length,
-        );
-    final sites = StatusText.count(rules, 'site');
-    if (doomed.isNotEmpty) {
-      final groups = doomed.length == 1
-          ? 'the group ${doomed.single.name} it leaves too small'
-          : 'the groups ${doomed.map((g) => g.name).join(', ')} it leaves too small';
-      return rules > 0
-          ? 'Delete ${tunnel.name}, $groups, and their $sites? The rules go with them.'
-          : 'Delete ${tunnel.name} and $groups?';
-    }
-    return rules > 0
-        ? 'Delete ${tunnel.name} and its $sites? The rules go with it.'
-        : 'Delete ${tunnel.name}?';
+    final names = [tunnel.name, ...doomed.map((g) => g.name)].join(', ');
+    return 'Delete $names? ${removedRulesMessage({RuleTargetTunnel(tunnelID), ...doomed.map((g) => RuleTargetGroup(g.id))})}';
   }
 
   /// Removes the tunnel, its rules and its secrets (the UI confirms first
@@ -452,17 +436,13 @@ extension AppModelTunnels on AppModel {
     final doomed = groupsLeftTooSmall(
       without: tunnelID,
     ).map((g) => g.id).toSet();
-    await update(
-      (store) => store.copyWith(
+    await update((store) {
+      var next = store.removeRulesBoundTo(RuleTargetTunnel(tunnelID));
+      for (final id in doomed) {
+        next = next.removeRulesBoundTo(RuleTargetGroup(id));
+      }
+      return next.copyWith(
         tunnels: store.tunnels.where((t) => t.id != tunnelID).toList(),
-        rules: store.rules
-            .where(
-              (rule) =>
-                  rule.target != RuleTargetTunnel(tunnelID) &&
-                  !(rule.target.groupID != null &&
-                      doomed.contains(rule.target.groupID)),
-            )
-            .toList(),
         defaultTunnelID:
             store.defaultTunnelID == tunnelID ||
                 doomed.contains(store.defaultTunnelID)
@@ -475,8 +455,8 @@ extension AppModelTunnels on AppModel {
                 members: group.members.where((m) => m != tunnelID).toList(),
               ),
         ],
-      ),
-    );
+      );
+    });
     try {
       await _secrets.deleteAll(tunnelID);
     } on Object catch (error) {

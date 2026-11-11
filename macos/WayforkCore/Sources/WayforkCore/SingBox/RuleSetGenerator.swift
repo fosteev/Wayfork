@@ -63,6 +63,26 @@ public enum RuleSetGenerator {
         return files
     }
 
+    public static func generate(rows: [ResolvedRule]) -> [String: String] {
+        var files = [directFileName: renderDirect(exceptions: [])]
+        for row in rows {
+            if let text = renderRow(row.rule) { files[row.fileName] = text }
+        }
+        return files
+    }
+
+    public static func renderRow(_ rule: Rule) -> String? {
+        var broad = rule
+        broad.network = nil
+        if rule.isIP {
+            guard let range = IPv4Prefix(rule.pattern),
+                !range.subtracting(all: RulePattern.reservedRanges).isEmpty
+            else { return nil }
+            return renderIP(rules: [broad])
+        }
+        return render(rules: [broad])
+    }
+
     /// F23: the app and IP rules narrowed to `network`, route-only like the `-ip` files:
     /// a `process_path_regex` rule and an `ip_cidr` rule (same reserved-range subtraction as
     /// `renderIP`), each only when non-empty. Nil when there is no such rule, so the caller

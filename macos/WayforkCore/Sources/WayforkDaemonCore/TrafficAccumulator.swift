@@ -49,6 +49,7 @@ public struct TrafficAccumulator: Sendable {
     }
 
     private var totals: [Exit: Bytes] = [:]
+    private var ruleTotals: [String: Bytes] = [:]
     private var previous: [String: Seen] = [:]
     private var lastSampledAt: Date?
 
@@ -63,6 +64,7 @@ public struct TrafficAccumulator: Sendable {
     /// Turn Off: everything back to zero.
     public mutating func reset() {
         totals.removeAll()
+        ruleTotals.removeAll()
         previous.removeAll()
         lastSampledAt = nil
     }
@@ -72,6 +74,8 @@ public struct TrafficAccumulator: Sendable {
         var deltas: [Exit: Bytes] = [:]
         var open: [Exit: Int] = [:]
         var oneWayUDP: [Exit: Int] = [:]
+        var ruleDeltas: [String: Bytes] = [:]
+        var ruleOpen: [String: Int] = [:]
         var current: [String: Seen] = [:]
         for connection in connections {
             let exit = Exit(chains: connection.chains)
@@ -88,6 +92,21 @@ public struct TrafficAccumulator: Sendable {
             }
             deltas[exit, default: Bytes()].add(delta)
             open[exit, default: 0] += 1
+            if let ruleID = connection.ruleID {
+                // A changed route must not charge the connection's old bytes to the new
+                // rule. Counter rollback still means a new lifetime, as for exit totals.
+                var ruleDelta = Bytes(down: connection.download, up: connection.upload)
+                if let seen = previous[connection.id],
+                    connection.download >= seen.download, connection.upload >= seen.upload
+                {
+                    ruleDelta = Bytes(
+                        down: connection.download - seen.download,
+                        up: connection.upload - seen.upload)
+                }
+                ruleDeltas[ruleID, default: Bytes()].add(ruleDelta)
+                ruleTotals[ruleID, default: Bytes()].add(ruleDelta)
+                ruleOpen[ruleID, default: 0] += 1
+            }
             // Sent for `oneWayUDPGrace` with nothing back: a one-way UDP flow (H3).
             if connection.network == "udp", connection.upload > 0, connection.download == 0,
                 now.timeIntervalSince(firstSeenAt) >= TrafficCounters.oneWayUDPGrace
@@ -117,7 +136,16 @@ public struct TrafficAccumulator: Sendable {
         for case .tunnel(let id) in Set(totals.keys).union(open.keys) {
             tunnels[id] = counters(.tunnel(id))
         }
+        var rules: [String: TrafficCounters] = [:]
+        for (id, total) in ruleTotals {
+            let delta = ruleDeltas[id] ?? Bytes()
+            rules[id] = TrafficCounters(
+                downBytesPerSecond: interval > 0 ? Double(delta.down) / interval : 0,
+                upBytesPerSecond: interval > 0 ? Double(delta.up) / interval : 0,
+                downTotal: total.down, upTotal: total.up, connections: ruleOpen[id] ?? 0)
+        }
         return TrafficSnapshot(
-            sampledAt: now, interval: interval, tunnels: tunnels, direct: counters(.direct))
+            sampledAt: now, interval: interval, tunnels: tunnels, direct: counters(.direct),
+            rules: rules)
     }
 }

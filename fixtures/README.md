@@ -7,7 +7,7 @@ reviewed change to the product.
 
 | Path | What | Producer / consumers |
 |------|------|----------------------|
-| `singbox/<variant>/input.json` | Generator input: `store` (the `store.json` v2 document), the per-kind secret maps (`vlessUUIDs`, and from F13 `wireGuardKeys`, `passwords`, `vmessUUIDs`), `openVPNBinaryPath`, `resolvedServerAddresses`, `systemDNSServers`, `networkResolvers` | Written by `SingBoxGeneratorTests.generatedConfigMatchesGoldenFiles` in update mode; replayed by the Dart generator tests; the Go plan/validator tests read `two-tunnels` and its rule-sets |
+| `singbox/<variant>/input.json` | Generator input: `store` (the `store.json` v4 document), the per-kind secret maps (`vlessUUIDs`, and from F13 `wireGuardKeys`, `passwords`, `vmessUUIDs`), `openVPNBinaryPath`, `resolvedServerAddresses`, `systemDNSServers`, `networkResolvers` | Written by `SingBoxGeneratorTests.generatedConfigMatchesGoldenFiles` in update mode; replayed by the Dart generator tests; the Go plan/validator tests read `two-tunnels` and its rule-sets |
 | `singbox/<variant>/sing-box.json`, `rules-*.json` | Expected `sing-box.json` and rule-set files for that input, byte for byte | Same test, plus `sing-box check` runs on macOS (`TrafficTests`) and Windows |
 | `ovpn/*.ovpn`, `*.expected.ovpn` | OpenVPN profile importer samples (placeholder keys only) | `OpenVPNConfigParserTests`, Dart parser tests |
 | `vless/links.json` | VLESS links every client accepts (with the parse result) or rejects | `VLESSURIParserTests`, Dart parser tests |
@@ -25,8 +25,9 @@ Regenerating the recorded results after an intentional change:
 WAYFORK_UPDATE_GOLDEN=1 swift test --package-path macos/WayforkCore
 ```
 
-then review the diff. Rule ids in `input.json` are renumbered (`…-0000000001NN`) because
-they never reach the output; `openVPNBinaryPath` is the macOS bundle path and appears
+then review the diff. F24 emits one `rules-r-<row UUID>.json` per active row, plus
+`rules-direct.json` for built-in local names. Stable row IDs (`…-0000000001NN`) and list
+IDs are assigned before generation because IDs now reach the output; `openVPNBinaryPath` is the macOS bundle path and appears
 verbatim in `sing-box.json` — the Dart generator takes the path as input like the Swift one,
 and its golden test replays `input.json` with the macOS platform flavour (`utun` names)
 so the comparison is byte for byte. Never put real servers, UUIDs or keys
@@ -40,3 +41,15 @@ New golden variants added by F13: `singbox/wireguard` (one WireGuard tunnel, pee
 `singbox/proxy-links` (one tunnel of each link kind), `singbox/default-wireguard` (a
 WireGuard tunnel as the default, DNS through the endpoint, peer by name so the
 `domain_resolver` fallback is covered — see design/04-tunnels.md).
+
+F24 compatibility reference: `legacy-f23/singbox/` is an immutable copy of the 22
+pre-F24 schema-3 inputs and output sets. Do not regenerate it. Swift replays these inputs
+as schemas 1/2/3 and compares route/DNS outcomes after migration. The frozen test-only F23
+runtime builder is the authority for secret-availability witnesses: it disables missing
+secrets before validation. Only legacy duplicates enter paused migration archives;
+shadowed rows remain in normal split lists for that same runtime fallback behavior.
+
+`f24-ordered-lists`, `f24-follow-direct` and `f24-follow-tunnel` cover native schema-4
+order, pins and follow-default rather than migrated stores. The current Swift fixtures
+intentionally require the coordinated Dart/Go F24 stage before cross-platform replay;
+there is no intermediate cross-platform release.

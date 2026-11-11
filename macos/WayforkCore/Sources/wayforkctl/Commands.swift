@@ -16,10 +16,16 @@ let helpText = """
             addresses are replaced by server-N unless --raw (resolved server IPs are not).
       status                     tunnels, groups, rule count, last apply, pending change
       failed                     Can't reach rows and per-exit counters
-      rules [--via EXIT]         rules in section order
+      rules [--via EXIT]         ordered rules, list membership and pins
+      lists [--json]             list bindings, flags, counts and priority
 
     Change (needs the app; reverted unless confirmed):
-      rules add <pattern> --via EXIT [--network tcp|udp] [--confirm-within S] [--dry-run]
+      lists set <list> --via EXIT|default [--confirm-within S] [--dry-run]
+      rules add <pattern> [--list LIST] [--via EXIT] [--network tcp|udp]
+            [--confirm-within S] [--dry-run]
+            --list scopes updates; omitted --via inherits the list route and clears a pin.
+            --list with --via pins this row. Without --list, --via is required and chooses
+            the first explicitly bound list (or creates one), never a follow-default list.
             <pattern>: a domain, an IPv4 address or subnet, or an absolute path ending in
             .app (an app rule). --network narrows an app or IP rule to one transport;
             a domain pattern with --network is a usage error.
@@ -183,6 +189,24 @@ func runControl(_ command: String, _ arguments: ArraySlice<String>) throws {
             default: .revert
             }
         request = ControlRequest(method: method)
+    case "lists":
+        let args = try Arguments(
+            arguments, valued: ["--via", "--confirm-within"],
+            flags: ["--json", "--dry-run"])
+        if args.positionals.isEmpty {
+            request = ControlRequest(method: .listsList)
+        } else {
+            guard args.positionals.count == 2, args.positionals[0] == "set",
+                let via = args.value("--via")
+            else {
+                throw Usage(description: "lists set <list name or id> --via <exit|default>")
+            }
+            request = ControlRequest(
+                method: .listsSet,
+                params: ControlParams(
+                    via: via, confirmWithin: try args.int("--confirm-within"),
+                    dryRun: args.has("--dry-run"), list: args.positionals[1]))
+        }
     case "rules":
         request = try rulesRequest(arguments)
     case "log-level":
@@ -206,6 +230,18 @@ func runControl(_ command: String, _ arguments: ArraySlice<String>) throws {
 
     let reply: Data
     do {
+        // Probe a new method before sending a list-scoped mutation. Older apps silently
+        // ignore unknown JSON keys; discovering that after an unscoped write is too late.
+        if request.method == .rulesAdd, request.params.list != nil {
+            let probe = try ControlClient.send(
+                ControlRequest(method: .listsList),
+                path: ControlPaths.socket().path)
+            if case .failure = try ControlWire.decodeReply(probe) {
+                fail(
+                    "this app does not support rule lists; update Wayfork (nothing changed)",
+                    code: 1)
+            }
+        }
         reply = try ControlClient.send(request, path: ControlPaths.socket().path)
     } catch ControlSocketError.notRunning {
         fail(ControlSocketError.notRunning.description, code: 3)
@@ -226,6 +262,12 @@ func runControl(_ command: String, _ arguments: ArraySlice<String>) throws {
                     + "run `wayforkctl revert` and update Wayfork", code: 1)
         }
     case .failure(let error):
+        if [.listsList, .listsSet].contains(request.method),
+            error.message.localizedCaseInsensitiveContains("malformed")
+                || error.message.localizedCaseInsensitiveContains("unknown method")
+        {
+            fail("this app does not support rule lists; update Wayfork (nothing changed)", code: 1)
+        }
         fail("\(error.code.rawValue): \(error.message)", code: 1)
     }
 }
@@ -239,16 +281,21 @@ private func networkOfAddedRule(_ result: Any) -> String? {
 
 private func rulesRequest(_ arguments: ArraySlice<String>) throws -> ControlRequest {
     let args = try Arguments(
-        arguments, valued: ["--via", "--confirm-within", "--network"], flags: ["--dry-run"])
+        arguments, valued: ["--via", "--list", "--confirm-within", "--network"],
+        flags: ["--dry-run"])
     let confirmWithin = try args.int("--confirm-within")
     let dryRun = args.has("--dry-run") ? true : nil
     switch args.positionals.first {
     case nil:
+        guard args.value("--list") == nil else {
+            throw Usage(description: "--list applies to rules add only")
+        }
         return ControlRequest(method: .rulesList, params: ControlParams(via: args.value("--via")))
     case "add":
-        guard args.positionals.count == 2, let via = args.value("--via") else {
+        guard args.positionals.count == 2, args.value("--via") != nil || args.value("--list") != nil
+        else {
             throw Usage(
-                description: "rules add <pattern> --via <tunnel|group|direct> [--network tcp|udp]")
+                description: "rules add <pattern> --list <list> [--via <exit>] [--network tcp|udp]")
         }
         var network: RuleNetwork?
         if let text = args.value("--network") {
@@ -267,9 +314,13 @@ private func rulesRequest(_ arguments: ArraySlice<String>) throws -> ControlRequ
         return ControlRequest(
             method: .rulesAdd,
             params: ControlParams(
-                pattern: args.positionals[1], via: via, confirmWithin: confirmWithin,
-                dryRun: dryRun, network: network))
+                pattern: args.positionals[1], via: args.value("--via"),
+                confirmWithin: confirmWithin,
+                dryRun: dryRun, network: network, list: args.value("--list")))
     case "remove":
+        guard args.value("--list") == nil else {
+            throw Usage(description: "--list applies to rules add only; remove by rule id")
+        }
         guard args.positionals.count == 2 else {
             throw Usage(description: "rules remove <pattern|id>")
         }

@@ -5,16 +5,25 @@
   },
   "store" : {
     "defaultTunnelID" : "00000000-0000-4000-8000-000000000002",
+    "lists" : [
+      {
+        "id" : "00000000-0000-4000-8000-000000000100",
+        "isEnabled" : true,
+        "name" : "Home",
+        "showInMenu" : true,
+        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+      }
+    ],
     "rules" : [
       {
         "id" : "00000000-0000-4000-8000-000000000100",
         "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000100",
         "match" : "suffix",
-        "pattern" : "example.com",
-        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+        "pattern" : "example.com"
       }
     ],
-    "schemaVersion" : 3,
+    "schemaVersion" : 4,
     "settings" : {
       "autoReconnect" : true,
       "connectOnLaunch" : false,

@@ -8,37 +8,53 @@
 
   },
   "store" : {
-    "rules" : [
+    "lists" : [
       {
         "id" : "00000000-0000-4000-8000-000000000100",
         "isEnabled" : true,
-        "match" : "suffix",
-        "pattern" : "example.com",
-        "tunnelID" : "00000000-0000-4000-8000-000000000001"
-      },
-      {
-        "id" : "00000000-0000-4000-8000-000000000101",
-        "isEnabled" : true,
-        "match" : "exact",
-        "pattern" : "api.other.com",
+        "name" : "Work",
+        "showInMenu" : true,
         "tunnelID" : "00000000-0000-4000-8000-000000000001"
       },
       {
         "id" : "00000000-0000-4000-8000-000000000102",
         "isEnabled" : true,
-        "match" : "wildcard",
-        "pattern" : "*.cdn.example.com",
+        "name" : "Home",
+        "showInMenu" : true,
         "tunnelID" : "00000000-0000-4000-8000-000000000002"
+      }
+    ],
+    "rules" : [
+      {
+        "id" : "00000000-0000-4000-8000-000000000100",
+        "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000100",
+        "match" : "suffix",
+        "pattern" : "example.com"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000101",
+        "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000100",
+        "match" : "exact",
+        "pattern" : "api.other.com"
+      },
+      {
+        "id" : "00000000-0000-4000-8000-000000000102",
+        "isEnabled" : true,
+        "listID" : "00000000-0000-4000-8000-000000000102",
+        "match" : "wildcard",
+        "pattern" : "*.cdn.example.com"
       },
       {
         "id" : "00000000-0000-4000-8000-000000000103",
         "isEnabled" : false,
+        "listID" : "00000000-0000-4000-8000-000000000102",
         "match" : "suffix",
-        "pattern" : "disabled.example",
-        "tunnelID" : "00000000-0000-4000-8000-000000000002"
+        "pattern" : "disabled.example"
       }
     ],
-    "schemaVersion" : 3,
+    "schemaVersion" : 4,
     "settings" : {
       "autoReconnect" : true,
       "blockList" : {

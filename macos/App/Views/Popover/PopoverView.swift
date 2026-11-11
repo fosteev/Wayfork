@@ -20,8 +20,18 @@ struct PopoverView: View {
                 } else {
                     emptyState
                 }
-            } else if enabledTunnels.isEmpty {
-                allDisabledState
+                if !model.store.lists.isEmpty {
+                    SizedScrollView(maxHeight: listMaxHeight) { PopoverRuleLists() }
+                    QuickAddView()
+                }
+            } else if enabledTunnels.isEmpty && enabledGroups.isEmpty {
+                SizedScrollView(maxHeight: listMaxHeight) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        allDisabledState
+                        PopoverRuleLists()
+                    }
+                }
+                QuickAddView()
             } else {
                 // Many tunnels plus Recent outgrow the screen; the list scrolls so the
                 // quick add and the footer stay in reach.
@@ -40,6 +50,9 @@ struct PopoverView: View {
                         if model.globalState.isRunning {
                             DirectRowView()
                             Divider()
+                        }
+                        PopoverRuleLists()
+                        if model.globalState.isRunning {
                             RecentSectionView()
                         }
                     }
@@ -47,6 +60,7 @@ struct PopoverView: View {
                 Divider()
                 QuickAddView()
             }
+            ListRouteUndoView()
             Divider()
             footer
         }
@@ -275,6 +289,11 @@ struct TunnelCardView: View {
                     separator
                     Text(card.detail)
                 }
+                let lists = model.listNames(using: .tunnel(tunnel.id))
+                if !lists.isEmpty {
+                    separator
+                    Text(lists).help("Lists: \(lists)")
+                }
                 // F20: a link to the Connections view while this exit's connections have
                 // failed in the last 5 minutes.
                 if model.globalState.isRunning, model.exitHasRecentFailures(id: tunnel.id) {
@@ -379,6 +398,11 @@ struct GroupCardView: View {
                 if !card.detail.isEmpty {
                     Text("·")
                     Text(card.detail)
+                }
+                let lists = model.listNames(using: .group(group.id))
+                if !lists.isEmpty {
+                    Text("·")
+                    Text(lists).help("Lists: \(lists)")
                 }
             }
             .font(.system(size: 11))
@@ -551,106 +575,164 @@ struct RecentRowView: View {
 struct RouteViaMenu: View {
     @Environment(AppModel.self) private var model
     let host: String
+    @State private var error: String?
+    @State private var showNewList = false
 
     var body: some View {
-        Menu {
-            Text("Route \(model.recentRulePattern(host)) and subdomains via…")
-            ForEach(model.recentTargets, id: \.self) { target in
-                Button(model.targetName(target)) { model.routeRecent(host, via: target) }
+        VStack(alignment: .trailing, spacing: 2) {
+            Menu {
+                Text("Add \(model.recentRulePattern(host)) to list…")
+                let preferred = model.preferredRuleListID
+                ForEach(
+                    model.store.lists.sorted { lhs, rhs in
+                        if lhs.id == rhs.id { return false }
+                        if lhs.id == preferred { return true }
+                        if rhs.id == preferred { return false }
+                        return (model.store.lists.firstIndex { $0.id == lhs.id } ?? 0)
+                            < (model.store.lists.firstIndex { $0.id == rhs.id } ?? 0)
+                    }
+                ) { list in
+                    Button("\(list.name) · \(model.listTargetName(list.target))") {
+                        error = model.quickAdd(
+                            input: model.recentRulePattern(host), listID: list.id)
+                        if error == nil {
+                            model.hideRecent(host)
+                            model.tickGuideCard(.popoverRule)
+                        }
+                    }
+                }
+                Divider()
+                Button("New list…") {
+                    model.pendingListInput = model.recentRulePattern(host)
+                    showNewList = true
+                }
+            } label: {
+                Text("Add to list")
             }
-        } label: {
-            Text("Route via")
+            .controlSize(.small).fixedSize()
+            if let error { Text(error).font(.system(size: 10)).foregroundStyle(.red) }
         }
-        .controlSize(.small)
-        .fixedSize()
+        .sheet(isPresented: $showNewList) { NewRuleListSheet() }
     }
 }
 
-/// `[Site to route…] [Tunnel ▾] [Add]` (docs/design/02-ux.md, "Quick add"): tunnels, then
-/// groups under a separator (F16), then *Not via any tunnel*.
+/// Quick add is scoped to a source list; equal patterns elsewhere stay untouched.
 struct QuickAddView: View {
     @Environment(AppModel.self) private var model
     @State private var input = ""
-    @State private var target: RuleTarget?
+    @State private var listID: UUID?
     @State private var error: String?
+    @State private var showNewList = false
 
-    private var enabledTunnels: [Tunnel] { model.store.tunnels.filter(\.isEnabled) }
-    private var enabledGroups: [TunnelGroup] { model.store.groups.filter(\.isEnabled) }
-    /// Everything the picker offers, in its order.
-    private var targets: [RuleTarget] {
-        enabledTunnels.map { .tunnel($0.id) } + enabledGroups.map { .group($0.id) } + [.direct]
+    private var isUpdate: Bool {
+        guard let listID else { return false }
+        if case .update = QuickAdd.evaluate(input: input, listID: listID, store: model.store) {
+            return true
+        }
+        return false
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 TextField("Site to route, e.g. example.com", text: $input)
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.small)
-                    .invalidOutline(error != nil)
-                    .onSubmit(submit)
-                Picker("Tunnel", selection: $target) {
-                    ForEach(enabledTunnels) { tunnel in
-                        Text(tunnel.name).tag(Optional(RuleTarget.tunnel(tunnel.id)))
-                    }
-                    if !enabledGroups.isEmpty {
-                        Divider()
-                        ForEach(enabledGroups) { group in
-                            Text(group.name).tag(Optional(RuleTarget.group(group.id)))
+                    .textFieldStyle(.roundedBorder).controlSize(.small)
+                    .invalidOutline(error != nil).onSubmit(submit)
+                if !model.store.lists.isEmpty {
+                    Picker("List", selection: $listID) {
+                        ForEach(model.store.lists) { list in
+                            Text(list.name).tag(Optional(list.id))
                         }
-                    }
-                    Divider()
-                    Text("Not via any tunnel").tag(Optional(RuleTarget.direct))
+                    }.labelsHidden().controlSize(.small).frame(maxWidth: 110)
                 }
-                .labelsHidden()
+                Button(
+                    model.store.lists.isEmpty ? "New list…" : (isUpdate ? "Update" : "Add"),
+                    action: submit
+                )
                 .controlSize(.small)
-                .frame(maxWidth: 120)
-                Button(QuickAdd.isUpdate(input: input, store: model.store) ? "Update" : "Add") {
-                    submit()
-                }
-                .controlSize(.small)
-                .disabled(input.trimmingCharacters(in: .whitespaces).isEmpty || target == nil)
+                .disabled(
+                    !model.store.lists.isEmpty && input.trimmingCharacters(in: .whitespaces).isEmpty
+                )
             }
-            if let error {
-                Text(error).font(.system(size: 11)).foregroundStyle(.red).padding(.leading, 2)
+            if isUpdate {
+                Text("Update in this list · uses the list route").font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+            if let error { Text(error).font(.system(size: 11)).foregroundStyle(.red) }
+        }
+        .onAppear {
+            listID = model.preferredRuleListID
+            if input.isEmpty,
+                let candidate = QuickAdd.clipboardCandidate(
+                    NSPasteboard.general.string(forType: .string))
+            {
+                input = candidate
             }
         }
-        .onAppear(perform: prefill)
         .onChange(of: input) {
             error = nil
-            // A pasted fake IP becomes the wildcard rule of the name behind it (`FakeIP`).
             if case .pattern(let pattern, _)? = FakeIP.translate(input, index: model.fakeIPs) {
                 input = pattern
             }
         }
-        .onChange(of: targets) { _, targets in
-            if let target, !targets.contains(target) { self.target = targets.first }
-            if target == nil { target = targets.first }
+        .onChange(of: model.store.lists.map(\.id)) {
+            if listID.flatMap({ model.store.list(id: $0) }) == nil {
+                listID = model.preferredRuleListID
+            }
         }
-    }
-
-    private func prefill() {
-        if input.isEmpty,
-            let candidate = QuickAdd.clipboardCandidate(
-                NSPasteboard.general.string(forType: .string))
-        {
-            input = candidate
-        }
-        if let last = model.quickAddTarget, targets.contains(last) {
-            target = last
-        } else {
-            target = targets.first
-        }
+        .sheet(isPresented: $showNewList) { NewRuleListSheet() }
     }
 
     private func submit() {
-        guard let target else { return }
-        if let message = model.quickAdd(input: input, target: target) {
-            error = message
-        } else {
+        guard !model.store.lists.isEmpty, let listID else {
+            model.pendingListInput = input
+            showNewList = true
+            return
+        }
+        error = model.quickAdd(input: input, listID: listID)
+        if error == nil {
             input = ""
-            error = nil
             model.tickGuideCard(.popoverRule)
+        }
+    }
+}
+
+struct PopoverRuleLists: View {
+    @Environment(AppModel.self) private var model
+    var body: some View {
+        if model.store.lists.count >= 2 {
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text("Lists").font(.system(size: 11, weight: .semibold)).foregroundStyle(
+                        .secondary)
+                    Spacer()
+                    Button("Manage…") { model.openSettings(section: .rules) }.buttonStyle(.link)
+                        .font(.system(size: 11))
+                }
+                ForEach(model.menuRuleLists) { list in
+                    HStack(spacing: 6) {
+                        ListIcon(list: list)
+                        Text(list.name).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                        if !list.isEnabled {
+                            Text("Paused").font(.system(size: 10)).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 2)
+                        ListExitMenu(target: list.target) { model.changeListRoute(list.id, to: $0) }
+                            .frame(maxWidth: 180)
+                    }
+                    .opacity(list.isEnabled ? 1 : 0.55)
+                    .contextMenu {
+                        Button(list.isEnabled ? "Pause list" : "Enable list") {
+                            _ = model.editRuleList(list.id) { $0.isEnabled.toggle() }
+                        }
+                    }
+                }
+                let more = model.store.lists.filter(\.showInMenu).count - model.menuRuleLists.count
+                if more > 0 {
+                    Button("\(more) more in Settings…") { model.openSettings(section: .rules) }
+                        .buttonStyle(.link).font(.system(size: 11))
+                }
+            }
         }
     }
 }

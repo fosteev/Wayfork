@@ -8,6 +8,8 @@ import 'package:wayfork/app/model/app_alert.dart';
 import 'package:wayfork/app/services/launch_at_login.dart';
 import 'package:wayfork/app/services/log_center.dart';
 import 'package:wayfork/app/services/notifier.dart';
+import 'package:wayfork/app/services/rule_list_preferences.dart';
+import 'package:wayfork/core/model/rule_list.dart';
 import 'package:wayfork/core/app/feature_text.dart';
 import 'package:wayfork/core/app/global_state.dart';
 import 'package:wayfork/core/app/import_export.dart';
@@ -53,6 +55,7 @@ part 'app_model_features.dart';
 part 'app_model_groups.dart';
 part 'app_model_import_export.dart';
 part 'app_model_rules.dart';
+part 'app_model_lists.dart';
 part 'app_model_tunnels.dart';
 
 /// Resolves OpenVPN server names to IPv4 addresses for the direct route rule.
@@ -90,8 +93,10 @@ final class AppModel extends ChangeNotifier {
 
     /// H2: the waits between automatic re-applies after the engine failed.
     List<Duration>? recoveryDelays,
+    RuleListPreferences? listPreferences,
     this._now = DateTime.now,
-  }) : _recovery = RecoveryBackoff(delays: recoveryDelays),
+  }) : listPreferences = listPreferences ?? RuleListPreferences(),
+       _recovery = RecoveryBackoff(delays: recoveryDelays),
        _client = client,
        _launchAtLogin = launchAtLogin ?? InMemoryLaunchAtLogin(),
        _installDirFallback =
@@ -145,6 +150,12 @@ final class AppModel extends ChangeNotifier {
   final DateTime Function() _now;
   final _subscriptions = <StreamSubscription<Object?>>[];
   final _actions = StreamController<AppAction>.broadcast();
+
+  final RuleListPreferences listPreferences;
+  ListRouteUndo? _listUndo;
+  Timer? _listUndoTimer;
+  int _listRouteRevision = 0;
+  ListRouteUndo? get listRouteUndo => _listUndo;
 
   // State
 
@@ -282,8 +293,14 @@ final class AppModel extends ChangeNotifier {
   /// reported one, else next to this executable.
   String get installDir => _serviceInfo?.installPath ?? _installDirFallback;
 
-  Map<String, List<RuleIssue>> get ruleIssues =>
-      RuleValidator.validate(_store, localNetworks: _cachedLocalNetworks);
+  Map<String, List<RuleIssue>> get ruleIssues => RuleValidator.validate(
+    _store,
+    localNetworks: _cachedLocalNetworks,
+    routedExitIDs: RuleValidator.availableExitIDs(
+      _store,
+      missingSecrets: _missingSecrets,
+    ),
+  );
 
   /// The machine's own networks for the "covers your LAN" chip (F11), looked
   /// up at most every 10 s — [ruleIssues] is evaluated per row render.
@@ -466,6 +483,19 @@ final class AppModel extends ChangeNotifier {
     try {
       final result = await _repository.load();
       _store = result.store;
+      final migrationSummary = result.migrationSummary;
+      if (migrationSummary != null) {
+        logs.app(LogLevel.info, migrationSummary);
+        _alert(
+          AppAlert(
+            title: 'Rules organized into lists',
+            message: migrationSummary,
+            action: result.migrationBackup == null
+                ? null
+                : AppAction.revealFile(result.migrationBackup!.path),
+          ),
+        );
+      }
       final backup = result.corruptBackup;
       if (backup != null) {
         logs.app(
@@ -1027,11 +1057,17 @@ final class AppModel extends ChangeNotifier {
   /// re-apply while on.
   Future<void> update(Store Function(Store store) mutate) async {
     final changed = mutate(_store);
+    changed.validateMembership();
     if (changed == _store) return;
     final tunnelsChanged = !const ListEquality<Tunnel>().equals(
       changed.tunnels,
       _store.tunnels,
     );
+    if (_store.lists.any((old) => changed.list(old.id)?.target != old.target)) {
+      _listRouteRevision++;
+      _listUndoTimer?.cancel();
+      _listUndo = null;
+    }
     _store = changed;
     if (!_persistenceDisabled) _repository.save(changed);
     if (tunnelsChanged) await recomputeMissingSecrets();
@@ -1346,6 +1382,7 @@ final class AppModel extends ChangeNotifier {
     _pulseTimer?.cancel();
     _pruneTimer?.cancel();
     _trafficStaleTimer?.cancel();
+    _listUndoTimer?.cancel();
     unawaited(_actions.close());
     super.dispose();
   }

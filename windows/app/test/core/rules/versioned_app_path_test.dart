@@ -236,6 +236,7 @@ void main() {
           DateTime(2024, 1, 2),
         );
       final store = Store(
+        lists: [],
         rules: [
           Rule(
             pattern: missing,
@@ -251,6 +252,7 @@ void main() {
     test('leaves a non-versioned missing path alone', () {
       const pattern = r'C:\Program Files\OldApp\App.exe';
       final store = Store(
+        lists: [],
         rules: [
           Rule(
             pattern: pattern,
@@ -274,6 +276,7 @@ void main() {
           DateTime(2024, 1, 2),
         );
       final store = Store(
+        lists: [],
         rules: [
           Rule(
             pattern: missing,
@@ -291,6 +294,7 @@ void main() {
         ..addDirectory(parent, 'app-1.0.9255')
         ..addFile(missing, DateTime(2024, 1, 1));
       final store = Store(
+        lists: [],
         rules: [
           Rule(
             pattern: missing,
@@ -306,6 +310,7 @@ void main() {
     test('returns the same Store instance when no sibling is found', () {
       final files = FakeAppFiles()..addDirectory(parent, 'app-1.0.9255');
       final store = Store(
+        lists: [],
         rules: [
           Rule(
             pattern: missing,
@@ -340,7 +345,7 @@ void main() {
         target: tunnel,
         note: 'voice',
       );
-      final store = Store(rules: [first, domain, second]);
+      final store = Store(lists: [], rules: [first, domain, second]);
       final healed = VersionedAppPath.heal(store, files);
       expect(healed.rules, hasLength(2));
       expect(healed.rules[0].id, first.id);
@@ -362,6 +367,7 @@ void main() {
         target: const RuleTargetDirect(),
       );
       final store = Store(
+        lists: [],
         rules: [
           first,
           Rule(
@@ -382,6 +388,7 @@ void main() {
         ..addDirectory(parent, 'app-1.0.9260')
         ..addFile(newest, DateTime(2024, 1, 2));
       final store = Store(
+        lists: [],
         rules: [
           Rule(
             pattern: newest,
@@ -412,6 +419,7 @@ void main() {
         network: network,
       );
       final store = Store(
+        lists: [],
         rules: [
           narrowed(RuleNetwork.tcp),
           narrowed(RuleNetwork.udp),
@@ -420,7 +428,10 @@ void main() {
       );
       expect(identical(VersionedAppPath.heal(store, files), store), isTrue);
       final merged = VersionedAppPath.heal(
-        Store(rules: [narrowed(RuleNetwork.udp), narrowed(RuleNetwork.udp)]),
+        Store(
+          lists: [],
+          rules: [narrowed(RuleNetwork.udp), narrowed(RuleNetwork.udp)],
+        ),
         files,
       );
       expect(merged.rules, hasLength(1));

@@ -88,6 +88,13 @@ runs inside sing-box's own userspace stack, so wintun is not involved and the Go
 to which the sing-box config is opaque — needs no change. An export from either platform
 still imports on the other.
 
+**F24. Named rule lists** — same approved product prototype and ordered route/DNS semantics
+as macOS; [roadmap/rule-lists.md](roadmap/rule-lists.md) records selected migration G1:
+preserve routes with split priority lists and paused archives of previously suppressed rows.
+Schema/export 4 are shared. Dart generator and Go plan validation/routed-ID discovery/
+`explain` must change together; source-list ctl mutation stays macOS-only. The Fluent
+board is prepared and approved at stage 5 before UI implementation. No F24 stage accepted.
+
 ### Windows-only notes
 
 - IPv4-only while On, as on macOS: no AAAA answers, IPv6 stays outside the TUN.
@@ -699,3 +706,17 @@ line on Windows (a control channel into the Flutter app) are not part of this mi
       on top of `collectDiagnostics`, the filter a pure function in `internal/core`; tests.
       — 2026-09-25.
 - [ ] VM run: `wayforkctl logs --source sing-box --level warning --since 10m` on `wf-win`.
+
+
+### WM22 — Named rule lists (F24)
+
+[Stage roadmap](roadmap/rule-lists.md); WM20 is reserved for F22 and WM21 for F23.
+
+- [ ] Shared stage 1 design and migration G1 accepted
+- [ ] Stage 3 Dart model/export/migration and ordered route/DNS generator parity
+- [ ] Go service row-plan validation, routed exits, explain and reconcile compatibility
+- [ ] Stage 5 local Fluent board approved, list UI/tray and widget checks accepted
+- [ ] Stage 6 maintainer Windows visual/live acceptance
+
+Current `roadmap-run` route: root gpt-6-astra/high, fresh gpt-6.1-sol/high executor per
+stage with `fork_turns: "none"`. Cross-build/tests do not close the live gate.

@@ -128,14 +128,19 @@ abstract final class VersionedAppPath {
   /// same [key], same F23 network) folded into that earlier rule, or null when none repeats.
   static List<Rule>? _mergeDuplicates(List<Rule> rules) {
     final result = <Rule>[];
-    final keptIndex = <(RuleTarget, String, RuleNetwork?), int>{};
+    final keptIndex = <(String?, RuleTarget?, String, RuleNetwork?), int>{};
     var merged = false;
     for (final rule in rules) {
       if (!rule.match.isApp) {
         result.add(rule);
         continue;
       }
-      final identity = (rule.target, key(rule.pattern), rule.network);
+      final identity = (
+        rule.listID,
+        rule.target,
+        key(rule.pattern),
+        rule.network,
+      );
       final earlier = keptIndex[identity];
       if (earlier == null) {
         keptIndex[identity] = result.length;

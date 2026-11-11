@@ -45,7 +45,7 @@ private func sampleStore() -> (Store, work: Tunnel, home: Tunnel, lab: Tunnel) {
         Rule(pattern: "news.example.org", tunnelID: home.id),
         Rule(pattern: "docs.example.net", tunnelID: lab.id),
     ]
-    return (store, work, home, lab)
+    return (explicitStore(store), work, home, lab)
 }
 
 private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased() }
@@ -336,7 +336,8 @@ private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased()
     }
     #expect(rule.pattern == "shop.example.org")
     #expect(rule.match == .suffix)
-    #expect(rule.tunnelID == home.id)
+    #expect(rule.target == nil)
+    #expect(rule.listID == store.lists.first { $0.target == .exit(.tunnel(home.id)) }?.id)
 
     guard
         case .add(let wildcard) = QuickAdd.evaluate(
@@ -347,16 +348,17 @@ private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased()
     }
     #expect(wildcard.match == .wildcard)
 
-    // An existing pattern is re-pointed instead of duplicated.
+    // A pattern in another list is independent; quick add must not retarget it.
     guard
-        case .update(let updated) = QuickAdd.evaluate(
+        case .add(let updated) = QuickAdd.evaluate(
             input: "example.com", target: .tunnel(home.id), store: store)
     else {
-        Issue.record("expected update")
+        Issue.record("expected add in the chosen list")
         return
     }
-    #expect(updated.id == store.rules[0].id)
-    #expect(updated.tunnelID == home.id)
+    #expect(updated.id != store.rules[0].id)
+    #expect(updated.target == nil)
+    #expect(updated.listID == store.lists.first { $0.target == .exit(.tunnel(home.id)) }?.id)
     #expect(QuickAdd.isUpdate(input: "EXAMPLE.com", store: store))
     #expect(!QuickAdd.isUpdate(input: "new.example.com", store: store))
 
@@ -425,6 +427,7 @@ private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased()
     #expect(
         StatusText.summary(state: .degraded(failingTunnelIDs: [lab.id]), store: store, status: nil)
             == "Lab can't connect — 2 tunnels up, everything else via Work")
+    store = explicitStore(store)
     #expect(StatusText.activeExceptionCount(store) == 1)
     store.rules.removeAll { $0.tunnelID != nil && $0.tunnelID != work.id }
     #expect(
@@ -453,17 +456,18 @@ private func key(_ tunnel: Tunnel) -> String { tunnel.id.uuidString.lowercased()
     #expect(rule.target == .direct)
     // Re-pointing an existing tunnel rule at Direct turns it into an exception.
     guard
-        case .update(let updated) = QuickAdd.evaluate(
+        case .add(let updated) = QuickAdd.evaluate(
             input: "example.com", target: .direct, store: store)
     else {
-        Issue.record("expected update")
+        Issue.record("expected add in the chosen list")
         return
     }
-    #expect(updated.id == store.rules[0].id)
+    #expect(updated.id != store.rules[0].id)
     #expect(updated.isException)
 
     var withException = store
     withException.rules.append(Rule(pattern: "bank.example.org", target: .direct))
+    withException = explicitStore(withException)
     #expect(
         RuleEditing.normalize(
             "bank.example.org", match: .suffix, target: .direct, store: withException,

@@ -118,28 +118,94 @@ public enum StoreImporter {
         let exitIDs = tunnelIDs.union(result.groups.map(\.id))
 
         var rulesAdded = 0
-        var rulesUpdated = 0
-        var rulesSkipped = 0
+        let rulesUpdated = 0
+        let rulesSkipped = 0
         if mode == .replace {
             result.rules = []
+            result.lists = document.lists
         }
-        for rule in document.rules {
-            if let exitID = rule.exitID, !exitIDs.contains(exitID) {
-                let shortID = exitID.uuidString.lowercased().prefix(4)
-                let what = rule.target.groupID == nil ? "tunnel" : "group"
-                warnings.append("Rule \(rule.pattern) skipped: \(what) \(shortID)… not found")
-                rulesSkipped += 1
+        var listIDs: [UUID: UUID] = [:]
+        if mode == .merge {
+            if !document.lists.isEmpty && !result.lists.isEmpty {
+                warnings.append("Existing earlier lists can take precedence over imported rules")
+            }
+            for source in document.lists {
+                if result.lists.contains(source) {
+                    listIDs[source.id] = source.id
+                    continue
+                }
+                // Reuse a name disambiguated by the previous import, but preserve user renames.
+                if let sameID = result.list(id: source.id) {
+                    var comparable = source
+                    comparable.name = sameID.name
+                    var otherLists = result
+                    otherLists.lists.removeAll { $0.id == source.id }
+                    if comparable == sameID,
+                        sameID.name == otherLists.availableListName(source.name)
+                    {
+                        listIDs[source.id] = source.id
+                        continue
+                    }
+                }
+                var imported = source
+                if result.list(id: source.id) != nil {
+                    imported.id = remappedID(source.id, content: source)
+                    if let existing = result.list(id: imported.id) {
+                        var comparable = imported
+                        comparable.name = existing.name
+                        if comparable == existing {
+                            listIDs[source.id] = existing.id
+                            continue
+                        }
+                        warnings.append("List identity collision: import left unchanged")
+                        return ImportOutcome(
+                            store: store, secrets: [:], warnings: warnings,
+                            tunnelsAdded: 0, tunnelsUpdated: 0, rulesAdded: 0, rulesUpdated: 0,
+                            rulesSkipped: document.rules.count)
+                    }
+                    warnings.append("List \(source.name) imported with a new ID")
+                }
+                imported.name = result.availableListName(source.name)
+                if imported.name != source.name {
+                    warnings.append("List \(source.name) renamed to \(imported.name)")
+                }
+                listIDs[source.id] = imported.id
+                result.lists.append(imported)
+            }
+        }
+        for source in document.rules {
+            var rule = source
+            if let id = rule.listID { rule.listID = listIDs[id] ?? id }
+            if result.rules.contains(rule) { continue }
+            if mode == .merge && result.rules.contains(where: { $0.id == rule.id }) {
+                rule.id = remappedID(source.id, content: rule)
+                if result.rules.contains(rule) { continue }
+                if result.rules.contains(where: { $0.id == rule.id }) {
+                    warnings.append("Rule identity collision: import left unchanged")
+                    return ImportOutcome(
+                        store: store, secrets: [:], warnings: warnings,
+                        tunnelsAdded: 0, tunnelsUpdated: 0, rulesAdded: 0, rulesUpdated: 0,
+                        rulesSkipped: document.rules.count)
+                }
+            }
+            // Content idempotence is scoped to membership, never a similarly named list.
+            if mode == .merge
+                && result.rules.contains(where: {
+                    $0.listID == rule.listID && $0.pattern == rule.pattern && $0.match == rule.match
+                        && $0.network == rule.network && $0.target == rule.target
+                        && $0.isEnabled == rule.isEnabled && $0.note == rule.note
+                })
+            {
                 continue
             }
-            if mode == .merge,
-                let index = result.rules.firstIndex(where: { $0.id == rule.id })
-            {
-                result.rules[index] = rule
-                rulesUpdated += 1
-            } else {
-                result.rules.append(rule)
-                rulesAdded += 1
-            }
+            result.rules.append(rule)
+            rulesAdded += 1
+        }
+        do { try result.validateMembership() } catch {
+            return ImportOutcome(
+                store: store, secrets: [:], warnings: ["Invalid list membership: \(error)"],
+                tunnelsAdded: 0, tunnelsUpdated: 0, rulesAdded: 0, rulesUpdated: 0,
+                rulesSkipped: document.rules.count)
         }
 
         // F8: the file's default replaces the current one only when it names a tunnel that
@@ -163,6 +229,17 @@ public enum StoreImporter {
             rulesAdded: rulesAdded,
             rulesUpdated: rulesUpdated,
             rulesSkipped: rulesSkipped)
+    }
+
+    private static func remappedID<T: Encodable>(_ id: UUID, content: T) -> UUID {
+        let data = (try? JSONCoding.compactEncoder.encode(content)) ?? Data()
+        let hash = Hashing.sha256Hex(id.uuidString + String(decoding: data, as: UTF8.self))
+        let chars = Array(hash.prefix(32))
+        let text = [
+            String(chars[0..<8]), String(chars[8..<12]), String(chars[12..<16]),
+            String(chars[16..<20]), String(chars[20..<32]),
+        ].joined(separator: "-")
+        return UUID(uuidString: text)!
     }
 
     /// F17: a port that another tunnel or group already holds is dropped with a warning
@@ -257,6 +334,6 @@ public enum StoreExporter {
             rules: store.rules,
             settings: store.settings,
             defaultTunnelID: store.defaultTunnelID,
-            groups: store.groups)
+            groups: store.groups, lists: store.lists)
     }
 }

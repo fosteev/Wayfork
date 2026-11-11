@@ -1,7 +1,6 @@
 part of 'app_model.dart';
 
-// Rule management (F2, F8): grouped by target (Direct or a tunnel), ordered
-// within the group.
+// Rule management: list-scoped GUI editing, with legacy exit-based callers.
 
 /// Marks an `updateRule` call that leaves the rule's F23 network alone.
 const _keepNetwork = Object();
@@ -11,6 +10,7 @@ extension AppModelRules on AppModel {
   Future<String?> quickAdd({
     required String input,
     required RuleTarget target,
+    String? listID,
   }) async {
     final translated = _translateFakeIP(input, null);
     if (translated.message != null) return translated.message;
@@ -18,11 +18,22 @@ extension AppModelRules on AppModel {
       input: translated.input,
       target: target,
       store: _store,
+      listID: listID,
     )) {
       case QuickAddInvalid(:final message):
         return message;
       case QuickAddAdd(:final rule):
-        await update((store) => store.copyWith(rules: [...store.rules, rule]));
+        await update((store) {
+          final destination = listID == null
+              ? store.ensureList(target)
+              : (store: store, listID: listID);
+          return destination.store.copyWith(
+            rules: [
+              ...destination.store.rules,
+              rule.copyWith(listID: destination.listID, target: null),
+            ],
+          );
+        });
         logs.app(
           LogLevel.info,
           'rule added: ${rule.pattern} → ${targetName(target)}',
@@ -41,6 +52,7 @@ extension AppModelRules on AppModel {
           'rule updated: ${rule.pattern} → ${targetName(target)}',
         );
     }
+    if (listID != null) useList(listID);
     quickAddTarget = target;
     _changed();
     return null;
@@ -52,6 +64,7 @@ extension AppModelRules on AppModel {
     required RuleMatch match,
     required RuleTarget target,
     RuleNetwork? network,
+    String? listID,
   }) async {
     final translated = _translateFakeIP(pattern, match);
     if (translated.message != null) return translated.message;
@@ -61,6 +74,7 @@ extension AppModelRules on AppModel {
       target: target,
       store: _store,
       network: network,
+      listID: listID,
     )) {
       case RuleEditingFailed(:final failure):
         return RuleEditing.message(failure);
@@ -72,10 +86,25 @@ extension AppModelRules on AppModel {
           network: network,
         );
         await update((store) {
-          final rules = [...store.rules];
-          rules.insert(_endIndexOfGroup(store, target), rule);
-          return store.copyWith(rules: rules);
+          final destination = listID == null
+              ? store.ensureList(target)
+              : (store: store, listID: listID);
+          final rules = [...destination.store.rules];
+          rules.insert(
+            destination.store.rules.lastIndexWhere(
+                      (r) => r.listID == destination.listID,
+                    ) <
+                    0
+                ? destination.store.rules.length
+                : destination.store.rules.lastIndexWhere(
+                        (r) => r.listID == destination.listID,
+                      ) +
+                      1,
+            rule.copyWith(listID: destination.listID, target: null),
+          );
+          return destination.store.copyWith(rules: rules);
         });
+        if (listID != null) useList(listID);
         return null;
     }
   }
@@ -99,7 +128,8 @@ extension AppModelRules on AppModel {
     switch (RuleEditing.normalize(
       translated.input,
       match: translated.match!,
-      target: rule.target,
+      target: _store.targetFor(rule),
+      listID: rule.listID,
       store: _store,
       excluding: id,
       network: newNetwork,
@@ -147,17 +177,21 @@ extension AppModelRules on AppModel {
     await update((store) {
       final index = store.rules.indexWhere((rule) => rule.id == id);
       if (index < 0) return store;
-      final rules = [...store.rules];
-      final rule = rules.removeAt(index).copyWith(target: to);
+      final destination = store.ensureList(to);
+      final rules = [...destination.store.rules];
+      final rule = rules
+          .removeAt(index)
+          .copyWith(listID: destination.listID, target: null);
       final targetIndex = before == null
           ? -1
           : rules.indexWhere((rule) => rule.id == before);
-      if (targetIndex >= 0 && rules[targetIndex].target == to) {
+      if (targetIndex >= 0 &&
+          destination.store.targetFor(rules[targetIndex]) == to) {
         rules.insert(targetIndex, rule);
       } else {
         rules.insert(_endIndexOfGroup(store.copyWith(rules: rules), to), rule);
       }
-      return store.copyWith(rules: rules);
+      return destination.store.copyWith(rules: rules);
     });
   }
 
@@ -211,7 +245,9 @@ extension AppModelRules on AppModel {
 
   /// Index right after the last rule of [target]'s group (or `rules.length`).
   static int _endIndexOfGroup(Store store, RuleTarget target) {
-    final last = store.rules.lastIndexWhere((rule) => rule.target == target);
+    final last = store.rules.lastIndexWhere(
+      (rule) => store.targetFor(rule) == target,
+    );
     return last < 0 ? store.rules.length : last + 1;
   }
 }

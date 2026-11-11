@@ -3,6 +3,7 @@ import 'package:wayfork/core/model/rule.dart';
 import 'package:wayfork/core/model/store.dart';
 import 'package:wayfork/core/model/tunnel.dart';
 import 'package:wayfork/core/rules/rule_validator.dart';
+import 'package:wayfork/core/rules/legacy_rule_validator.dart';
 import 'package:wayfork/core/support/ipv4_prefix.dart';
 import 'package:wayfork/core/support/local_networks.dart';
 
@@ -35,7 +36,7 @@ void main() {
       match: RuleMatch.exact,
       tunnelID: Fixtures.homeID,
     );
-    final store = Fixtures.store(
+    final store = _legacyStore(
       rules: [
         shadowed,
         workRule,
@@ -45,7 +46,7 @@ void main() {
         differentMatch,
       ],
     );
-    final issues = RuleValidator.validate(store);
+    final issues = LegacyRuleValidator.validate(store);
     expect(issues[workRule.id], isNull);
     expect(issues[shadowed.id], [RuleIssue.shadowed(workRule.id)]);
     expect(issues[duplicate.id], [RuleIssue.duplicate(workRule.id)]);
@@ -54,7 +55,7 @@ void main() {
       RuleIssue.coversTunnelServer('Work'),
     ]);
     expect(issues[differentMatch.id], isNull);
-    final active = RuleValidator.activeRules(store);
+    final active = LegacyRuleValidator.activeRules(store);
     expect(active[Fixtures.workID]?.map((rule) => rule.id), [workRule.id]);
     expect(active[Fixtures.homeID]?.map((rule) => rule.id), [
       coversServer.id,
@@ -63,7 +64,7 @@ void main() {
   });
 
   test('disabled tunnel rules are inert', () {
-    var store = Fixtures.store(
+    var store = _legacyStore(
       rules: [
         Rule.tunnel(pattern: 'example.com', tunnelID: Fixtures.workID),
         Rule.tunnel(pattern: 'example.com', tunnelID: Fixtures.homeID),
@@ -72,11 +73,14 @@ void main() {
     store = store.copyWith(
       tunnels: [store.tunnels[0].copyWith(isEnabled: false), store.tunnels[1]],
     );
-    final issues = RuleValidator.validate(store);
+    final issues = LegacyRuleValidator.validate(store);
     expect(issues[store.rules[0].id], const [RuleIssue.tunnelDisabled()]);
     expect(issues[store.rules[1].id], isNull);
-    expect(RuleValidator.activeRules(store)[Fixtures.homeID], hasLength(1));
-    expect(RuleValidator.activeRules(store)[Fixtures.workID], isNull);
+    expect(
+      LegacyRuleValidator.activeRules(store)[Fixtures.homeID],
+      hasLength(1),
+    );
+    expect(LegacyRuleValidator.activeRules(store)[Fixtures.workID], isNull);
   });
 
   test('Direct is the first group', () {
@@ -97,21 +101,23 @@ void main() {
       pattern: 'example.org',
       target: const RuleTargetDirect(),
     );
-    final store = Fixtures.store(
+    final store = _legacyStore(
       rules: [workRule, exception, duplicateException, other, coversServer],
     );
-    final issues = RuleValidator.validate(store);
+    final issues = LegacyRuleValidator.validate(store);
     expect(issues[exception.id], isNull);
     expect(issues[duplicateException.id], [RuleIssue.duplicate(exception.id)]);
     expect(issues[workRule.id], [RuleIssue.shadowed(exception.id)]);
     expect(issues[other.id], isNull);
     expect(issues[coversServer.id], isNull);
-    expect(RuleValidator.activeExceptions(store).map((rule) => rule.id), [
+    expect(LegacyRuleValidator.activeExceptions(store).map((rule) => rule.id), [
       exception.id,
       coversServer.id,
     ]);
     expect(
-      RuleValidator.activeRules(store)[Fixtures.workID]?.map((rule) => rule.id),
+      LegacyRuleValidator.activeRules(
+        store,
+      )[Fixtures.workID]?.map((rule) => rule.id),
       [other.id],
     );
 
@@ -124,19 +130,20 @@ void main() {
         coversServer,
       ],
     );
-    expect(RuleValidator.validate(paused)[workRule.id], isNull);
-    expect(RuleValidator.activeExceptions(paused).map((rule) => rule.id), [
-      coversServer.id,
-    ]);
+    expect(LegacyRuleValidator.validate(paused)[workRule.id], isNull);
+    expect(
+      LegacyRuleValidator.activeExceptions(paused).map((rule) => rule.id),
+      [coversServer.id],
+    );
   });
 
   test('default tunnel issues', () {
-    var store = Fixtures.store();
-    expect(RuleValidator.defaultTunnelIssue(store), isNull);
+    var store = _legacyStore();
+    expect(LegacyRuleValidator.defaultTunnelIssue(store), isNull);
     store = store.copyWith(defaultTunnelID: Fixtures.workID);
-    expect(RuleValidator.defaultTunnelIssue(store), isNull);
+    expect(LegacyRuleValidator.defaultTunnelIssue(store), isNull);
     expect(
-      RuleValidator.defaultTunnelIssue(
+      LegacyRuleValidator.defaultTunnelIssue(
         store,
         missingSecrets: {Fixtures.workID},
       ),
@@ -146,13 +153,16 @@ void main() {
       tunnels: [store.tunnels[0].copyWith(isEnabled: false), store.tunnels[1]],
     );
     expect(
-      RuleValidator.defaultTunnelIssue(store),
+      LegacyRuleValidator.defaultTunnelIssue(store),
       DefaultTunnelIssue.disabled,
     );
     store = store.copyWith(
       defaultTunnelID: '00000000-0000-4000-8000-000000000099',
     );
-    expect(RuleValidator.defaultTunnelIssue(store), DefaultTunnelIssue.missing);
+    expect(
+      LegacyRuleValidator.defaultTunnelIssue(store),
+      DefaultTunnelIssue.missing,
+    );
   });
 
   test('application rules are validated like domains', () {
@@ -177,20 +187,22 @@ void main() {
       match: RuleMatch.app,
       tunnelID: Fixtures.homeID,
     );
-    final store = Fixtures.store(
-      rules: [first, duplicate, shadowed, lookalike],
-    );
-    final issues = RuleValidator.validate(store);
+    final store = _legacyStore(rules: [first, duplicate, shadowed, lookalike]);
+    final issues = LegacyRuleValidator.validate(store);
     expect(issues[first.id], isNull);
     expect(issues[duplicate.id], [RuleIssue.duplicate(first.id)]);
     expect(issues[shadowed.id], [RuleIssue.shadowed(first.id)]);
     expect(issues[lookalike.id], isNull);
     expect(
-      RuleValidator.activeRules(store)[Fixtures.workID]?.map((rule) => rule.id),
+      LegacyRuleValidator.activeRules(
+        store,
+      )[Fixtures.workID]?.map((rule) => rule.id),
       [first.id],
     );
     expect(
-      RuleValidator.activeRules(store)[Fixtures.homeID]?.map((rule) => rule.id),
+      LegacyRuleValidator.activeRules(
+        store,
+      )[Fixtures.homeID]?.map((rule) => rule.id),
       [lookalike.id],
     );
   });
@@ -219,11 +231,12 @@ void main() {
       target: const RuleTargetDirect(),
     );
     final store = Store(
+      lists: [],
       tunnels: [office, Fixtures.home],
       rules: [first, duplicate, shadowed, coversServer, coversLAN, directLAN],
     );
     final lan = LocalNetwork('en0', IPv4Prefix.parse('192.168.1.0/24')!);
-    final issues = RuleValidator.validate(store, localNetworks: [lan]);
+    final issues = LegacyRuleValidator.validate(store, localNetworks: [lan]);
     expect(issues[first.id], isNull);
     expect(issues[duplicate.id], [RuleIssue.duplicate(first.id)]);
     expect(issues[shadowed.id], [RuleIssue.shadowed(first.id)]);
@@ -235,14 +248,18 @@ void main() {
     ]);
     expect(issues[directLAN.id], isNull);
     expect(
-      RuleValidator.activeRules(store)[Fixtures.workID]?.map((rule) => rule.id),
+      LegacyRuleValidator.activeRules(
+        store,
+      )[Fixtures.workID]?.map((rule) => rule.id),
       [first.id, coversLAN.id],
     );
     expect(
-      RuleValidator.activeRules(store)[Fixtures.homeID]?.map((rule) => rule.id),
+      LegacyRuleValidator.activeRules(
+        store,
+      )[Fixtures.homeID]?.map((rule) => rule.id),
       [coversServer.id],
     );
-    expect(RuleValidator.activeExceptions(store).map((rule) => rule.id), [
+    expect(LegacyRuleValidator.activeExceptions(store).map((rule) => rule.id), [
       directLAN.id,
     ]);
   });
@@ -263,10 +280,10 @@ void main() {
     final workTcp = app(work, RuleNetwork.tcp);
     final homeUdp = app(home, RuleNetwork.udp);
     final directUdp = app(const RuleTargetDirect(), RuleNetwork.udp);
-    final store = Fixtures.store(
+    final store = _legacyStore(
       rules: [workBoth, workUdp, workUdpAgain, workTcp, homeUdp, directUdp],
     );
-    final issues = RuleValidator.validate(store);
+    final issues = LegacyRuleValidator.validate(store);
     // Same pattern, different network: not a duplicate; same network is.
     expect(issues[workUdpAgain.id], [RuleIssue.duplicate(workUdp.id)]);
     expect(issues[workTcp.id], isNull);
@@ -278,10 +295,13 @@ void main() {
     expect(issues[workBoth.id], isNull);
     // Narrowed exit rules rank above the both-networks one for the same
     // network, so the narrowed Home rule cannot be shadowed by Work both.
-    final lone = Fixtures.store(rules: [workBoth, homeUdp]);
-    expect(RuleValidator.validate(lone)[homeUdp.id], isNull);
+    final lone = _legacyStore(rules: [workBoth, homeUdp]);
+    expect(LegacyRuleValidator.validate(lone)[homeUdp.id], isNull);
   });
 }
 
 Rule _ipRule(String pattern, String tunnelID) =>
     Rule.tunnel(pattern: pattern, match: RuleMatch.ip, tunnelID: tunnelID);
+
+Store _legacyStore({List<Rule> rules = const []}) =>
+    Store(tunnels: [Fixtures.work, Fixtures.home], rules: rules, lists: []);

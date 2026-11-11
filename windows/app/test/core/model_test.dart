@@ -92,7 +92,7 @@ void main() {
   test('store refuses a newer schema', () {
     expect(
       () => StoreCodec.decode('{"schemaVersion":99,"tunnels":[],"rules":[]}'),
-      throwsA(const StoreCodecException.newerSchema(found: 99, supported: 3)),
+      throwsA(const StoreCodecException.newerSchema(found: 99, supported: 4)),
     );
   });
 
@@ -150,7 +150,7 @@ void main() {
       'a.com',
       'c.com',
     ]);
-    expect(store.exceptions, [exception]);
+    expect(store.exceptions.map((row) => row.id), [exception.id]);
   });
 
   test('export document round-trips and validates format', () {
@@ -162,6 +162,7 @@ void main() {
       includesSecrets: false,
       tunnels: store.tunnels.map(ExportedTunnel.fromTunnel).toList(),
       rules: store.rules,
+      lists: store.lists,
       settings: store.settings,
     );
     final text = document.encode();
@@ -176,25 +177,25 @@ void main() {
     );
   });
 
-  test('export documents: version 2 still decodes, 4 is refused (F23)', () {
+  test('export documents: version 2 migrates, 5 is refused (F24)', () {
     const body =
         '"exportedAt":"2026-08-25T12:00:00Z","includesSecrets":false,'
         '"tunnels":[],"rules":[],"settings":{}';
     final older = ExportDocument.decode(
       '{"format":"wayfork-export","version":2,$body}',
     );
-    expect(older.version, 2);
+    expect(older.version, 4);
     expect(
       () => ExportDocument.decode(
-        '{"format":"wayfork-export","version":4,$body}',
+        '{"format":"wayfork-export","version":5,$body}',
       ),
-      throwsA(const ExportDocumentException.newerVersion(4)),
+      throwsA(const ExportDocumentException.newerVersion(5)),
     );
     expect(
       StoreCodec.decode(
         '{"schemaVersion":2,"tunnels":[],"rules":[],"settings":{}}',
       ).schemaVersion,
-      3,
+      4,
     );
   });
 
@@ -206,7 +207,13 @@ void main() {
     expect(document.tunnels[0].kind.isOpenVPN, isTrue);
     expect(document.tunnels[1].kind.vless?.security, TlsSecurity.reality);
     expect(document.rules, hasLength(3));
-    expect(document.rules[2].isException, isTrue);
+    expect(
+      Store(
+        rules: document.rules,
+        lists: document.lists,
+      ).targetFor(document.rules.first),
+      const RuleTargetDirect(),
+    );
     expect(document.defaultTunnelID, document.tunnels[1].id);
   });
 
@@ -295,7 +302,7 @@ void main() {
     final migrated = StoreCodec.decode(
       '{"schemaVersion":1,"tunnels":[],"rules":[],"settings":{}}',
     );
-    expect(migrated.schemaVersion, 3);
+    expect(migrated.schemaVersion, 4);
     final store = Fixtures.store(
       rules: [
         Rule.tunnel(
@@ -306,7 +313,7 @@ void main() {
       ],
     );
     final text = StoreCodec.encode(store);
-    expect(text, contains('"schemaVersion" : 3'));
+    expect(text, contains('"schemaVersion" : 4'));
     expect(text, contains('"match" : "app"'));
     expect(StoreCodec.decode(text), store);
   });

@@ -21,10 +21,11 @@ public enum PlanValidator {
                 name == RunLayout.directRuleSet || name == RunLayout.directIPRuleSet
                     || RunLayout.directNarrowedRuleSets.contains(name)
                     || ruleSetID(fromFileName: name).map(isTunnelID) == true
+                    || rowRuleSetID(fromFileName: name) != nil
             else {
                 throw .planInvalid(
                     reason:
-                        "rule-set file name \"\(name)\" is not rules-t-<id>.json, rules-t-<id>-ip.json, rules-t-<id>-tcp.json, rules-t-<id>-udp.json, their rules-g- twins, \(RunLayout.directRuleSet), \(RunLayout.directIPRuleSet), rules-direct-tcp.json or rules-direct-udp.json"
+                        "rule-set file name \"\(name)\" is not rules-t-<id>.json, rules-t-<id>-ip.json, rules-t-<id>-tcp.json, rules-t-<id>-udp.json, their rules-g- twins, \(RunLayout.directRuleSet), \(RunLayout.directIPRuleSet), rules-direct-tcp.json rules-direct-udp.json or rules-r-<id>.json"
                 )
             }
             try checkSize(contents, name: name, allowEmpty: false)
@@ -129,6 +130,13 @@ public enum PlanValidator {
             }
             try checkSize(runtime.config, name: "xray config of \(runtime.id)", allowEmpty: false)
         }
+    }
+
+    public static func rowRuleSetID(fromFileName name: String) -> String? {
+        guard name.hasPrefix("rules-r-"), name.hasSuffix(".json") else { return nil }
+        let id = String(name.dropFirst("rules-r-".count).dropLast(".json".count))
+        guard isTunnelID(id) else { return nil }
+        return id
     }
 
     /// `rules-t-<id>.json`, `rules-t-<id>-ip.json`, `-tcp.json` / `-udp.json` (F23) and their

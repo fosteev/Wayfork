@@ -439,3 +439,107 @@ File: `wayfork-export.json`
   "Default tunnel and exceptions".
 - `examples/` ships `export.example.json`, `tunnel.example.ovpn` and `vless.example.txt`
   with placeholders only.
+
+## Rule lists (F24)
+
+Future schema/export **4** contract, prepared 2026-11-07; implementation is gated by
+[rule-lists roadmap](../roadmap/rule-lists.md), including selected migration decision G1.
+The earlier target-per-rule model describes the shipped schema ≤3.
+
+```swift
+struct RuleList: Codable, Identifiable {
+    var id: UUID
+    var name: String                 // trimmed, 1…40 chars, unique among lists ignoring case
+    var color: Int?                  // palette index; absent = derived from name
+    var target: RuleListTarget
+    var isEnabled: Bool = true
+    var showInMenu: Bool = true
+}
+enum RuleListTarget {
+    case exit(RuleTarget)            // concrete tunnel, group or Direct
+    case everythingElse             // resolve Store.defaultTunnelID at plan build
+}
+// Store gains lists: [RuleList], in user precedence order.
+// Rule gains listID: UUID; target becomes RuleTarget? (nil = inherit).
+// Rule.isPinned is computed as target != nil, not persisted separately.
+```
+
+Schema-4 list target uses the existing concrete target wire keys (`tunnelID`, `groupID`,
+or `"target":"direct"`), or `"target":"everythingElse"`. Each list carries exactly one
+such binding. A row carries `listID` and, only when pinned, the existing concrete target
+keys. Absence means inheritance, not Direct; row `everythingElse` is invalid (unpin to
+inherit the list instead). Preserve pattern/match/network/note/isEnabled wire names.
+`lists` is always present in schema 4, even when empty. Reject conflicting binding keys.
+
+Every row references one existing list, exactly once; row order is its order in
+`Store.rules` filtered by `listID`. List order is solely `Store.lists`, independent of
+exit order. Empty lists are valid. Unknown target IDs remain inert with warnings, never
+silently rewritten. Duplicate list/row IDs, orphan memberships, invalid names/colors and
+invalid overrides fail validation before persistence/import; keep the last good store.
+All creation/edit/import/decode paths share membership validation. There is no inherited
+exit cache to synchronize: the resolved ordered projection reads list plus override and
+resolves the default once per plan input. Switching a list touches that list only.
+
+Operations are atomic: create/rename/reorder/pause/set target, move row, pin/unpin,
+delete list. A move appends to the destination unless an insertion position is specified;
+explicit pins survive it. New lists insert first in user order. One operation causes one
+store write and one apply. UI-only collapse/search/last-used/overflow-frequency preferences
+are local preferences keyed by list ID, not portable routing fields.
+
+Paused lists and disabled rows are absent from active matching, duplicate and shadow
+checks; paused lists keep every row and override. Concrete unavailable exits follow the
+existing inert-rule policy; runtime-down routed exits still fail closed. See
+[03-routing.md](03-routing.md#rule-lists-f24) for exact exception/default/DNS precedence.
+
+**Migration:** codecs reject newer schema/export versions before partially decoding.
+Store 1→2→3 remains the existing chain; 3→4 is a pure transformation. G1 was resolved on
+2026-11-07 under the maintainer's autopilot direction: preserve existing routing using
+split migration lists. Before transforming, freeze the schema-3 duplicate/shadow analysis.
+Move **all** rows with a duplicate issue into paused `<exit> — Previously inactive` lists, one
+per original target, `showInMenu = false`, after the normal lists. Preserve their own
+`isEnabled` flags, IDs and other content; no data is dropped. This also preserves the
+legacy disabled-first duplicate suppression. Shadowed rows remain in normal split buckets:
+the ordered validator suppresses them after unavailable exits are filtered. The runtime
+builder disables missing-secret exits before legacy validation, so these rows must remain
+available for fallback. This corrects the raw-generator-only stage-1 analysis (root-approved
+2026-11-07). Users can explicitly activate or move archived duplicates later; show their
+count and reason in the migration summary.
+
+Other rows are inherited into legacy generator tiers: Direct, narrowed exits in existing
+tunnel/group order, broad exits in that order, unknown exits in original first-occurrence
+order. TCP precedes UDP inside narrowed buckets; preserve source order inside each
+network and broad bucket. One Direct bucket is sufficient because every row targets Direct.
+Emit only nonempty buckets; use `<exit> — TCP/UDP` and `<exit>` when both exist. Retain
+independently disabled rows and unavailable targets without changing their state. No
+migrated pins or follow-default bindings are created. Each list ID is its first source
+row ID in a separate list identity namespace; disjoint buckets make IDs unique and the
+migration deterministic across Swift/Dart and retries. Clear row target only after list
+assignment, disambiguate colliding names in migration order. The full procedure and
+concrete suppression witnesses live in G1.
+
+Equivalence is checked against frozen old generated route/DNS behavior, including old
+validation suppression and transport overlaps, for the same initial store/secrets/runtime
+inputs. Archived rows stay paused after later edits until explicitly enabled/moved; F24
+does not reproduce every future implicit activation behavior of the old editor. It is not
+defined by identical config
+bytes or plan hash. Keep the pre-upgrade file recoverable until migration/save succeeds;
+an old binary refuses schema 4 instead of attempting a lossy downgrade. No downgrade
+converter is included.
+
+**Export/import:** export 4 carries lists, membership and overrides without materializing
+inherited/default targets. Full replacement preserves list/row order and follow-default;
+import versions 1–3 uses the same G1 migration after exit-ID remapping is known. Merge by
+identity, never list name: identical ID/content reuses a list, conflicting IDs are remapped
+with all references; append incoming lists in source order, disambiguate colliding names
+with numeric suffixes. Equal normalized row content in the same imported list is
+idempotent; an identical row ID/content is reused, a conflicting row ID is remapped.
+Preview shows collisions and precedence impact; merging into an existing store is not a
+promise of the source store's independent routing behavior. Keep existing settings/default
+import controls; no single-list sharing feature in F24.
+
+**Exit deletion:** retain current deletion semantics, not the abandoned draft's conversion
+to Direct/paused. Remove rows whose explicit pin targets the deleted exit and inherited
+rows of lists targeting it; preserve list shells with the missing ID, plus pinned rows to
+other exits. A list's own missing target does not disable a valid pin. Cascade deleted
+groups and default clearing as today. The existing destructive confirmation counts all
+removed rows and names affected lists. Deleting a list removes its rows after confirmation.

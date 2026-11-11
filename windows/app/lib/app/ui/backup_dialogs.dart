@@ -191,8 +191,10 @@ class _ImportDialog extends StatelessWidget {
           ],
           const SizedBox(height: 8),
           SecondaryText(
-            'Merge adds new items and updates existing ones by id. Replace '
-            'all discards the current tunnels, rules and settings.',
+            'Merge reuses identical list identities and appends incoming lists in '
+            'source order; name collisions are renamed. Earlier local lists can '
+            'win over imported rules. Replace all preserves the imported list '
+            'and row order and discards current tunnels, rules and settings.',
             maxLines: 3,
           ),
         ],

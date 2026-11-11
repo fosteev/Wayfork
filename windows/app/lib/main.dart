@@ -10,6 +10,7 @@ import 'package:wayfork/app/services/launch_at_login_registry.dart';
 import 'package:wayfork/app/services/log_center.dart';
 import 'package:wayfork/app/services/network_watcher.dart';
 import 'package:wayfork/app/services/notifier.dart';
+import 'package:wayfork/app/services/rule_list_preferences.dart';
 import 'package:wayfork/app/services/single_instance.dart';
 import 'package:wayfork/app/services/toast_notifier.dart';
 import 'package:wayfork/app/services/tray_backend.dart';
@@ -52,6 +53,11 @@ Future<void> main(List<String> arguments) async {
   final notifier = await ToastNotifier.start();
   final model = AppModel(
     repository: StoreRepository(directory),
+    listPreferences: RuleListPreferences(
+      file: File(
+        '${directory.path}${Platform.pathSeparator}rule-lists-ui.json',
+      ),
+    ),
     secrets: DpapiSecretStore(
       File('${directory.path}${Platform.pathSeparator}$secretsFileName'),
       DpapiProtector(),

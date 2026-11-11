@@ -1,0 +1,10 @@
+{
+  "rules" : [
+    {
+      "domain" : [
+        "bank.example.com"
+      ]
+    }
+  ],
+  "version" : 3
+}

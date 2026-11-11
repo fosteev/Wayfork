@@ -40,7 +40,10 @@ public enum RunLayout {
     }
 
     public static func isRuleSet(_ fileName: String) -> Bool {
-        fileName.hasPrefix("rules-t-") && fileName.hasSuffix(".json")
+        PlanValidator.rowRuleSetID(fromFileName: fileName) != nil
+            || PlanValidator.ruleSetID(fromFileName: fileName).map(PlanValidator.isTunnelID) == true
+            || [directRuleSet, directIPRuleSet].contains(fileName)
+            || directNarrowedRuleSets.contains(fileName)
     }
 
     /// Raw child output log: `sing-box.log`, `openvpn-<id>.log`, `xray-<id>.log`,

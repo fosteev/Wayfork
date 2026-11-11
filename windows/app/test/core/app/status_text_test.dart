@@ -267,11 +267,16 @@ void main() {
 
   test('summary and cards with a default tunnel (F8)', () {
     final sample = SampleStore();
-    var store = sample.store.copyWith(
+    final destination = sample.store.ensureList(const RuleTargetDirect());
+    var store = destination.store.copyWith(
       defaultTunnelID: sample.home.id,
       rules: [
         ...sample.store.rules,
-        Rule(pattern: 'bank.example.org', target: const RuleTargetDirect()),
+        Rule(
+          pattern: 'bank.example.org',
+          target: const RuleTargetDirect(),
+          listID: destination.listID,
+        ),
       ],
     );
     // 5 active tunnel rules, 3 of them outside Home.

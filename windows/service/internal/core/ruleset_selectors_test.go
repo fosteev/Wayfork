@@ -120,7 +120,7 @@ func TestUnexpectedFileShapesAreUnknown(t *testing.T) {
 		t.Errorf("single-string matchers = %+v, %v", selectors, ok)
 	}
 	// The real fixtures parse.
-	fixture, ok := ParseRuleSetSelectors(readFixture(t, "singbox", "app-rules", RuleSet(idA)))
+	fixture, ok := ParseRuleSetSelectors(readFixture(t, "legacy-f23", "singbox", "app-rules", RuleSet(idA)))
 	if !ok || !fixture.ProcessPathRegex.Has(`^/Applications/Telegram\.app/`) || !fixture.Domain.Has("api.other.com") {
 		t.Errorf("fixture selectors = %+v, %v", fixture, ok)
 	}

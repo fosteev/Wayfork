@@ -313,7 +313,7 @@ func TestFailedConnectionsExitsNilOpenedUnderProblemsOnly(t *testing.T) {
 
 func TestPlanHelpersForGroupsProxiesAndTheBlockList(t *testing.T) {
 	config := `{"inbounds":[{"type":"tun","tag":"tun-in"},{"type":"mixed","tag":"proxy-t-` + tunnelA + `","listen":"127.0.0.1","listen_port":1081},{"type":"mixed","tag":"proxy-g-` + tunnelB + `","listen":"127.0.0.1","listen_port":1082}],` +
-		`"outbounds":[{"type":"direct","tag":"direct"},{"type":"selector","tag":"g-` + tunnelB + `","outbounds":["t-` + tunnelA + `"],"default":"t-` + tunnelA + `"},{"type":"urltest","tag":"g-fast","outbounds":["t-` + tunnelA + `"]}],` +
+		`"outbounds":[{"type":"direct","tag":"direct"},{"type":"direct","tag":"t-` + tunnelA + `"},{"type":"selector","tag":"g-` + tunnelB + `","outbounds":["t-` + tunnelA + `"],"default":"t-` + tunnelA + `"},{"type":"urltest","tag":"g-fast","outbounds":["t-` + tunnelA + `"]}],` +
 		`"route":{"final":"g-` + tunnelB + `","rules":[{"action":"sniff"},{"inbound":["proxy-t-` + tunnelA + `"],"outbound":"t-` + tunnelA + `"},{"inbound":["proxy-g-` + tunnelB + `"],"outbound":"g-` + tunnelB + `"}],` +
 		`"rule_set":[{"type":"local","tag":"rules-direct","format":"source","path":"rules-direct.json"},{"type":"local","tag":"block-ads","format":"binary","path":"C:\\Program Files\\Wayfork\\rulesets\\block-ads.srs"}]}}`
 	plan := RuntimePlan{Version: PlanVersion, SingBox: SingBoxPlan{Config: config, RuleSets: map[string]string{

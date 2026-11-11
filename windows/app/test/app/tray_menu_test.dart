@@ -27,6 +27,7 @@ void main() {
       'open',
       'quickAdd',
       '---',
+      'lists',
       'reconnect',
       'logs',
       'connections',

@@ -217,8 +217,6 @@ abstract final class SingBoxConfigGenerator {
           (group) => group.isEnabled && group.members.any(routedIDs.contains),
         )
         .toList();
-    final activeRules = RuleValidator.activeRules(store);
-    final exceptions = RuleValidator.activeExceptions(store);
     final wantedDefault = store.effectiveDefaultTunnel;
     final defaultTunnel = wantedDefault == null
         ? null
@@ -234,6 +232,28 @@ abstract final class SingBoxConfigGenerator {
       },
       null => null,
     };
+
+    final rows =
+        RuleValidator.resolvedRules(
+              store,
+              routedExitIDs: {
+                ...routedIDs,
+                ...routedGroups.map((group) => group.id),
+              },
+            )
+            .where(
+              (row) =>
+                  RuleSetGenerator.renderRow(
+                    row.rule,
+                    platform: input.platform,
+                  ) !=
+                  null,
+            )
+            .toList();
+    final ruleFiles = RuleSetGenerator.generateRows(
+      rows,
+      platform: input.platform,
+    );
 
     final dnsServers = <Map<String, Object?>>[
       directDNSServer(
@@ -291,7 +311,7 @@ abstract final class SingBoxConfigGenerator {
     final serverRule = serverRouteRule(servers);
     if (serverRule != null) routeRules.add(serverRule);
     routeRules.add({
-      'rule_set': [RuleSetGenerator.directTag, RuleSetGenerator.directIPTag],
+      'rule_set': [RuleSetGenerator.directTag],
       'outbound': 'direct',
     });
     final ruleSetRefs = <Map<String, Object?>>[
@@ -299,34 +319,20 @@ abstract final class SingBoxConfigGenerator {
         tag: RuleSetGenerator.directTag,
         path: RuleSetGenerator.directFileName,
       ),
-      localRuleSet(
-        tag: RuleSetGenerator.directIPTag,
-        path: RuleSetGenerator.directIPFileName,
-      ),
     ];
-    // F23: Direct rules narrowed to one transport, right behind the
-    // both-network ones.
-    for (final network in RuleNetwork.values.where(
-      (network) =>
-          RuleSetGenerator.renderNarrowed(
-            exceptions,
-            network,
-            platform: input.platform,
-          ) !=
-          null,
-    )) {
-      routeRules.add({
-        'rule_set': [RuleSetGenerator.directNarrowedTag(network)],
-        'network': [network.jsonValue],
-        'outbound': 'direct',
-      });
-      ruleSetRefs.add(
-        localRuleSet(
-          tag: RuleSetGenerator.directNarrowedTag(network),
-          path: RuleSetGenerator.directNarrowedFileName(network),
-        ),
-      );
+    void appendRows(Iterable<ResolvedRule> selected) {
+      for (final row in selected) {
+        routeRules.add({
+          'rule_set': [row.tag],
+          'outbound': row.outboundTag,
+          if (row.rule.network != null)
+            'network': [row.rule.network!.jsonValue],
+        });
+        ruleSetRefs.add(localRuleSet(tag: row.tag, path: row.fileName));
+      }
     }
+
+    appendRows(rows.where((row) => row.isException));
     // F18: listed names are rejected after the exceptions and before every
     // tunnel rule-set, so the list wins whichever tunnel a rule would send
     // them to.
@@ -343,33 +349,6 @@ abstract final class SingBoxConfigGenerator {
         'path': blockList.path,
       });
     }
-    // F23: narrowed tunnel and group rules go in here, after the block list
-    // and before the both-network rules, so they win over them whatever the
-    // section order.
-    final narrowedInsertIndex = routeRules.length;
-    final narrowedRouteRules = <Map<String, Object?>>[];
-    void addNarrowed(RoutedExit exit) {
-      for (final network in RuleNetwork.values) {
-        final text = RuleSetGenerator.renderNarrowed(
-          activeRules[exit.id] ?? const [],
-          network,
-          platform: input.platform,
-        );
-        if (text == null) continue;
-        narrowedRouteRules.add({
-          'rule_set': [exit.narrowedRuleSetTag(network)],
-          'network': [network.jsonValue],
-          'outbound': exit.outboundTag,
-        });
-        ruleSetRefs.add(
-          localRuleSet(
-            tag: exit.narrowedRuleSetTag(network),
-            path: exit.narrowedRuleSetFileName(network),
-          ),
-        );
-      }
-    }
-
     for (final tunnel in routed) {
       switch (tunnel.kind) {
         case TunnelKindOpenVPN(:final meta):
@@ -438,17 +417,6 @@ abstract final class SingBoxConfigGenerator {
             ),
           );
       }
-      routeRules.add({
-        'rule_set': [tunnel.ruleSetTag, tunnel.ipRuleSetTag],
-        'outbound': tunnel.outboundTag,
-      });
-      ruleSetRefs.add(
-        localRuleSet(tag: tunnel.ruleSetTag, path: tunnel.ruleSetFileName),
-      );
-      ruleSetRefs.add(
-        localRuleSet(tag: tunnel.ipRuleSetTag, path: tunnel.ipRuleSetFileName),
-      );
-      addNarrowed(RoutedExit.tunnel(tunnel));
     }
     for (final group in routedGroups) {
       final members = group.members
@@ -477,26 +445,18 @@ abstract final class SingBoxConfigGenerator {
             'interrupt_exist_connections': false,
           });
       }
-      routeRules.add({
-        'rule_set': [group.ruleSetTag, group.ipRuleSetTag],
-        'outbound': group.outboundTag,
-      });
-      ruleSetRefs.add(
-        localRuleSet(tag: group.ruleSetTag, path: group.ruleSetFileName),
-      );
-      ruleSetRefs.add(
-        localRuleSet(tag: group.ipRuleSetTag, path: group.ipRuleSetFileName),
-      );
-      addNarrowed(RoutedExit.group(group));
     }
-    routeRules.insertAll(narrowedInsertIndex, narrowedRouteRules);
+    appendRows(rows.where((row) => !row.isException));
     routeRules.add({'ip_is_private': true, 'outbound': 'direct'});
 
     // Tunnel IP rules inside LAN ranges must enter the TUN. Direct IP rules do
     // not need carving because either path is already direct.
     final carved = <IPv4Prefix>[];
     for (final tunnel in routed) {
-      for (final rule in activeRules[tunnel.id] ?? const []) {
+      for (final row in rows.where(
+        (row) => row.target == RuleTargetTunnel(tunnel.id),
+      )) {
+        final rule = row.rule;
         if (!rule.isIP) continue;
         final prefix = IPv4Prefix.parse(rule.pattern);
         if (prefix != null) carved.add(prefix);
@@ -534,19 +494,13 @@ abstract final class SingBoxConfigGenerator {
     if (directDNSHosts.isNotEmpty) {
       dnsRules.add({'domain': directDNSHosts, 'server': 'dns-direct'});
     }
-    if (blockList != null) {
-      dnsRules.add(blockList.dns);
+    for (final row in rows.where(
+      (row) => row.isException && !row.rule.isApp && !row.rule.isIP,
+    )) {
+      dnsRules.add({'rule_set': row.tag, 'server': 'dns-direct'});
     }
-    if (routed.isNotEmpty) {
-      dnsRules.add({
-        'rule_set': [
-          ...routed.map((tunnel) => tunnel.ruleSetTag),
-          ...routedGroups.map((group) => group.ruleSetTag),
-        ],
-        'query_type': ['A', 'AAAA'],
-        'server': 'fakeip',
-      });
-    }
+    if (blockList != null) dnsRules.add(blockList.dns);
+    final orderedDNSIndex = dnsRules.length;
 
     var dnsFinal = 'dns-direct';
     if (defaultExit != null) {
@@ -566,6 +520,23 @@ abstract final class SingBoxConfigGenerator {
       }
       dnsFinal = tag;
     }
+
+    final orderedDNS = <Map<String, Object?>>[];
+    for (final row in rows.where(
+      (row) => !row.isException && !row.rule.isApp && !row.rule.isIP,
+    )) {
+      if (row.target is RuleTargetDirect) {
+        orderedDNS.add({'rule_set': row.tag, 'server': 'dns-direct'});
+      } else {
+        orderedDNS.add({
+          'rule_set': row.tag,
+          'query_type': ['A', 'AAAA'],
+          'server': 'fakeip',
+        });
+        orderedDNS.add({'rule_set': row.tag, 'server': dnsFinal});
+      }
+    }
+    dnsRules.insertAll(orderedDNSIndex, orderedDNS);
 
     final dns = <String, Object?>{
       'servers': dnsServers,
@@ -610,15 +581,7 @@ abstract final class SingBoxConfigGenerator {
 
     return SingBoxOutput(
       config: '${JsonText.render(config)}\n',
-      ruleSets: RuleSetGenerator.generateForExits(
-        exits: [
-          ...routed.map(RoutedExit.tunnel),
-          ...routedGroups.map(RoutedExit.group),
-        ],
-        activeRules: activeRules,
-        exceptions: exceptions,
-        platform: input.platform,
-      ),
+      ruleSets: ruleFiles,
       routedTunnels: routed,
       routedGroups: routedGroups,
       defaultTunnel: defaultTunnel,

@@ -12,6 +12,8 @@ public enum RuleIssue: Equatable, Sendable, Hashable {
     case tunnelDisabled
     /// The rule's tunnel or group no longer exists.
     case tunnelMissing
+    /// Enabled exit has no usable secret (or no member with one).
+    case missingSecret
     /// The pattern covers the server host of a tunnel — its own control traffic would
     /// try to go through a tunnel (docs/design/03-routing.md).
     case coversTunnelServer(tunnelName: String)
@@ -32,72 +34,33 @@ public enum DefaultTunnelIssue: Equatable, Sendable, Hashable {
 public enum RuleValidator {
     /// Issues per rule id. Rules without problems are absent from the result.
     /// `localNetworks` (the app passes `LocalNetwork.current()`) feeds `coversLocalNetwork`.
-    public static func validate(_ store: Store, localNetworks: [LocalNetwork] = [])
+    public static func validate(
+        _ store: Store, localNetworks: [LocalNetwork] = [], routedExitIDs: Set<UUID>? = nil
+    )
         -> [UUID: [RuleIssue]]
     {
         var issues: [UUID: [RuleIssue]] = [:]
-        let tunnelsByID = Dictionary(uniqueKeysWithValues: store.tunnels.map { ($0.id, $0) })
-        let groupsByID = Dictionary(uniqueKeysWithValues: store.groups.map { ($0.id, $0) })
-        // Section order for shadowing: Direct first, then tunnels, then groups (F16), each
-        // in store order.
-        var groupOrder: [RuleTarget: Int] = [.direct: 0]
-        for (index, tunnel) in store.tunnels.enumerated() {
-            groupOrder[.tunnel(tunnel.id)] = index + 1
-        }
-        for (index, group) in store.groups.enumerated() {
-            groupOrder[.group(group.id)] = store.tunnels.count + index + 1
-        }
-
-        // Duplicates within one group: the first occurrence in list order wins.
-        var seen: [RuleKey: UUID] = [:]
-        var duplicates: Set<UUID> = []
-        for rule in store.rules {
-            let key = RuleKey(rule, target: rule.target)
+        let candidates = resolvedCandidates(store, routedExitIDs: routedExitIDs)
+        var seen: [String: UUID] = [:]
+        var earlier: [ResolvedRule] = []
+        for row in candidates {
+            let rule = row.rule
+            let key =
+                "\(row.listID)|\(rule.match.rawValue)|\(rule.pattern)|\(rule.network?.rawValue ?? "both")"
             if let first = seen[key] {
                 issues[rule.id, default: []].append(.duplicate(of: first))
-                duplicates.insert(rule.id)
+                continue
+            }
+            seen[key] = rule.id
+            if let first = earlier.first(where: {
+                $0.rule.pattern == rule.pattern && $0.rule.match == rule.match
+                    && ($0.rule.network == nil || $0.rule.network == rule.network)
+            }) {
+                issues[rule.id, default: []].append(.shadowed(by: first.rule.id))
             } else {
-                seen[key] = rule.id
+                earlier.append(row)
             }
         }
-
-        // Shadowing: an active rule is shadowed by an earlier one in the effective order
-        // with the same pattern and match whose network covers its own (F23). The order is
-        // a rank — Direct both 0, Direct narrowed 1, exit narrowed 2, exit both 3 — then the
-        // section order; without narrowed rules that is the plain section order.
-        struct Candidate {
-            let ruleID: UUID
-            let network: RuleNetwork?
-            let order: [Int]
-        }
-        var active: [PatternKey: [Candidate]] = [:]
-        for rule in store.effectiveRules {
-            guard rule.isEnabled, !duplicates.contains(rule.id), isGroupActive(rule.target),
-                let group = groupOrder[rule.target]
-            else { continue }
-            let rank =
-                switch (rule.isException, rule.network != nil) {
-                case (true, false): 0
-                case (true, true): 1
-                case (false, true): 2
-                case (false, false): 3
-                }
-            active[PatternKey(rule), default: []].append(
-                Candidate(ruleID: rule.id, network: rule.network, order: [rank, group]))
-        }
-        for candidates in active.values {
-            for candidate in candidates {
-                let earlier = candidates.first { other in
-                    other.ruleID != candidate.ruleID
-                        && other.order.lexicographicallyPrecedes(candidate.order)
-                        && (other.network == nil || other.network == candidate.network)
-                }
-                if let earlier {
-                    issues[candidate.ruleID, default: []].append(.shadowed(by: earlier.ruleID))
-                }
-            }
-        }
-
         // Tunnel servers: names are matched by domain rules, IP literals by IP rules.
         var serverNames: [(host: String, tunnel: String)] = []
         var serverAddresses: [(address: IPv4Prefix, tunnel: String)] = []
@@ -112,17 +75,24 @@ public enum RuleValidator {
         }
 
         for rule in store.rules {
-            guard let exitID = rule.exitID else { continue }  // exceptions: nothing more
-            if let tunnel = tunnelsByID[exitID] {
+            // Direct rows need no exit availability or server/LAN warnings.
+            guard let target = store.target(for: rule), let exitID = target.exitID else { continue }
+            if let tunnel = store.tunnel(id: exitID) {
                 if !tunnel.isEnabled {
                     issues[rule.id, default: []].append(.tunnelDisabled)
                 }
-            } else if let group = groupsByID[exitID] {
+            } else if let group = store.group(id: exitID) {
                 if !group.isEnabled || store.enabledMembers(of: group).isEmpty {
                     issues[rule.id, default: []].append(.tunnelDisabled)
                 }
             } else {
                 issues[rule.id, default: []].append(.tunnelMissing)
+            }
+            if let routedExitIDs, !routedExitIDs.contains(exitID),
+                issues[rule.id]?.contains(.tunnelDisabled) != true,
+                issues[rule.id]?.contains(.tunnelMissing) != true
+            {
+                issues[rule.id, default: []].append(.missingSecret)
             }
             if rule.isIP {
                 guard let range = IPv4Prefix(rule.pattern) else { continue }
@@ -147,15 +117,6 @@ public enum RuleValidator {
         }
         return issues
 
-        func isGroupActive(_ target: RuleTarget) -> Bool {
-            switch target {
-            case .direct: true
-            case .tunnel(let id): tunnelsByID[id]?.isEnabled == true
-            case .group(let id):
-                groupsByID[id].map { $0.isEnabled && !store.enabledMembers(of: $0).isEmpty }
-                    == true
-            }
-        }
     }
 
     /// Tunnel and group rules the routing engine should emit: enabled, exit enabled, not
@@ -180,46 +141,100 @@ public enum RuleValidator {
         -> DefaultTunnelIssue?
     {
         guard let id = store.defaultTunnelID else { return nil }
-        guard let tunnel = store.tunnel(id: id) else { return .missing }
-        guard tunnel.isEnabled else { return .disabled }
-        return missingSecrets.contains(id) ? .missingSecret : nil
+        if let tunnel = store.tunnel(id: id) {
+            guard tunnel.isEnabled else { return .disabled }
+            return missingSecrets.contains(id) ? .missingSecret : nil
+        }
+        if let group = store.group(id: id) {
+            let members = store.enabledMembers(of: group)
+            guard group.isEnabled, !members.isEmpty else { return .disabled }
+            return members.allSatisfy { missingSecrets.contains($0.id) } ? .missingSecret : nil
+        }
+        return .missing
     }
 
-    private static func activeRulesInOrder(_ store: Store) -> [Rule] {
-        let issues = validate(store)
-        return store.effectiveRules.filter { rule in
-            guard rule.isEnabled else { return false }
-            let blocking = issues[rule.id]?.contains { issue in
-                switch issue {
-                case .duplicate, .shadowed, .tunnelDisabled, .tunnelMissing: true
-                case .coversTunnelServer, .coversLocalNetwork: false
+    public static func activeRulesInOrder(_ store: Store) -> [Rule] {
+        resolvedRules(store).map { row in
+            var rule = row.rule
+            rule.target = row.target
+            return rule
+        }
+    }
+
+    /// The common precedence projection. Runtime callers pass the exits with available secrets.
+    public static func resolvedRules(_ store: Store, routedExitIDs: Set<UUID>? = nil)
+        -> [ResolvedRule]
+    {
+        let rows = resolvedCandidates(store, routedExitIDs: routedExitIDs)
+        var seen: Set<String> = []
+        var active: [ResolvedRule] = []
+        for row in rows {
+            let rule = row.rule
+            let key =
+                "\(row.listID)|\(rule.match.rawValue)|\(rule.pattern)|\(rule.network?.rawValue ?? "both")"
+            guard seen.insert(key).inserted else { continue }
+            guard
+                !active.contains(where: {
+                    $0.rule.pattern == rule.pattern && $0.rule.match == rule.match
+                        && ($0.rule.network == nil || $0.rule.network == rule.network)
+                })
+            else { continue }
+            active.append(row)
+        }
+        return active
+    }
+
+    public static func availableExitIDs(_ store: Store, missingSecrets: Set<UUID> = []) -> Set<UUID>
+    {
+        let enabled = Set(
+            store.tunnels.filter { $0.isEnabled && !missingSecrets.contains($0.id) }.map(\.id))
+        return enabled.union(
+            store.groups.filter {
+                $0.isEnabled && $0.members.contains(where: enabled.contains)
+            }.map(\.id))
+    }
+
+    private static func resolvedCandidates(_ store: Store, routedExitIDs: Set<UUID>? = nil)
+        -> [ResolvedRule]
+    {
+        let available = routedExitIDs ?? availableExitIDs(store)
+        var rows: [ResolvedRule] = []
+        for list in store.lists where list.isEnabled {
+            for rule in store.rules(in: list.id) where rule.isEnabled {
+                let binding = rule.target.map(RuleListTarget.exit) ?? list.target
+                let target: RuleTarget
+                switch binding {
+                case .exit(let exit): target = exit
+                case .everythingElse:
+                    if let id = store.defaultTunnelID, available.contains(id) {
+                        target = store.tunnel(id: id) != nil ? .tunnel(id) : .group(id)
+                    } else {
+                        target = .direct
+                    }
                 }
+                guard target.exitID.map(available.contains) ?? true else { continue }
+                rows.append(
+                    ResolvedRule(
+                        rule: rule, listID: list.id, target: target,
+                        isException: binding == .exit(.direct)))
             }
-            return blocking != true
+        }
+        return rows.filter(\.isException) + rows.filter { !$0.isException }
+    }
+}
+
+public struct ResolvedRule: Sendable, Hashable {
+    public var rule: Rule
+    public var listID: UUID
+    public var target: RuleTarget
+    public var isException: Bool
+    public var outboundTag: String {
+        switch target {
+        case .direct: "direct"
+        case .tunnel(let id): "t-" + id.uuidString.lowercased()
+        case .group(let id): "g-" + id.uuidString.lowercased()
         }
     }
-
-    private struct RuleKey: Hashable {
-        let pattern: String
-        let match: RuleMatch
-        let network: RuleNetwork?
-        let target: RuleTarget
-
-        init(_ rule: Rule, target: RuleTarget) {
-            pattern = rule.pattern
-            match = rule.match
-            network = rule.network
-            self.target = target
-        }
-    }
-
-    private struct PatternKey: Hashable {
-        let pattern: String
-        let match: RuleMatch
-
-        init(_ rule: Rule) {
-            pattern = rule.pattern
-            match = rule.match
-        }
-    }
+    public var tag: String { "rules-r-" + rule.id.uuidString.lowercased() }
+    public var fileName: String { tag + ".json" }
 }

@@ -1,3 +1,5 @@
+import 'package:wayfork/core/model/store.dart';
+import 'package:wayfork/core/model/rule_list.dart';
 import 'package:collection/collection.dart';
 import 'package:wayfork/core/json_text.dart';
 import 'package:wayfork/core/model/rule.dart';
@@ -230,19 +232,41 @@ final class ExportDocument {
     required Settings settings,
     String? defaultTunnelID,
     List<TunnelGroup> groups = const [],
-  }) => ExportDocument._(
-    format: formatName,
-    version: currentVersion,
-    exportedAt: (exportedAt ?? DateTime.now()).toUtc(),
-    includesSecrets: includesSecrets,
-    tunnels: List.unmodifiable(tunnels),
-    rules: List.unmodifiable(rules),
-    settings: settings,
-    defaultTunnelID: defaultTunnelID == null
-        ? null
-        : _uuid(defaultTunnelID, 'defaultTunnelID'),
-    groups: List.unmodifiable(groups),
-  );
+    List<RuleList>? lists,
+  }) {
+    final store = Store(
+      tunnels: [
+        for (var i = 0; i < tunnels.length; i++)
+          Tunnel(
+            id: tunnels[i].id,
+            name: tunnels[i].name,
+            isEnabled: tunnels[i].isEnabled,
+            slot: i,
+            kind: tunnels[i].kind,
+            createdAt: tunnels[i].createdAt,
+          ),
+      ],
+      rules: rules,
+      groups: groups,
+      settings: settings,
+      defaultTunnelID: defaultTunnelID,
+      lists: lists,
+    );
+    return ExportDocument._(
+      format: formatName,
+      version: currentVersion,
+      exportedAt: (exportedAt ?? DateTime.now()).toUtc(),
+      includesSecrets: includesSecrets,
+      tunnels: List.unmodifiable(tunnels),
+      rules: store.rules,
+      lists: store.lists,
+      settings: settings,
+      defaultTunnelID: defaultTunnelID == null
+          ? null
+          : _uuid(defaultTunnelID, 'defaultTunnelID'),
+      groups: List.unmodifiable(groups),
+    );
+  }
 
   const ExportDocument._({
     required this.format,
@@ -251,45 +275,52 @@ final class ExportDocument {
     required this.includesSecrets,
     required this.tunnels,
     required this.rules,
+    required this.lists,
     required this.settings,
     required this.defaultTunnelID,
     required this.groups,
   });
 
-  factory ExportDocument.fromJson(Map<String, Object?> json) =>
-      ExportDocument._(
-        format: _string(json, 'format'),
-        version: _int(json, 'version'),
-        exportedAt: JsonCoding.decodeDate(_string(json, 'exportedAt')),
-        includesSecrets: _bool(json, 'includesSecrets'),
-        tunnels: List.unmodifiable(
-          _list(
-            json,
-            'tunnels',
-          ).map((value) => ExportedTunnel.fromJson(_map(value, 'tunnel'))),
-        ),
-        rules: List.unmodifiable(
-          _list(
-            json,
-            'rules',
-          ).map((value) => Rule.fromJson(_map(value, 'rule'))),
-        ),
-        settings: Settings.fromJson(_map(json['settings'], 'settings')),
-        defaultTunnelID: json['defaultTunnelID'] == null
-            ? null
-            : _uuid(_string(json, 'defaultTunnelID'), 'defaultTunnelID'),
-        groups: json['groups'] == null
-            ? const []
-            : List.unmodifiable(
-                _list(
-                  json,
-                  'groups',
-                ).map((value) => TunnelGroup.fromJson(_map(value, 'group'))),
-              ),
-      );
+  factory ExportDocument.fromJson(Map<String, Object?> json) {
+    final version = _int(json, 'version');
+    if (version > currentVersion) {
+      throw ExportDocumentException.newerVersion(version);
+    }
+    final format = _string(json, 'format');
+    if (format != formatName) {
+      throw ExportDocumentException.unknownFormat(format);
+    }
+    final document = ExportDocument(
+      exportedAt: JsonCoding.decodeDate(_string(json, 'exportedAt')),
+      includesSecrets: _bool(json, 'includesSecrets'),
+      tunnels: _list(
+        json,
+        'tunnels',
+      ).map((value) => ExportedTunnel.fromJson(_map(value, 'tunnel'))).toList(),
+      rules: _list(
+        json,
+        'rules',
+      ).map((value) => Rule.fromJson(_map(value, 'rule'))).toList(),
+      lists: version >= 4
+          ? _list(
+              json,
+              'lists',
+            ).map((value) => RuleList.fromJson(_map(value, 'list'))).toList()
+          : null,
+      settings: Settings.fromJson(_map(json['settings'], 'settings')),
+      defaultTunnelID: json['defaultTunnelID'] as String?,
+      groups: json['groups'] == null
+          ? const []
+          : _list(json, 'groups')
+                .map((value) => TunnelGroup.fromJson(_map(value, 'group')))
+                .toList(),
+    );
+    Store(rules: document.rules, lists: document.lists).validateMembership();
+    return document;
+  }
 
   static const formatName = 'wayfork-export';
-  static const currentVersion = 3;
+  static const currentVersion = 4;
 
   final String format;
   final int version;
@@ -297,6 +328,7 @@ final class ExportDocument {
   final bool includesSecrets;
   final List<ExportedTunnel> tunnels;
   final List<Rule> rules;
+  final List<RuleList> lists;
   final Settings settings;
   final String? defaultTunnelID;
 
@@ -318,7 +350,10 @@ final class ExportDocument {
     return document;
   }
 
-  String encode() => JsonCoding.encodePretty(toJson());
+  String encode() {
+    Store(rules: rules, lists: lists).validateMembership();
+    return JsonCoding.encodePretty(toJson());
+  }
 
   Map<String, Object?> toJson() => {
     'format': format,
@@ -327,6 +362,7 @@ final class ExportDocument {
     'includesSecrets': includesSecrets,
     'tunnels': tunnels.map((tunnel) => tunnel.toJson()).toList(),
     'rules': rules.map((rule) => rule.toJson()).toList(),
+    'lists': lists.map((list) => list.toJson()).toList(),
     'settings': settings.toJson(),
     if (defaultTunnelID != null)
       'defaultTunnelID': Uuid.encode(defaultTunnelID!),
@@ -339,6 +375,7 @@ final class ExportDocument {
       other is ExportDocument &&
       format == other.format &&
       version == other.version &&
+      const ListEquality<RuleList>().equals(lists, other.lists) &&
       exportedAt == other.exportedAt &&
       includesSecrets == other.includesSecrets &&
       const ListEquality<ExportedTunnel>().equals(tunnels, other.tunnels) &&
@@ -355,6 +392,7 @@ final class ExportDocument {
     includesSecrets,
     const ListEquality<ExportedTunnel>().hash(tunnels),
     const ListEquality<Rule>().hash(rules),
+    const ListEquality<RuleList>().hash(lists),
     settings,
     defaultTunnelID,
     const ListEquality<TunnelGroup>().hash(groups),

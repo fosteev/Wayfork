@@ -1,0 +1,10 @@
+{
+  "rules" : [
+    {
+      "domain_regex" : [
+        "^.+\\.stream\\.example\\.net$"
+      ]
+    }
+  ],
+  "version" : 3
+}

@@ -36,9 +36,9 @@ func ValidatePlanWith(plan RuntimePlan, options ValidateOptions) *DaemonError {
 	for name, contents := range plan.SingBox.RuleSets {
 		id, isTunnelRuleSet := RuleSetID(name)
 		if name != DirectRuleSet && name != DirectIPRuleSet && name != DirectTCPRuleSet &&
-			name != DirectUDPRuleSet && (!isTunnelRuleSet || !IsTunnelID(id)) {
+			name != DirectUDPRuleSet && !IsRowRuleSet(name) && (!isTunnelRuleSet || !IsTunnelID(id)) {
 			return ErrPlanInvalid(fmt.Sprintf(
-				"rule-set file name %q is not rules-t-<id>.json, rules-t-<id>-ip.json, -tcp.json or -udp.json, their rules-g- twins, %s, %s, %s or %s",
+				"rule-set file name %q is not rules-r-<id>.json, rules-t-<id>.json, rules-t-<id>-ip.json, -tcp.json or -udp.json, their rules-g- twins, %s, %s, %s or %s",
 				name, DirectRuleSet, DirectIPRuleSet, DirectTCPRuleSet, DirectUDPRuleSet,
 			))
 		}
@@ -121,6 +121,14 @@ func ValidatePlanWith(plan RuntimePlan, options ValidateOptions) *DaemonError {
 		}
 	}
 	return nil
+}
+
+// IsRowRuleSet permits only an exact lowercase UUID row filename, never paths or suffixes.
+func IsRowRuleSet(name string) bool {
+	const prefix = "rules-r-"
+	const suffix = ".json"
+	return strings.HasPrefix(name, prefix) && strings.HasSuffix(name, suffix) &&
+		IsTunnelID(strings.TrimSuffix(strings.TrimPrefix(name, prefix), suffix))
 }
 
 // RuleSetID extracts the tunnel or group ID from rules-t-<id>.json, rules-t-<id>-ip.json,

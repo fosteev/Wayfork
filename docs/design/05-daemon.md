@@ -81,6 +81,7 @@ struct TrafficSnapshot: Codable {
     var interval: TimeInterval                 // seconds covered by the rates
     var tunnels: [String: TrafficCounters]     // by tunnel id (OpenVPN and VLESS alike)
     var direct: TrafficCounters
+    var rules: [String: TrafficCounters]?     // by matched rule UUID; nil for older helpers
 }
 struct TrafficCounters: Codable {
     var downBytesPerSecond: Double; var upBytesPerSecond: Double
@@ -236,6 +237,35 @@ validated against `^utun(1[0-9]{2})$` before use. Later can move to a `PF_ROUTE`
 drop the exec.
 
 ## Traffic sampling (F9)
+
+### Per-rule rates (2026-11-08)
+
+Settings > Rules reuses the same sample and polling cadence. F24 generates a distinct
+`rules-r-<UUID>` rule-set for every user row. The pinned sing-box 1.13.19 exposes the
+matched route in each connection's `rule` field, for example:
+`network=tcp rule_set=rules-r-<UUID> => route(direct)`. This was verified with the bundled
+binary using a loopback-only mixed inbound and streaming HTTP response; no TUN or running
+Wayfork instance is needed. Upstream serialization is in
+[TrackerMetadata.MarshalJSON](https://github.com/SagerNet/sing-box/blob/v1.13.19/experimental/clashapi/trafficontrol/tracker.go).
+
+`ClashConnection.ruleID` accepts only the generated single-rule-set route shape (optionally
+narrowed to TCP or UDP). Built-in, final, legacy grouped and unfamiliar route strings are
+not assigned to a user rule. Do not infer identity from destination metadata or selected
+exit: overlapping app/domain rules and multiple lists can share the same exit.
+
+`TrafficAccumulator` aggregates the same connection byte deltas by rule UUID in its existing
+pass. If a live connection changes its route, only the new interval's bytes count toward
+the new rule. Counter rollback starts a new lifetime. Idle/closed rules retain totals and
+have zero rates; engine restart retains totals; Turn Off clears them. The optional `rules`
+dictionary crosses XPC without connection metadata. Older helpers omit it and the UI shows
+dashes rather than fabricated zeroes. Existing three-second freshness handling also applies.
+
+These are sampled payload rates, not billing totals: connections entirely between polls,
+and bytes after the final observation before a connection closes, may be missed. Per-rule
+counting adds one dictionary aggregation per attributed connection and no extra requests,
+timers, packet inspection or rule matching. Per-exit counters keep their existing semantics.
+
+### Shared sampler
 
 Per-tunnel rates come from sing-box's Clash API (`with_clash_api` is in the pinned build),
 which counts bytes per connection for every outbound — OpenVPN (`direct` bound to `utun10N`)

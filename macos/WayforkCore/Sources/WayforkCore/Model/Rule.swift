@@ -66,7 +66,9 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
     public var match: RuleMatch {
         didSet { network = Rule.normalizedNetwork(network, for: match) }
     }
-    public var target: RuleTarget
+    public var listID: UUID?
+    public var target: RuleTarget?
+    public var isPinned: Bool { target != nil }
     public var isEnabled: Bool
     public var note: String?
     /// F23: narrows an app or IP rule to TCP or UDP; nil covers both. Always nil for the
@@ -83,11 +85,11 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
     }
 
     /// The tunnel this rule routes to; nil for an exception or a group rule.
-    public var tunnelID: UUID? { target.tunnelID }
+    public var tunnelID: UUID? { target?.tunnelID }
     /// The tunnel or group this rule routes to; nil for an exception.
-    public var exitID: UUID? { target.exitID }
+    public var exitID: UUID? { target?.exitID }
     /// A Direct rule: carves the pattern out of the default tunnel or a broader rule.
-    public var isException: Bool { target.isDirect }
+    public var isException: Bool { target?.isDirect == true }
     /// An application rule (F10).
     public var isApp: Bool { match.isApp }
     /// An IP rule (F11).
@@ -97,7 +99,8 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
         id: UUID = UUID(),
         pattern: String,
         match: RuleMatch = .suffix,
-        target: RuleTarget,
+        target: RuleTarget? = nil,
+        listID: UUID? = nil,
         isEnabled: Bool = true,
         note: String? = nil,
         network: RuleNetwork? = nil
@@ -106,6 +109,7 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
         self.pattern = pattern
         self.match = match
         self.target = target
+        self.listID = listID
         self.isEnabled = isEnabled
         self.note = note
         self.network = Rule.normalizedNetwork(network, for: match)
@@ -132,7 +136,7 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
     // (docs/design/01-data-model.md, F8 / F16).
 
     private enum CodingKeys: String, CodingKey {
-        case id, pattern, match, tunnelID, groupID, target, isEnabled, note, network
+        case id, listID, pattern, match, tunnelID, groupID, target, isEnabled, note, network
     }
 
     private static let directTargetName = "direct"
@@ -140,12 +144,18 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
+        listID = try container.decodeIfPresent(UUID.self, forKey: .listID)
         pattern = try container.decode(String.self, forKey: .pattern)
         match = try container.decode(RuleMatch.self, forKey: .match)
         isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
         note = try container.decodeIfPresent(String.self, forKey: .note)
         network = Rule.normalizedNetwork(
             try container.decodeIfPresent(RuleNetwork.self, forKey: .network), for: match)
+        let bindings = [CodingKeys.target, .tunnelID, .groupID].filter { container.contains($0) }
+        guard bindings.count <= 1 else { throw StoreCodec.Error.invalidDocument }
+        if let key = bindings.first, try container.decodeNil(forKey: key) {
+            throw StoreCodec.Error.invalidDocument
+        }
         let targetName = try container.decodeIfPresent(String.self, forKey: .target)
         if let targetName {
             guard targetName == Rule.directTargetName else {
@@ -159,15 +169,19 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
         } else if let groupID = try container.decodeIfPresent(UUID.self, forKey: .groupID) {
             target = .group(groupID)
         } else {
-            throw DecodingError.dataCorruptedError(
-                forKey: .tunnelID, in: container,
-                debugDescription: "rule needs a tunnelID or target: direct")
+            guard listID != nil else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .listID, in: container,
+                    debugDescription: "an inherited row needs listID")
+            }
+            target = nil
         }
     }
 
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
+        try container.encodeIfPresent(listID, forKey: .listID)
         try container.encode(pattern, forKey: .pattern)
         try container.encode(match, forKey: .match)
         switch target {
@@ -177,6 +191,7 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
             try container.encode(groupID, forKey: .groupID)
         case .direct:
             try container.encode(Rule.directTargetName, forKey: .target)
+        case nil: break
         }
         try container.encode(isEnabled, forKey: .isEnabled)
         try container.encodeIfPresent(note, forKey: .note)

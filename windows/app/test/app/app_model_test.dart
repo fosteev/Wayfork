@@ -32,6 +32,22 @@ void main() {
 
   tearDown(() => h.dispose());
 
+  test(
+    'invalid membership leaves the last good store and pending apply unchanged',
+    () async {
+      h = Harness();
+      h.service.status = RuntimeStatus.stopped;
+      await h.start();
+      final before = h.model.store;
+      await expectLater(
+        h.model.update((store) => store.copyWith(lists: [])),
+        throwsFormatException,
+      );
+      expect(h.model.store, before);
+      expect(h.service.applied, isEmpty);
+    },
+  );
+
   group('bootstrap', () {
     test(
       'loads the store, connects and stays off on an idle service',
@@ -905,10 +921,13 @@ AllowedIPs = 0.0.0.0/0
       await h.model.setDefaultTunnel(id);
       expect(h.model.isDefaultTunnel(id), isTrue);
       expect(h.model.effectiveDefaultTunnel?.id, id);
-      expect(h.model.deleteTunnelMessage(id), contains('and its 3 sites'));
+      expect(
+        h.model.deleteTunnelMessage(id),
+        contains('3 rules will be removed from Work'),
+      );
       expect(
         h.model.deleteTunnelMessage(h.sample.lab.id),
-        contains('its 1 site?'),
+        contains('1 rule will be removed from Lab'),
       );
       h.model.expandedTunnelID = id;
       await h.model.deleteTunnel(id);
@@ -981,9 +1000,9 @@ AllowedIPs = 0.0.0.0/0
         isNull,
       );
       expect(h.model.store.rules.last.pattern, 'new.example.org');
-      expect(h.model.store.rules.last.target, home);
+      expect(h.model.store.targetFor(h.model.store.rules.last), home);
       expect(h.model.quickAddTarget, home);
-      // The same name moves to another target instead of duplicating.
+      // Another exit selects another list and preserves the original row.
       expect(
         await h.model.quickAdd(
           input: 'new.example.org',
@@ -993,9 +1012,12 @@ AllowedIPs = 0.0.0.0/0
       );
       expect(
         h.model.store.rules.where((r) => r.pattern == 'new.example.org'),
-        hasLength(1),
+        hasLength(2),
       );
-      expect(h.model.store.rules.last.target, const RuleTargetDirect());
+      expect(
+        h.model.store.targetFor(h.model.store.rules.last),
+        const RuleTargetDirect(),
+      );
       expect(
         await h.model.quickAdd(input: 'not a host!', target: home),
         isNotNull,
@@ -1003,7 +1025,7 @@ AllowedIPs = 0.0.0.0/0
       expect(h.appLog, contains('rule added: new.example.org → Home'));
       expect(
         h.appLog,
-        contains('rule updated: new.example.org → Not via any tunnel'),
+        contains('rule added: new.example.org → Not via any tunnel'),
       );
     });
 
@@ -1023,7 +1045,7 @@ AllowedIPs = 0.0.0.0/0
       );
       // Appended right after Work's last rule, before Home's group.
       expect(h.model.store.rules[3].pattern, 'x.example.com');
-      expect(h.model.store.rules[3].target, work);
+      expect(h.model.store.targetFor(h.model.store.rules[3]), work);
       expect(
         await h.model.addRule(
           pattern: 'x.example.com',

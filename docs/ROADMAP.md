@@ -82,8 +82,10 @@ Written as user scenarios. Technical details belong to Phase 2.
 - The default tunnel (F8) counts everything unmatched; with a default tunnel the Direct row
   is exceptions and local names only.
 - Hovering a rate shows totals since Turn On and the number of open connections.
-- Rates are shown only for connected/ready tunnels while routing is On; nothing in Settings,
-  nothing in the menu bar. History, graphs and a menu bar readout are Later (L4, L7).
+- Tunnel rates are shown only for connected/ready tunnels while routing is On. The compact
+  Rules revision approved 2026-11-08 also shows sampled download/upload per matched user
+  rule in Settings; see `docs/roadmap/rule-traffic.md`. Nothing in the menu bar itself.
+  History, graphs and a menu bar readout are Later (L4, L7).
 
 **F10. Rules: application → tunnel** *(added 2026-08-25)*
 - A rule can name an application instead of a domain: "route Telegram via Home", "keep
@@ -347,6 +349,21 @@ approved 2026-10-03)*
   [design/03-routing.md](design/03-routing.md) § Network-narrowed rules,
   [design/09-wayforkctl.md](design/09-wayforkctl.md); stages:
   [roadmap/network-rules.md](roadmap/network-rules.md).
+
+**F24. Named rule lists** *(prototype direction approved 2026-11-07; design review pending)*
+- Group sites/apps/IP rules by purpose, with one exit menu per list in Rules and the popover;
+  switching it changes inherited rows in one apply, while explicit pinned rows keep theirs.
+- Direct exceptions first, then user list order and row order; paused lists are skipped.
+  **Same as Everything else** is an active match at its position, following the default.
+- The global fallback has its own Everything else line; Recent adds to a list; no empty
+  section per tunnel. Preserve existing exit-deletion policy.
+- Requires ordered route **and DNS** generation, model/export 4, and helper compatibility;
+  UI sorting alone cannot implement the prototype. F23's global narrowed-first precedence
+  is superseded for new list ordering. Compatibility with existing stores is a hard gate:
+  G1 selected split narrowed/broad migration lists on 2026-11-07 to preserve routes; old
+  suppressed rows remain in visible paused Previously inactive lists, with source flags.
+- Reference: [local prototype](design/prototype/rule-lists.html),
+  [stage roadmap and selected migration](roadmap/rule-lists.md). No stage accepted yet.
 
 ### Later
 
@@ -1044,3 +1061,17 @@ Phase 1 above, § F22. Design in [design/02-ux.md](design/02-ux.md) § First-run
 - [x] General: *Welcome guide* and *Getting started card* rows. — 2026-09-25.
 - [x] Format, package tests, app build. — 2026-09-25.
 - [ ] Manual check on a fresh macOS user account (maintainer).
+
+
+### M20 — Named rule lists (F24)
+
+Stages and acceptance live in [roadmap/rule-lists.md](roadmap/rule-lists.md).
+M19 is reserved by [F23](roadmap/network-rules.md).
+
+- [ ] Stage 1 design reconciliation and migration G1 resolved, root review accepted
+- [ ] Stage 2 Swift model/export/migration, ordered generator and daemon compatibility
+- [ ] Stage 4 macOS list UI/popover/ctl, builds and root review
+- [ ] Stage 6 maintainer visual/live migration, route/DNS and control acceptance
+
+Execution uses the current `roadmap-run` route: root gpt-6-astra/high, fresh
+gpt-6.1-sol/high executor per stage with `fork_turns: "none"`; no implicit publication.

@@ -1,3 +1,5 @@
+import 'package:collection/collection.dart';
+import 'package:wayfork/core/support/hashing.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -5,19 +7,33 @@ import 'dart:io';
 import 'package:wayfork/core/model/store.dart';
 
 final class StoreLoadResult {
-  const StoreLoadResult({required this.store, this.corruptBackup});
+  const StoreLoadResult({
+    required this.store,
+    this.corruptBackup,
+    this.migrationBackup,
+    this.migrationSummary,
+  });
 
   final Store store;
   final File? corruptBackup;
+  final File? migrationBackup;
+  final String? migrationSummary;
 
   @override
   bool operator ==(Object other) =>
       other is StoreLoadResult &&
       store == other.store &&
-      corruptBackup?.path == other.corruptBackup?.path;
+      corruptBackup?.path == other.corruptBackup?.path &&
+      migrationBackup?.path == other.migrationBackup?.path &&
+      migrationSummary == other.migrationSummary;
 
   @override
-  int get hashCode => Object.hash(store, corruptBackup?.path);
+  int get hashCode => Object.hash(
+    store,
+    corruptBackup?.path,
+    migrationBackup?.path,
+    migrationSummary,
+  );
 }
 
 enum StoreRepositoryError { newerSchema }
@@ -97,8 +113,9 @@ final class StoreRepository implements StoreStorage {
   Future<StoreLoadResult> load() async {
     if (!await file.exists()) return StoreLoadResult(store: Store.empty);
     final bytes = await file.readAsBytes();
+    final Store store;
     try {
-      return StoreLoadResult(store: StoreCodec.decode(utf8.decode(bytes)));
+      store = StoreCodec.decode(utf8.decode(bytes));
     } on StoreCodecException catch (error) {
       if (error.kind == StoreCodecError.newerSchema) {
         throw StoreRepositoryException.newerSchema(
@@ -110,10 +127,40 @@ final class StoreRepository implements StoreStorage {
     } on Object {
       return _moveCorruptAside();
     }
+    final header = jsonDecode(utf8.decode(bytes)) as Map<String, Object?>;
+    if ((header['schemaVersion'] as int? ?? 1) < Store.currentSchemaVersion) {
+      final backup = File(
+        '${file.path}.before-schema-4-${Hashing.sha256Hex(utf8.decode(bytes))}',
+      );
+      if (!await backup.exists() ||
+          !const ListEquality<int>().equals(
+            await backup.readAsBytes(),
+            bytes,
+          )) {
+        final temporary = File('${backup.path}.tmp');
+        await temporary.writeAsBytes(bytes, flush: true);
+        await temporary.rename(backup.path);
+      }
+      final archived = store.lists
+          .where((list) => !list.isEnabled)
+          .map((list) => list.id)
+          .toSet();
+      final count = store.rules
+          .where((row) => archived.contains(row.listID))
+          .length;
+      return StoreLoadResult(
+        store: store,
+        migrationBackup: backup,
+        migrationSummary:
+            'Split lists preserve previous route priority. $count previously inactive duplicate rules remain in paused lists; review before enabling.',
+      );
+    }
+    return StoreLoadResult(store: store);
   }
 
   @override
   void save(Store store) {
+    store.validateMembership();
     _pending = store;
     _timer?.cancel();
     _timer = Timer(debounce, () {
@@ -131,10 +178,11 @@ final class StoreRepository implements StoreStorage {
   }
 
   Future<void> write(Store store) async {
+    final encoded = StoreCodec.encode(store);
     await directory.create(recursive: true);
     final temporary = File('${file.path}.tmp');
     if (await temporary.exists()) await temporary.delete();
-    await temporary.writeAsString(StoreCodec.encode(store), flush: true);
+    await temporary.writeAsString(encoded, flush: true);
     await temporary.rename(file.path);
     if (_pending == store) _pending = null;
   }

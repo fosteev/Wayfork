@@ -6,6 +6,8 @@ import 'package:wayfork/app/model/app_model.dart';
 import 'package:wayfork/app/ui/app_navigation.dart';
 import 'package:wayfork/app/ui/app_scope.dart';
 import 'package:wayfork/app/ui/widgets/components.dart';
+import 'package:wayfork/app/ui/widgets/rule_lists.dart';
+import 'package:wayfork/app/ui/rule_list_dialog.dart';
 import 'package:wayfork/core/app/feature_text.dart';
 import 'package:wayfork/core/app/rule_editing.dart';
 import 'package:wayfork/core/app/status_text.dart';
@@ -75,6 +77,11 @@ class DashboardPage extends StatelessWidget {
                               _DirectRow(model: model),
                           ],
                         ),
+                        const SizedBox(height: 12),
+                        EverythingElseRow(model: model),
+                        const SizedBox(height: 8),
+                        DashboardLists(model: model, navigator: navigator),
+                        const ListRouteUndoBar(),
                         if (model.globalState.isRunning) ...[
                           const SizedBox(height: 12),
                           RecentSection(model: model),
@@ -83,7 +90,7 @@ class DashboardPage extends StatelessWidget {
                     ),
             ),
           ),
-          if (enabled.isNotEmpty) ...[
+          ...[
             const SizedBox(height: 12),
             QuickAddBar(model: model, navigator: navigator),
           ],
@@ -672,13 +679,7 @@ class RecentRowView extends StatelessWidget {
           const SizedBox(width: 8),
           SecondaryText(processName(row.processPath)),
           const SizedBox(width: 8),
-          RouteViaMenu(
-            model: model,
-            header:
-                'Route ${model.recentRulePattern(row.host)} and subdomains via…',
-            onPick: (target) =>
-                unawaited(model.routeRecent(row.host, via: target)),
-          ),
+          RecentListAction(model: model, host: row.host),
           const SizedBox(width: 4),
           Tooltip(
             message: 'Hide until the next Turn On',
@@ -775,7 +776,7 @@ class QuickAddBar extends StatefulWidget {
 class _QuickAddBarState extends State<QuickAddBar> {
   final _controller = TextEditingController();
   final _focus = FocusNode();
-  RuleTarget? _target;
+  String? _listID;
   String? _error;
   int _seenToken = 0;
 
@@ -783,7 +784,7 @@ class _QuickAddBarState extends State<QuickAddBar> {
   void initState() {
     super.initState();
     _seenToken = widget.navigator.quickAddToken;
-    _target = _initialTarget();
+    _listID = widget.model.preferredListID;
     unawaited(_prefill());
   }
 
@@ -795,8 +796,8 @@ class _QuickAddBarState extends State<QuickAddBar> {
       _seenToken = token;
       _focus.requestFocus();
     }
-    if (!_targets().contains(_target)) {
-      _target = _initialTarget();
+    if (widget.model.store.list(_listID ?? '') == null) {
+      _listID = widget.model.preferredListID;
     }
   }
 
@@ -805,23 +806,6 @@ class _QuickAddBarState extends State<QuickAddBar> {
     _controller.dispose();
     _focus.dispose();
     super.dispose();
-  }
-
-  /// Tunnels, then groups (F16), then *Not via any tunnel*.
-  List<RuleTarget> _targets() => [
-    for (final tunnel in widget.model.store.tunnels)
-      if (tunnel.isEnabled) RuleTargetTunnel(tunnel.id),
-    for (final group in widget.model.store.groups)
-      if (group.isEnabled) RuleTargetGroup(group.id),
-    const RuleTargetDirect(),
-  ];
-
-  /// The tunnel of the last quick add, else the first enabled one.
-  RuleTarget? _initialTarget() {
-    final targets = _targets();
-    final last = widget.model.quickAddTarget;
-    if (last != null && targets.contains(last)) return last;
-    return targets.isEmpty ? null : targets.first;
   }
 
   /// A host on the clipboard is what quick add is usually for.
@@ -848,11 +832,26 @@ class _QuickAddBarState extends State<QuickAddBar> {
   }
 
   Future<void> _submit() async {
-    final target = _target;
-    if (target == null || _controller.text.trim().isEmpty) return;
+    final listID = _listID;
+    if (_controller.text.trim().isEmpty) return;
+    if (listID == null) {
+      final created = await showNewRuleList(
+        context,
+        widget.model,
+        initialInput: _controller.text,
+      );
+      if (mounted && created != null) {
+        setState(() {
+          _listID = created;
+          _controller.clear();
+        });
+      }
+      return;
+    }
     final message = await widget.model.quickAdd(
       input: _controller.text,
-      target: target,
+      target: const RuleTargetDirect(),
+      listID: listID,
     );
     if (!mounted) return;
     setState(() {
@@ -865,10 +864,15 @@ class _QuickAddBarState extends State<QuickAddBar> {
   Widget build(BuildContext context) {
     final theme = FluentTheme.of(context);
     final model = widget.model;
-    final isUpdate = QuickAdd.isUpdate(
-      input: _controller.text,
-      store: model.store,
-    );
+    final isUpdate =
+        _listID != null &&
+        QuickAdd.evaluate(
+              input: _controller.text,
+              target: const RuleTargetDirect(),
+              listID: _listID,
+              store: model.store,
+            )
+            is QuickAddUpdate;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -886,29 +890,39 @@ class _QuickAddBarState extends State<QuickAddBar> {
             const SizedBox(width: 8),
             SizedBox(
               width: 150,
-              child: ComboBox<RuleTarget>(
+              child: ComboBox<String>(
                 isExpanded: true,
-                value: _target,
+                value: _listID,
+                placeholder: const Text('Choose list'),
                 items: [
-                  for (final target in _targets())
+                  for (final list in model.store.lists)
                     ComboBoxItem(
-                      value: target,
+                      value: list.id,
                       child: Text(
-                        model.targetName(target),
+                        list.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                 ],
-                onChanged: (target) => setState(() => _target = target),
+                onChanged: (id) => setState(() {
+                  _listID = id;
+                  if (id != null) model.useList(id);
+                }),
               ),
             ),
             const SizedBox(width: 8),
             FilledButton(
-              onPressed: _controller.text.trim().isEmpty || _target == null
+              onPressed: _controller.text.trim().isEmpty
                   ? null
                   : () => unawaited(_submit()),
-              child: Text(isUpdate ? 'Update' : 'Add'),
+              child: Text(
+                model.store.lists.isEmpty
+                    ? 'New list'
+                    : isUpdate
+                    ? 'Update'
+                    : 'Add',
+              ),
             ),
           ],
         ),
@@ -921,6 +935,142 @@ class _QuickAddBarState extends State<QuickAddBar> {
               maxLines: 2,
             ),
           ),
+      ],
+    );
+  }
+}
+
+class DashboardLists extends StatelessWidget {
+  const DashboardLists({
+    required this.model,
+    required this.navigator,
+    super.key,
+  });
+  final AppModel model;
+  final AppNavigator navigator;
+  @override
+  Widget build(BuildContext context) {
+    if (model.store.lists.length < 2) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            const Expanded(child: Text('Lists')),
+            HyperlinkButton(
+              onPressed: () => navigator.go(AppPage.rules),
+              child: const Text('Settings'),
+            ),
+          ],
+        ),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 240),
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                for (final list in model.menuLists)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        Opacity(
+                          opacity: list.isEnabled ? 1 : 0.5,
+                          child: RuleListBadge(list),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '${list.name}${list.isEnabled ? '' : ' · Paused'}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        RuleRouteMenu(
+                          model: model,
+                          value: list.target,
+                          onChanged: (target) =>
+                              unawaited(model.setListTarget(list.id, target)),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (model.menuListsOverflow > 0)
+          HyperlinkButton(
+            onPressed: () => navigator.go(AppPage.rules),
+            child: Text('${model.menuListsOverflow} more in Settings'),
+          ),
+      ],
+    );
+  }
+}
+
+class RecentListAction extends StatefulWidget {
+  const RecentListAction({required this.model, required this.host, super.key});
+  final AppModel model;
+  final String host;
+  @override
+  State<RecentListAction> createState() => _RecentListActionState();
+}
+
+class _RecentListActionState extends State<RecentListAction> {
+  String? _id;
+  String? _error;
+  @override
+  Widget build(BuildContext context) {
+    final model = widget.model;
+    if (model.store.list(_id ?? '') == null) _id = model.preferredListID;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (model.store.lists.isNotEmpty)
+              SizedBox(
+                width: 115,
+                child: ComboBox<String>(
+                  isExpanded: true,
+                  value: _id,
+                  placeholder: const Text('Choose list'),
+                  items: [
+                    for (final list in model.store.lists)
+                      ComboBoxItem(
+                        value: list.id,
+                        child: Text(
+                          list.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                  onChanged: (id) => setState(() => _id = id),
+                ),
+              ),
+            const SizedBox(width: 4),
+            Button(
+              onPressed: () async {
+                if (_id == null) {
+                  final created = await showNewRuleList(
+                    context,
+                    model,
+                    initialInput: model.recentRulePattern(widget.host),
+                  );
+                  if (created != null) model.hideRecent(widget.host);
+                  return;
+                }
+                final error = await model.routeRecent(widget.host, listID: _id);
+                if (mounted) setState(() => _error = error);
+              },
+              child: Text(model.store.lists.isEmpty ? 'New list' : 'Add'),
+            ),
+          ],
+        ),
+        if (_error != null)
+          SizedBox(width: 180, child: Text(_error!, maxLines: 3)),
       ],
     );
   }

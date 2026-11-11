@@ -108,12 +108,11 @@ private func document(
     #expect(outcome.store.schemaVersion == 7)
     #expect(outcome.store.tunnels.map(\.slot) == [0, 1])
     #expect(outcome.store.settings == settings)
-    #expect(outcome.store.rules.map(\.pattern) == ["valid.example.com"])
+    #expect(outcome.store.rules.map(\.pattern) == ["valid.example.com", "missing.example.com"])
     #expect(outcome.tunnelsAdded == 2)
-    #expect(outcome.rulesAdded == 1)
-    #expect(outcome.rulesSkipped == 1)
-    #expect(outcome.warnings.count == 1)
-    #expect(outcome.warnings[0].contains("missing.example.com"))
+    #expect(outcome.rulesAdded == 2)
+    #expect(outcome.rulesSkipped == 0)
+    #expect(outcome.warnings.isEmpty)
     #expect(outcome.secrets.count == 4)
     #expect(outcome.secrets[.ovpn(importedOpenVPNID)]?.hasPrefix("client") == true)
     #expect(outcome.secrets[.keyPassphrase(importedOpenVPNID)] == "example-passphrase")
@@ -124,7 +123,7 @@ private func document(
             == credentials)
 }
 
-@Test func mergeUpdatesAndAppendsWithoutReplacingSettings() {
+@Test func mergeUpdatesExitsAndRemapsConflictingRowsWithoutReplacingSettings() {
     let existingRuleID = UUID(uuidString: "20000000-0000-4000-8000-000000000001")!
     let newRuleID = UUID(uuidString: "20000000-0000-4000-8000-000000000002")!
     let existing = openVPNTunnel(name: "Office", slot: 5)
@@ -158,14 +157,18 @@ private func document(
     #expect(outcome.store.tunnels[0].isEnabled == false)
     #expect(outcome.store.tunnels[0].kind == updated.kind)
     #expect(outcome.store.tunnels[2].slot == 1)
-    #expect(outcome.store.rules.map(\.id) == [existingRuleID, newRuleID])
-    #expect(outcome.store.rules[0].pattern == "updated.example.com")
+    #expect(outcome.store.rules.count == 3)
+    #expect(outcome.store.rules[0].id == existingRuleID)
+    #expect(outcome.store.rules[0].pattern == "old.example.com")
+    #expect(outcome.store.rules[1].id != existingRuleID)
+    #expect(outcome.store.rules[1].pattern == "updated.example.com")
     #expect(outcome.store.settings == originalSettings)
     #expect(outcome.tunnelsAdded == 1)
     #expect(outcome.tunnelsUpdated == 1)
-    #expect(outcome.rulesAdded == 1)
-    #expect(outcome.rulesUpdated == 1)
-    #expect(outcome.warnings == ["Tunnel Work renamed to Work (2)"])
+    #expect(outcome.rulesAdded == 2)
+    #expect(outcome.rulesUpdated == 0)
+    #expect(outcome.warnings.contains("Tunnel Work renamed to Work (2)"))
+    #expect(outcome.warnings.contains { $0.contains("precedence") })
 }
 
 @Test func mergeSkipsNewTunnelWhenAllSlotsAreTaken() {
@@ -290,7 +293,10 @@ private func document(
 
     let replaced = StoreImporter.apply(decoded, to: .empty, mode: .replace)
     #expect(replaced.store.defaultTunnelID == importedVLESSID)
-    #expect(replaced.store.rules.map(\.target) == [.tunnel(importedOpenVPNID), .direct])
+    #expect(
+        replaced.store.rules.map { replaced.store.target(for: $0) } == [
+            .direct, .tunnel(importedOpenVPNID),
+        ])
     #expect(replaced.rulesSkipped == 0)
 
     // Merge keeps the current default when the file has none…
@@ -318,7 +324,7 @@ private func document(
         store: store, secretStore: InMemorySecretStore([:]), includeSecrets: false,
         exportedAt: importDate)
     #expect(exported.defaultTunnelID == importedOpenVPNID)
-    #expect(exported.rules.contains { $0.isException })
+    #expect(exported.lists.contains { $0.target == .exit(.direct) })
 }
 
 // MARK: - F17

@@ -2,21 +2,14 @@
   "rules" : [
     {
       "domain" : [
-        "localhost",
-        "bank.example.org",
-        "example.com"
-      ],
-      "domain_regex" : [
-        "^.+\\.intranet\\.example$"
+        "localhost"
       ],
       "domain_suffix" : [
         ".local",
         ".lan",
         ".internal",
         ".home.arpa",
-        ".localhost",
-        ".bank.example.org",
-        ".example.com"
+        ".localhost"
       ]
     }
   ],

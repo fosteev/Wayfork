@@ -6,11 +6,12 @@ public struct Store: Codable, Sendable, Hashable {
     /// `groups` and `groupID` rules are additive without a bump (the F13 forward-only
     /// stance, docs/design/01-data-model.md): a build that predates them reports the
     /// store as corrupt, which only a downgrade can cause. 3 since F23: `Rule.network`;
-    /// older data is unchanged.
-    public static let currentSchemaVersion = 3
+    /// older data is unchanged. 4 introduces ordered lists and inherited/pinned rows.
+    public static let currentSchemaVersion = 4
 
     public var schemaVersion: Int
     public var tunnels: [Tunnel]
+    public var lists: [RuleList]
     public var rules: [Rule]
     public var settings: Settings
     /// F8: the tunnel that takes everything no rule matched; nil keeps unmatched traffic
@@ -25,7 +26,8 @@ public struct Store: Codable, Sendable, Hashable {
         rules: [Rule] = [],
         settings: Settings = Settings(),
         defaultTunnelID: UUID? = nil,
-        groups: [TunnelGroup] = []
+        groups: [TunnelGroup] = [],
+        lists: [RuleList]? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.tunnels = tunnels
@@ -33,20 +35,32 @@ public struct Store: Codable, Sendable, Hashable {
         self.settings = settings
         self.defaultTunnelID = defaultTunnelID
         self.groups = groups
+        self.lists = lists ?? []
+        if lists == nil && !rules.isEmpty { self = LegacyListMigration.migrate(self) }
     }
 
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, tunnels, rules, settings, defaultTunnelID, groups
+        case schemaVersion, tunnels, lists, rules, settings, defaultTunnelID, groups
     }
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try c.decode(Int.self, forKey: .schemaVersion)
+        guard schemaVersion <= Self.currentSchemaVersion else {
+            throw StoreCodec.Error.newerSchema(
+                found: schemaVersion, supported: Self.currentSchemaVersion)
+        }
         tunnels = try c.decode([Tunnel].self, forKey: .tunnels)
         rules = try c.decode([Rule].self, forKey: .rules)
         settings = try c.decode(Settings.self, forKey: .settings)
         defaultTunnelID = try c.decodeIfPresent(UUID.self, forKey: .defaultTunnelID)
         groups = try c.decodeIfPresent([TunnelGroup].self, forKey: .groups) ?? []
+        if schemaVersion >= 4 {
+            lists = try c.decode([RuleList].self, forKey: .lists)
+            try validateMembership()
+        } else {
+            lists = []
+        }
     }
 
     /// `groups` is written only when there are any, so a store (and every golden
@@ -55,6 +69,7 @@ public struct Store: Codable, Sendable, Hashable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(schemaVersion, forKey: .schemaVersion)
         try c.encode(tunnels, forKey: .tunnels)
+        try c.encode(lists, forKey: .lists)
         try c.encode(rules, forKey: .rules)
         try c.encode(settings, forKey: .settings)
         try c.encodeIfPresent(defaultTunnelID, forKey: .defaultTunnelID)
@@ -88,7 +103,7 @@ public struct Store: Codable, Sendable, Hashable {
 
     /// Rules of one group (a tunnel or Direct) in their list order.
     public func rules(for target: RuleTarget) -> [Rule] {
-        rules.filter { $0.target == target }
+        rules.filter { self.target(for: $0) == target }
     }
 
     /// Rules of one tunnel in their list order.
@@ -99,18 +114,14 @@ public struct Store: Codable, Sendable, Hashable {
     /// Direct rules (F8 exceptions) in list order.
     public var exceptions: [Rule] { rules(for: .direct) }
 
-    /// Rules in section order: the Direct group first (exceptions always win), then tunnels
-    /// in store order, then groups in store order (F16), each section's rules in list
-    /// order. Rules pointing at a tunnel or group that no longer exists come last. This is
-    /// the matching order except for F23 narrowed rules, which match ahead of the
-    /// unnarrowed rules of every exit (`RuleValidator`'s rank).
-    public var effectiveRules: [Rule] {
-        var ordered = exceptions
+    /// Frozen schema-3 section order, used only by migration suppression analysis.
+    var legacyEffectiveRules: [Rule] {
+        var ordered = rules.filter { $0.target == .direct }
         for tunnel in tunnels {
-            ordered.append(contentsOf: rules(for: tunnel.id))
+            ordered.append(contentsOf: rules.filter { $0.target == .tunnel(tunnel.id) })
         }
         for group in groups {
-            ordered.append(contentsOf: rules(forGroup: group.id))
+            ordered.append(contentsOf: rules.filter { $0.target == .group(group.id) })
         }
         let known = Set(tunnels.map(\.id)).union(groups.map(\.id))
         ordered.append(
@@ -119,6 +130,12 @@ public struct Store: Codable, Sendable, Hashable {
                 return !known.contains(exitID)
             })
         return ordered
+    }
+
+    public var effectiveRules: [Rule] {
+        let ordered = lists.flatMap { list in rules.filter { $0.listID == list.id } }
+        return ordered.filter { declaredTarget(for: $0) == .exit(.direct) }
+            + ordered.filter { declaredTarget(for: $0) != .exit(.direct) }
     }
 
     /// Where "everything else" goes (F8, F16): a tunnel or a group, when it exists and is
@@ -211,7 +228,8 @@ public enum StoreCodec {
     ]
 
     public static func encode(_ store: Store) throws -> Data {
-        try JSONCoding.prettyEncoder.encode(store)
+        try store.validateMembership()
+        return try JSONCoding.prettyEncoder.encode(store)
     }
 
     public static func decode(_ data: Data) throws -> Store {
@@ -222,7 +240,7 @@ public enum StoreCodec {
         if version > Store.currentSchemaVersion {
             throw Error.newerSchema(found: version, supported: Store.currentSchemaVersion)
         }
-        while version < Store.currentSchemaVersion {
+        while version < min(Store.currentSchemaVersion, 3) {
             guard let migration = migrations.first(where: { $0.fromVersion == version }) else {
                 throw Error.invalidDocument
             }
@@ -231,7 +249,10 @@ public enum StoreCodec {
             object["schemaVersion"] = version
         }
         let migrated = try JSONSerialization.data(withJSONObject: object)
-        return try JSONCoding.decoder.decode(Store.self, from: migrated)
+        var store = try JSONCoding.decoder.decode(Store.self, from: migrated)
+        if version < 4 { store = LegacyListMigration.migrate(store) }
+        try store.validateMembership()
+        return store
     }
 }
 

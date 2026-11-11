@@ -127,7 +127,8 @@ final class Rule {
     String? id,
     required String pattern,
     RuleMatch match = RuleMatch.suffix,
-    required RuleTarget target,
+    RuleTarget? target,
+    String? listID,
     bool isEnabled = true,
     String? note,
     RuleNetwork? network,
@@ -136,6 +137,7 @@ final class Rule {
     pattern: pattern,
     match: match,
     target: target,
+    listID: listID == null ? null : _uuid(listID, 'listID'),
     isEnabled: isEnabled,
     note: note,
     network: RuleNetwork.normalized(network, match),
@@ -164,6 +166,7 @@ final class Rule {
     required this.pattern,
     required this.match,
     required this.target,
+    required this.listID,
     required this.isEnabled,
     required this.note,
     required this.network,
@@ -171,7 +174,15 @@ final class Rule {
 
   factory Rule.fromJson(Map<String, Object?> json) {
     final targetName = json['target'];
-    final RuleTarget target;
+    final bindings = [
+      'target',
+      'tunnelID',
+      'groupID',
+    ].where(json.containsKey).toList();
+    if (bindings.length > 1 || bindings.any((key) => json[key] == null)) {
+      throw const FormatException('Conflicting rule bindings');
+    }
+    final RuleTarget? target;
     if (targetName != null) {
       if (targetName != 'direct') {
         throw FormatException('Unknown rule target "$targetName"');
@@ -182,10 +193,14 @@ final class Rule {
     } else if (json['groupID'] case final String groupID) {
       target = RuleTargetGroup(groupID);
     } else {
-      throw const FormatException('Rule needs a tunnelID or target: direct');
+      if (json['listID'] == null) {
+        throw const FormatException('Inherited rule needs listID');
+      }
+      target = null;
     }
     return Rule(
       id: _requiredString(json, 'id'),
+      listID: _optionalString(json, 'listID'),
       pattern: _requiredString(json, 'pattern'),
       match: RuleMatch.fromJson(json['match']),
       target: target,
@@ -200,30 +215,33 @@ final class Rule {
   final String id;
   final String pattern;
   final RuleMatch match;
-  final RuleTarget target;
+  final RuleTarget? target;
+  final String? listID;
+  bool get isPinned => target != null;
   final bool isEnabled;
   final String? note;
 
   /// F23: tcp or udp for an app or IP rule narrowed to one transport; null = both.
   final RuleNetwork? network;
 
-  String? get tunnelID => target.tunnelID;
+  String? get tunnelID => target?.tunnelID;
 
   /// The tunnel or group this rule routes to; null for an exception (F16).
-  String? get exitID => target.exitID;
-  bool get isException => target.isDirect;
+  String? get exitID => target?.exitID;
+  bool get isException => target?.isDirect == true;
   bool get isApp => match.isApp;
   bool get isIP => match.isIP;
 
   Map<String, Object?> toJson() => {
     'id': Uuid.encode(id),
+    if (listID != null) 'listID': Uuid.encode(listID!),
     'pattern': pattern,
     'match': match.jsonValue,
     if (target case RuleTargetTunnel(:final tunnelID))
       'tunnelID': Uuid.encode(tunnelID)
     else if (target case RuleTargetGroup(:final groupID))
       'groupID': Uuid.encode(groupID)
-    else
+    else if (target is RuleTargetDirect)
       'target': 'direct',
     'isEnabled': isEnabled,
     if (note != null) 'note': note,
@@ -234,7 +252,8 @@ final class Rule {
     String? id,
     String? pattern,
     RuleMatch? match,
-    RuleTarget? target,
+    Object? target = _unset,
+    Object? listID = _unset,
     bool? isEnabled,
     Object? note = _unset,
     Object? network = _unset,
@@ -242,7 +261,8 @@ final class Rule {
     id: id ?? this.id,
     pattern: pattern ?? this.pattern,
     match: match ?? this.match,
-    target: target ?? this.target,
+    target: identical(target, _unset) ? this.target : target as RuleTarget?,
+    listID: identical(listID, _unset) ? this.listID : listID as String?,
     isEnabled: isEnabled ?? this.isEnabled,
     note: identical(note, _unset) ? this.note : note as String?,
     network: identical(network, _unset)
@@ -257,13 +277,14 @@ final class Rule {
       pattern == other.pattern &&
       match == other.match &&
       target == other.target &&
+      listID == other.listID &&
       isEnabled == other.isEnabled &&
       note == other.note &&
       network == other.network;
 
   @override
   int get hashCode =>
-      Object.hash(id, pattern, match, target, isEnabled, note, network);
+      Object.hash(id, pattern, match, target, listID, isEnabled, note, network);
 }
 
 const _unset = Object();

@@ -111,7 +111,7 @@ private func line(
             Rule(pattern: "b.com", target: .direct),
             Rule(pattern: "c.com", target: .tunnel(work)),
         ]
-        return store
+        return explicitStore(store)
     }
 
     @Test func removeAndItsInverseRestoreThePosition() {
@@ -129,7 +129,8 @@ private func line(
     @Test func insertGoesToTheGroupEndAndInverseRemovesIt() {
         var store = store()
         let original = store
-        let rule = Rule(pattern: "d.com", target: store.rules[0].target)
+        let rule = Rule(
+            pattern: "d.com", target: store.rules[0].target, listID: store.rules[0].listID)
         let edit = StoreEdit.insertRule(rule, before: nil)
         #expect(edit.apply(to: &store) == nil)
         #expect(store.rules.map(\.pattern) == ["a.com", "b.com", "c.com", "d.com"])
@@ -143,12 +144,15 @@ private func line(
         let app = "/Applications/Discord.app"
         var store = Store.empty
         store.rules = [Rule(pattern: app, match: .app, target: .tunnel(UUID()))]
-        let narrowed = Rule(pattern: app, match: .app, target: .direct, network: .udp)
+        store = explicitStore(store)
+        let listID = store.ensureList(for: .direct)
+        let narrowed = Rule(
+            pattern: app, match: .app, target: .direct, listID: listID, network: .udp)
         let insert = StoreEdit.insertRule(narrowed, before: nil)
         #expect(insert.apply(to: &store) == nil)
         #expect(store.rules.count == 2)
         // The same pattern and network again is still refused.
-        let again = Rule(pattern: app, match: .app, target: .direct, network: .udp)
+        let again = Rule(pattern: app, match: .app, target: .direct, listID: listID, network: .udp)
         #expect(StoreEdit.insertRule(again, before: nil).apply(to: &store) != nil)
 
         let original = store
@@ -160,7 +164,7 @@ private func line(
 
     @Test func inverseSkipsWhatTheGUIChanged() {
         var store = store()
-        let rule = Rule(pattern: "d.com", target: .direct)
+        let rule = Rule(pattern: "d.com", target: .direct, listID: store.rules[1].listID)
         let edit = StoreEdit.insertRule(rule, before: nil)
         edit.apply(to: &store)
         let index = store.rules.firstIndex { $0.id == rule.id }!

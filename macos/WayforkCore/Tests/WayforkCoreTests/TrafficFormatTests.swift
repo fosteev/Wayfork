@@ -83,28 +83,26 @@ import Testing
     #expect(roundTrip.latency["a"]?.milliseconds == 5)
 }
 
-@Test func routedTunnelIDsComeFromRuleSetNames() {
-    let plan = RuntimePlan(
-        singBox: SingBoxPlan(
-            config: "{}",
-            ruleSets: [
-                "rules-t-bbb.json": "", "rules-t-aaa.json": "", "rules-t-aaa-ip.json": "",
-                "rules-direct.json": "", "rules-direct-ip.json": "", "rules-t-aaa-tcp.json": "",
-                "rules-t-ccc-udp.json": "", "rules-direct-udp.json": "",
-            ]),
-        openVPN: [], autoReconnect: true, logLevel: .info, overrideSystemDNS: true)
-    #expect(plan.routedTunnelIDs == ["aaa", "bbb"])
+@Test func routedTunnelIDsComeFromDefinitionsIncludingZeroRuleEndpoints() {
+    let a = Fixtures.workID.uuidString.lowercased()
+    let b = Fixtures.homeID.uuidString.lowercased()
+    let config =
+        "{\"outbounds\":[{\"tag\":\"t-\(a)\",\"type\":\"direct\"}],\"endpoints\":[{\"tag\":\"t-\(b)\",\"type\":\"wireguard\"}]}"
+    let plan = RuntimePlan(singBox: SingBoxPlan(config: config, ruleSets: [:]), openVPN: [])
+    #expect(plan.routedTunnelIDs == [a, b].sorted())
     #expect(plan.routedGroupIDs.isEmpty)
 }
 
 @Test func routedGroupIDsAndSnapshotGroupsRoundTrip() throws {
+    let t = Fixtures.workID.uuidString.lowercased()
+    let g = Fixtures.homeID.uuidString.lowercased()
     let plan = RuntimePlan(
         singBox: SingBoxPlan(
-            config: "{}",
-            ruleSets: ["rules-g-ggg.json": "", "rules-g-ggg-ip.json": "", "rules-t-aaa.json": ""]),
-        openVPN: [])
-    #expect(plan.routedGroupIDs == ["ggg"])
-    #expect(plan.routedTunnelIDs == ["aaa"])
+            config:
+                "{\"outbounds\":[{\"type\":\"direct\",\"tag\":\"t-\(t)\"},{\"type\":\"selector\",\"tag\":\"g-\(g)\",\"outbounds\":[\"t-\(t)\"]}]}",
+            ruleSets: [:]), openVPN: [])
+    #expect(plan.routedGroupIDs == [g])
+    #expect(plan.routedTunnelIDs == [t])
     let legacy =
         #"{"sampledAt":0,"interval":1,"tunnels":{},"direct":{"downBytesPerSecond":0,"upBytesPerSecond":0,"downTotal":0,"upTotal":0,"connections":0}}"#
     let decoded = try JSONDecoder().decode(TrafficSnapshot.self, from: Data(legacy.utf8))

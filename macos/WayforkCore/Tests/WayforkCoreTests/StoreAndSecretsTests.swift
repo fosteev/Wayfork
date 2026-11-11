@@ -251,3 +251,24 @@ private func temporaryDirectory() -> URL {
         #expect(SecretKey.required(for: tunnel(kind)) == expected)
     }
 }
+
+@Test func repositoryKeepsLegacyBytesRecoverableAndRejectsOrphanWrites() async throws {
+    let dir = temporaryDirectory()
+    let file = dir.appendingPathComponent(StoreRepository.fileName)
+    let legacy = Data("{\"schemaVersion\":3,\"tunnels\":[],\"rules\":[],\"settings\":{}}".utf8)
+    try legacy.write(to: file)
+    let repo = StoreRepository(directory: dir)
+    let loaded = try await repo.load()
+    let backup = try #require(loaded.migrationBackup)
+    #expect(try Data(contentsOf: backup) == legacy)
+    #expect(loaded.migrationSummary?.contains("preserve previous route priority") == true)
+    #expect(try Data(contentsOf: file) == legacy)
+    try await repo.write(loaded.store)
+    #expect(try Data(contentsOf: backup) == legacy)
+    let saved = try Data(contentsOf: file)
+    var invalid = loaded.store
+    invalid.rules = [Rule(pattern: "example.com", listID: UUID())]
+    await #expect(throws: ListValidationError.orphanRule) { try await repo.write(invalid) }
+    #expect(try Data(contentsOf: file) == saved)
+    #expect(try Data(contentsOf: backup) == legacy)
+}

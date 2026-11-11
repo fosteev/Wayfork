@@ -82,7 +82,7 @@ func testPlan(openVPN []OpenVPNRuntime, ruleSets map[string]string, config strin
 // Windows: the golden sing-box config, its six rule-set files, two OpenVPN runtimes.
 func twoTunnelsPlan(t *testing.T) RuntimePlan {
 	t.Helper()
-	variant := filepath.Join("singbox", "two-tunnels")
+	variant := filepath.Join("legacy-f23", "singbox", "two-tunnels")
 	ruleSets := map[string]string{}
 	for _, name := range []string{
 		DirectRuleSet, DirectIPRuleSet, RuleSet(idA), IPRuleSet(idA), RuleSet(idB), IPRuleSet(idB),

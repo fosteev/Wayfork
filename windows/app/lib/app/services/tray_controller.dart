@@ -141,6 +141,13 @@ final class TrayController {
 
   Future<void> run(TrayCommand command) async {
     switch (command) {
+      case TrayCommandListRoute(:final listID, :final target):
+        await model.setListTarget(listID, target);
+      case TrayCommandUndoList():
+        await model.undoListRoute();
+      case TrayCommandShowRules():
+        navigator.go(AppPage.rules);
+        await window.showAndFocus();
       case TrayCommandToggle():
         await model.toggle();
       case TrayCommandOpenWindow():

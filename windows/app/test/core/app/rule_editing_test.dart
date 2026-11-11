@@ -1,3 +1,5 @@
+import 'package:wayfork/core/model/rule_list.dart';
+import 'package:wayfork/core/model/store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wayfork/core/app/rule_editing.dart';
 import 'package:wayfork/core/model/rule.dart';
@@ -18,7 +20,7 @@ void main() {
     final rule = (added as QuickAddAdd).rule;
     expect(rule.pattern, 'shop.example.org');
     expect(rule.match, RuleMatch.suffix);
-    expect(rule.tunnelID, sample.home.id);
+    expect(store.targetFor(rule), RuleTargetTunnel(sample.home.id));
 
     final wildcard = QuickAdd.evaluate(
       input: '*.img.example.org',
@@ -27,16 +29,16 @@ void main() {
     );
     expect((wildcard as QuickAddAdd).rule.match, RuleMatch.wildcard);
 
-    // An existing pattern is re-pointed instead of duplicated.
+    // An equal pattern in another list is a new row.
     final updated = QuickAdd.evaluate(
       input: 'example.com',
       target: RuleTargetTunnel(sample.home.id),
       store: store,
     );
-    expect(updated, isA<QuickAddUpdate>());
-    final updatedRule = (updated as QuickAddUpdate).rule;
-    expect(updatedRule.id, store.rules[0].id);
-    expect(updatedRule.tunnelID, sample.home.id);
+    expect(updated, isA<QuickAddAdd>());
+    final updatedRule = (updated as QuickAddAdd).rule;
+    expect(updatedRule.id, isNot(store.rules[0].id));
+    expect(store.targetFor(updatedRule), RuleTargetTunnel(sample.home.id));
     expect(QuickAdd.isUpdate(input: 'EXAMPLE.com', store: store), isTrue);
     expect(QuickAdd.isUpdate(input: 'new.example.com', store: store), isFalse);
     expect(QuickAdd.isUpdate(input: '', store: store), isFalse);
@@ -133,16 +135,18 @@ void main() {
 
   test('app rule duplicate detection follows Squirrel/MSIX siblings', () {
     final sample = SampleStore();
-    final store = sample.store.copyWith(
-      rules: [
-        ...sample.store.rules,
-        Rule.tunnel(
-          pattern:
-              r'C:\Users\Alex\AppData\Local\Discord\app-1.0.9255\Discord.exe',
-          match: RuleMatch.app,
-          tunnelID: sample.work.id,
-        ),
-      ],
+    final store = withMembership(
+      sample.store.copyWith(
+        rules: [
+          ...sample.store.rules,
+          Rule.tunnel(
+            pattern:
+                r'C:\Users\Alex\AppData\Local\Discord\app-1.0.9255\Discord.exe',
+            match: RuleMatch.app,
+            tunnelID: sample.work.id,
+          ),
+        ],
+      ),
     );
     // A newer Squirrel version of the same app is a duplicate, not a
     // second rule.
@@ -197,15 +201,17 @@ void main() {
       target: const RuleTargetDirect(),
       store: store,
     );
-    final updatedRule = (updated as QuickAddUpdate).rule;
-    expect(updatedRule.id, store.rules[0].id);
+    final updatedRule = (updated as QuickAddAdd).rule;
+    expect(updatedRule.id, isNot(store.rules[0].id));
     expect(updatedRule.isException, isTrue);
 
-    final withException = store.copyWith(
-      rules: [
-        ...store.rules,
-        Rule(pattern: 'bank.example.org', target: const RuleTargetDirect()),
-      ],
+    final withException = withMembership(
+      store.copyWith(
+        rules: [
+          ...store.rules,
+          Rule(pattern: 'bank.example.org', target: const RuleTargetDirect()),
+        ],
+      ),
     );
     expect(
       RuleEditing.normalize(
@@ -230,16 +236,18 @@ void main() {
   test('rule editing compares the network when looking for duplicates', () {
     final sample = SampleStore();
     final target = RuleTargetTunnel(sample.work.id);
-    final store = sample.store.copyWith(
-      rules: [
-        ...sample.store.rules,
-        Rule(
-          pattern: r'C:\Apps\Discord.exe',
-          match: RuleMatch.app,
-          target: target,
-          network: RuleNetwork.udp,
-        ),
-      ],
+    final store = withMembership(
+      sample.store.copyWith(
+        rules: [
+          ...sample.store.rules,
+          Rule(
+            pattern: r'C:\Apps\Discord.exe',
+            match: RuleMatch.app,
+            target: target,
+            network: RuleNetwork.udp,
+          ),
+        ],
+      ),
     );
     RuleEditingResult check(RuleNetwork? network) => RuleEditing.normalize(
       r'C:\Apps\Discord.exe',
@@ -258,16 +266,18 @@ void main() {
 
   test('quick add finds rules by pattern and network', () {
     final sample = SampleStore();
-    final store = sample.store.copyWith(
-      rules: [
-        ...sample.store.rules,
-        Rule(
-          pattern: '203.0.113.0/24',
-          match: RuleMatch.ip,
-          target: RuleTargetTunnel(sample.work.id),
-          network: RuleNetwork.tcp,
-        ),
-      ],
+    final store = withMembership(
+      sample.store.copyWith(
+        rules: [
+          ...sample.store.rules,
+          Rule(
+            pattern: '203.0.113.0/24',
+            match: RuleMatch.ip,
+            target: RuleTargetTunnel(sample.work.id),
+            network: RuleNetwork.tcp,
+          ),
+        ],
+      ),
     );
     expect(QuickAdd.isUpdate(input: '203.0.113.0/24', store: store), isFalse);
     expect(
@@ -285,4 +295,40 @@ void main() {
     );
     expect(outcome, isA<QuickAddAdd>());
   });
+}
+
+Store withMembership(Store store) {
+  var result = store;
+  for (final row in store.rules.where((row) => row.listID == null)) {
+    final target = row.target!;
+    // The transitional test setup may append a row before selecting its list.
+    final existing = result.lists
+        .where((list) => list.target == RuleListExit(target))
+        .firstOrNull;
+    if (existing == null) {
+      final id = row.id;
+      result = result.copyWith(
+        lists: [
+          ...result.lists,
+          RuleList(
+            id: id,
+            name: result.availableListName(target.isDirect ? 'Direct' : 'Apps'),
+            target: RuleListExit(target),
+          ),
+        ],
+      );
+    }
+    final list = result.lists.firstWhere(
+      (list) => list.target == RuleListExit(target),
+    );
+    result = result.copyWith(
+      rules: result.rules
+          .map(
+            (value) =>
+                value.id == row.id ? value.copyWith(listID: list.id) : value,
+          )
+          .toList(),
+    );
+  }
+  return result;
 }

@@ -1,5 +1,7 @@
 import 'package:collection/collection.dart';
 import 'package:wayfork/app/model/app_model.dart';
+import 'package:wayfork/core/model/rule.dart';
+import 'package:wayfork/core/model/rule_list.dart';
 
 /// What a tray menu entry asks the app to do. Kept apart from the entries so
 /// the controller can switch on it and the tests can compare it.
@@ -16,6 +18,35 @@ sealed class TrayCommand {
   const factory TrayCommand.showSettings() = TrayCommandShowSettings;
   const factory TrayCommand.repair() = TrayCommandRepair;
   const factory TrayCommand.quit() = TrayCommandQuit;
+}
+
+final class TrayCommandListRoute extends TrayCommand {
+  const TrayCommandListRoute(this.listID, this.target);
+  final String listID;
+  final RuleListTarget target;
+  @override
+  bool operator ==(Object other) =>
+      other is TrayCommandListRoute &&
+      listID == other.listID &&
+      target == other.target;
+  @override
+  int get hashCode => Object.hash(listID, target);
+}
+
+final class TrayCommandUndoList extends TrayCommand {
+  const TrayCommandUndoList();
+  @override
+  bool operator ==(Object other) => other is TrayCommandUndoList;
+  @override
+  int get hashCode => 10;
+}
+
+final class TrayCommandShowRules extends TrayCommand {
+  const TrayCommandShowRules();
+  @override
+  bool operator ==(Object other) => other is TrayCommandShowRules;
+  @override
+  int get hashCode => 11;
 }
 
 final class TrayCommandToggle extends TrayCommand {
@@ -247,6 +278,59 @@ abstract final class TrayMenu {
         command: TrayCommand.quickAdd(),
       ),
       const TrayMenuSeparator(),
+      if (model.store.lists.length >= 2) ...[
+        TrayMenuItem(
+          key: 'lists',
+          label: 'Lists',
+          submenu: [
+            for (final list in model.menuLists)
+              TrayMenuItem(
+                key: 'list.${list.id}',
+                label:
+                    '${list.name}${list.isEnabled ? '' : ' · Paused'} → ${model.listTargetName(list.target)}',
+                submenu: [
+                  for (final group in model.store.groups)
+                    _listRoute(
+                      model,
+                      list,
+                      RuleListExit(RuleTargetGroup(group.id)),
+                    ),
+                  for (final tunnel in model.store.tunnels)
+                    _listRoute(
+                      model,
+                      list,
+                      RuleListExit(RuleTargetTunnel(tunnel.id)),
+                    ),
+                  const TrayMenuSeparator(),
+                  _listRoute(
+                    model,
+                    list,
+                    const RuleListExit(RuleTargetDirect()),
+                  ),
+                  _listRoute(model, list, const RuleListEverythingElse()),
+                ],
+              ),
+            if (model.menuListsOverflow > 0)
+              TrayMenuItem(
+                key: 'lists.more',
+                label: '${model.menuListsOverflow} more in Settings',
+                command: const TrayCommandShowRules(),
+              ),
+            const TrayMenuItem(
+              key: 'lists.settings',
+              label: 'Manage lists…',
+              command: TrayCommandShowRules(),
+            ),
+          ],
+        ),
+      ],
+      if (model.listRouteUndo case final undo?)
+        TrayMenuItem(
+          key: 'lists.undo',
+          label:
+              'Undo ${model.store.list(undo.listID)?.name ?? 'list'} route change (10 s)',
+          command: const TrayCommandUndoList(),
+        ),
       _reconnect(model),
       const TrayMenuItem(
         key: 'logs',
@@ -271,6 +355,20 @@ abstract final class TrayMenu {
       ),
     ];
   }
+
+  static TrayMenuItem _listRoute(
+    AppModel model,
+    RuleList list,
+    RuleListTarget target,
+  ) => TrayMenuItem(
+    key:
+        'list.${list.id}.${target is RuleListEverythingElse ? 'default' : (target as RuleListExit).exit.exitID ?? 'direct'}',
+    label: target is RuleListEverythingElse
+        ? 'Same as Everything else · ${model.everythingElseName}'
+        : '${model.listTargetName(target)}${model.listTargetDetail(target).isEmpty ? '' : ' · ${model.listTargetDetail(target)}'}',
+    checked: list.target == target,
+    command: TrayCommandListRoute(list.id, target),
+  );
 
   /// Only OpenVPN tunnels have a process to restart; VLESS lives inside
   /// sing-box (docs/design/03-routing.md).

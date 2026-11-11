@@ -1,0 +1,13 @@
+{
+  "rules" : [
+    {
+      "domain" : [
+        "ss.example"
+      ],
+      "domain_suffix" : [
+        ".ss.example"
+      ]
+    }
+  ],
+  "version" : 3
+}

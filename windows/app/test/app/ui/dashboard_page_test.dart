@@ -152,7 +152,10 @@ void main() {
 
     final rule = app.model.store.rules.last;
     expect(rule.pattern, 'shop.example.com');
-    expect(rule.target, RuleTargetTunnel(app.sample.work.id));
+    expect(
+      app.model.store.targetFor(rule),
+      RuleTargetTunnel(app.sample.work.id),
+    );
     expect(find.text('shop.example.com'), findsNothing, reason: 'field clears');
   });
 
@@ -181,7 +184,7 @@ void main() {
       scoped(app.model, AppNavigator(), const DashboardPage()),
     );
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextBox), 'news.example.org');
+    await tester.enterText(find.byType(TextBox), 'example.com');
     await tester.pumpAndSettle();
 
     expect(find.text('Update'), findsOneWidget);

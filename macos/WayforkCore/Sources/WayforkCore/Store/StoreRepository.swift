@@ -10,6 +10,8 @@ public actor StoreRepository {
         /// Set when the previous file was unreadable and has been renamed to this path
         /// (`store.corrupt` in the UI).
         public var corruptBackup: URL?
+        public var migrationBackup: URL? = nil
+        public var migrationSummary: String? = nil
     }
 
     public enum Error: Swift.Error {
@@ -45,8 +47,9 @@ public actor StoreRepository {
             return LoadResult(store: .empty, corruptBackup: nil)
         }
         let data = try Data(contentsOf: fileURL)
+        let store: Store
         do {
-            return LoadResult(store: try StoreCodec.decode(data), corruptBackup: nil)
+            store = try StoreCodec.decode(data)
         } catch StoreCodec.Error.newerSchema(let found, let supported) {
             throw Error.newerSchema(found: found, supported: supported)
         } catch {
@@ -56,6 +59,23 @@ public actor StoreRepository {
             try fileManager.moveItem(at: fileURL, to: backup)
             return LoadResult(store: .empty, corruptBackup: backup)
         }
+        var result = LoadResult(store: store, corruptBackup: nil)
+        let header = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        if (header?["schemaVersion"] as? Int ?? 1) < Store.currentSchemaVersion {
+            let backup = directory.appendingPathComponent(
+                "store.json.before-schema-4-\(Hashing.sha256Hex(String(decoding: data, as: UTF8.self)))"
+            )
+            if (try? Data(contentsOf: backup)) != data {
+                try data.write(to: backup, options: .atomic)
+                try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
+            }
+            result.migrationBackup = backup
+            let archived = Set(store.lists.filter { !$0.isEnabled }.map(\.id))
+            let count = store.rules.filter { $0.listID.map(archived.contains) == true }.count
+            result.migrationSummary =
+                "Split lists preserve previous route priority. \(count) previously inactive duplicate rules remain in paused lists; review before enabling."
+        }
+        return result
     }
 
     /// Schedules a write; consecutive calls within the debounce window collapse into one.

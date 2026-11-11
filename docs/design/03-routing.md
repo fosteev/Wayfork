@@ -732,3 +732,122 @@ operation set the state.
 
 `engine = failed` is where the daemon stops: recovery is the app's job (H2, see
 [05-daemon.md](05-daemon.md), "Engine failure recovery").
+
+## Rule lists (F24)
+
+Future ordered-generation contract. This section supersedes per-exit grouping and F23
+rank **only after F24 is implemented**. The shipped algorithms above remain the migration
+reference. [Roadmap](../roadmap/rule-lists.md) G1 selects behavior preservation through
+split migration lists (2026-11-07); root stage acceptance is still required.
+
+### Ordered route projection
+
+Resolve list inheritance and row overrides once against the plan input. Skip paused lists,
+disabled rows and concrete exits omitted from the routed-exit set (disabled, missing,
+missing secret, group with no routed members). A valid pin survives an unavailable parent
+list target. Warning generation uses the same projection; a runtime-down outbound still
+exists, remains selected and fails rather than leaking direct.
+
+1. Existing `sniff`, `hijack-dns`, local-proxy inbound overrides, DDR reject, OpenVPN/xray
+   process and server protections remain before user rows. Built-in local-name Direct
+   rules also remain protected; the existing bootstrap rules retain platform differences.
+2. Explicitly Direct-bound rows (list target Direct unless overridden, or pinned Direct)
+   follow, ordered by user list index then row index. A pin to a tunnel in a Direct list
+   does not enter this exception tier.
+3. Existing block-list reject with its never-block exclusions.
+4. Every remaining active row in user list order then row order, regardless of exit type
+   or transport narrowing. First matching row wins. `network` filters at that row's
+   position; no F23 global narrowed-first pass.
+5. Existing `ip_is_private → direct`, then `route.final` resolved from `defaultTunnelID`.
+
+A follow-default row is a real match in step 4, even when the resolved outbound is Direct.
+It wins over a lower explicit list and stays behind blocking; changing Everything else
+never elevates its priority. Pausing removes all its rows (including Direct pins), allowing
+lower lists to match. Group selector choice/latency never changes row priority.
+
+### DNS projection
+
+DNS sees domain rows, not connecting-app or transport information. Preserve the resolver
+probe answer, DDR rejection, built-in local names and direct bootstrap-host resolution.
+Explicit Direct **domain** rows go to `dns-direct` before the block list. After blocking,
+project remaining domain rows in the same list/row order:
+
+- resolved Direct: `server: dns-direct` for all query types;
+- resolved tunnel/group: `query_type: [A, AAAA] → fakeip`, followed by the same domain
+  matcher to the existing `dns.final` for all other types, before later row matchers.
+
+That second rule prevents a later follow-default/Direct row claiming a non-A/AAAA query
+that the earlier row already owns. It preserves the existing non-A/AAAA resolver policy;
+F24 adds no per-list resolver. Preserve the final default A/AAAA fake-IP catch-all when
+there is a routed default exit, and the current final resolver otherwise, `ipv4_only`,
+independent cache, reverse mapping and outbound-specific domain resolution. Ordered DNS
+rules must choose a domain before resolving its answer; app/IP files and network filters
+never enter DNS. In particular `ip_cidr` must not become a DNS answer filter. A system DNS
+query cannot promise the same rule winner as the eventual application connection when
+app and domain rows overlap; that is the existing process-attribution limitation.
+
+### Files, plan consumers and reload
+
+Emit `rules-r-<lowercase row UUID>.json` (tag without `.json`) for each active row. It
+contains one headless matcher of the existing kind, with reserved-range subtraction for
+IPs and existing Windows version-insensitive app matching. Each ordered route rule
+references that row's tag plus its resolved outbound, with optional `network` on the
+route rule. Domain-only files are eligible for DNS references. Keep `rules-direct.json`
+for built-in local names only; do not union user rows by exit. Files are stable by row ID,
+not list/exit name. A row with a fully subtracted IP range emits no active matcher.
+
+The existing `RuleSetGenerator` and `SingBoxConfigGenerator` own rendering; `Store`/
+`RuleValidator` own the resolved ordered projection. Do not add an independent UI route
+sorter. List membership/order and target resolution must feed both route and DNS output.
+
+Required companion changes in both platforms:
+
+- `PlanValidator`/`RunLayout` and Go `validate.go`: allow exactly safe `rules-r-<UUID>.json`
+  alongside legacy filenames, not arbitrary prefixes or paths. Keep size/path/trust checks.
+- `RuntimePlan.routedTunnelIDs/routedGroupIDs` and Go `planjson.go`: derive routed exits
+  from concrete `t-<UUID>`/`g-<UUID>` outbound/endpoint definitions, not row filenames.
+  Empty-rule exits and groups still need probes and status; source lists stay out of Go.
+  Legacy plans remain readable by upgraded helpers/services.
+- Selector parsers keep the known headless domain/app/IP keys; no new inline logical
+  expression language is needed. `explain` iterates ordered route references and honors
+  their network; fake-IP/domain/raw-IP semantics remain as before.
+- Reconcile/hash/layout tests cover added/removed row files, order/target changes, file
+  rewrite and affected-connection cuts. A target/list/order change changes main config,
+  so normal reconcile can restart sing-box. One list edit means one **apply**, not a
+  guarantee of a file-only hot reload or zero connection disruption. Pattern edits in a
+  stable row file can use existing hot reload; IP carve-outs can still change topology.
+
+The plan JSON shape stays version 1; row filenames are a coordinated app/helper/service
+capability change. Old helper/service validators reject a new plan explicitly; never
+fall back to a legacy generator that changes precedence. Ship coordinated binaries and
+surface the apply error rather than claiming the new plan was applied. The new helper
+must accept old filenames so deployment ordering does not break old apps.
+
+Private-range carve-outs preserve the shipped policy: active IP rows resolved to routed
+concrete tunnels carve, including pins and follow-default; keep the TUN /30/fake-IP/resolver
+protections. Pausing/changing a list recomputes this set; Direct rows never carve. The
+current generator carves tunnel rows only, not group rows. Record that existing limitation
+in compatibility tests; fixing group private-range routing is separate scope, not an
+implicit F24 change. LAN warning behavior remains unchanged.
+
+### Migration and verification
+
+The old F23 generator orders Direct → block → narrowed exits → broad exits. Strict list
+order cannot represent that with one list per exit in all stores. G1 selects split
+narrowed/broad lists in that old priority order. Legacy duplicate rows move to
+explicit paused Previously inactive lists, retaining source content and enabled flags;
+they cannot silently become active under the new validator. This also covers disabled-first
+duplicates. Shadowed rows stay in normal split buckets, where the same precedence
+suppresses them after runtime availability filtering. `RuntimePlanBuilder` disables
+missing-secret exits before invoking the old validator; keeping shadowed rows permits the
+same fallback when the earlier exit lacks its secret. Root approved this stage-2 correction
+on 2026-11-07 after inspecting the actual runtime owner. Users can enable/move archives later.
+Freeze old generated output as the initial behavior reference with the same secrets and
+runtime inputs; compatibility does not promise the old editor's future implicit reactivation
+after user edits. Legacy non-Direct domain sets are a single A/AAAA fake-IP union; splitting
+active domain rows preserves its membership. Their non-A/AAAA rules use the same legacy
+`dns.final`, and migration creates no follow-default rows, so this projection preserves
+legacy DNS server selection. Verify Direct/default/blocking/AAAA/TXT cases differentially.
+Compare route and DNS outcomes, not config bytes or plan hashes. Separately require
+stable new output and Swift/Dart byte parity, safe-plan validation, Go explain and pinned
+sing-box syntax checks. Live routing/DNS acceptance remains the maintainer's stage 6.
