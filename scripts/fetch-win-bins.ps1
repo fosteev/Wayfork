@@ -258,8 +258,11 @@ function Release-ComObject {
 function Export-MsiCabinet {
     param(
         [Parameter(Mandatory = $true)][string]$MsiPath,
-        [Parameter(Mandatory = $true)][string]$DestinationDir
+        [Parameter(Mandatory = $true)][string]$DestinationDir,
+        [Parameter(Mandatory = $true)][ValidateSet('Win10', 'Win11')][string]$Variant
     )
+
+    $componentPattern = if ($Variant -eq 'Win10') { '*nx20*' } else { '*nx21*' }
 
     Remove-Item -LiteralPath $DestinationDir -Recurse -Force -ErrorAction SilentlyContinue
     [void](New-Item -ItemType Directory -Path $DestinationDir -Force)
@@ -331,7 +334,7 @@ function Export-MsiCabinet {
                     $realName = $nameParts[0]
                 }
                 $realName = $realName.ToLowerInvariant()
-                if ($component -like '*nx21*' -and
+                if ($component -like $componentPattern -and
                     $realName -in @('ovpn-dco.inf', 'ovpn-dco.sys', 'ovpn-dco.cat')) {
                     $members[$realName] = Join-Path $expandedDir $fileKey
                 }
@@ -357,7 +360,7 @@ function Export-MsiCabinet {
 
         foreach ($name in @('ovpn-dco.inf', 'ovpn-dco.sys', 'ovpn-dco.cat')) {
             if (-not $members.ContainsKey($name)) {
-                Fail "could not map $name to the Win11 nx21 cabinet member"
+                Fail "could not map $name to the $Variant cabinet member"
             }
             if (-not (Test-Path -LiteralPath $members[$name] -PathType Leaf)) {
                 Fail "cabinet member for $name was not extracted: $($members[$name])"
@@ -382,11 +385,12 @@ function Get-DriverPackage {
         [Parameter(Mandatory = $true)][string]$CabinetDir,
         [Parameter(Mandatory = $true)][string]$OutputDir,
         [Parameter(Mandatory = $true)][string]$ArchKey,
-        [Parameter(Mandatory = $true)][hashtable]$Versions
+        [Parameter(Mandatory = $true)][hashtable]$Versions,
+        [Parameter(Mandatory = $true)][ValidateSet('Win10', 'Win11')][string]$Variant
     )
 
     $names = @('ovpn-dco.inf', 'ovpn-dco.sys', 'ovpn-dco.cat')
-    $adminDriverDir = Join-Path $AdminImageDir 'OpenVPN\Common Files\ovpn-dco\Win11'
+    $adminDriverDir = Join-Path $AdminImageDir "OpenVPN\Common Files\ovpn-dco\$Variant"
     $sources = @{}
     $adminImageComplete = -not $ForceCabinet
     foreach ($name in $names) {
@@ -405,13 +409,13 @@ function Get-DriverPackage {
         Log "Using ovpn-dco from the MSI administrative image"
     } else {
         Log "Using ovpn-dco from the MSI's embedded cabinet"
-        $sources = Export-MsiCabinet $MsiPath $CabinetDir
+        $sources = Export-MsiCabinet $MsiPath $CabinetDir $Variant
     }
 
     [void](New-Item -ItemType Directory -Path $OutputDir -Force)
     foreach ($name in $names) {
         $extension = ([IO.Path]::GetExtension($name)).TrimStart('.').ToUpperInvariant()
-        $hashKey = "OVPN_DCO_WIN11_${ArchKey}_SHA256_$extension"
+        $hashKey = "OVPN_DCO_$($Variant.ToUpperInvariant())_${ArchKey}_SHA256_$extension"
         Confirm-Pin $Versions $hashKey $sources[$name]
         $destination = Join-Path $OutputDir $name
         Copy-Item -LiteralPath $sources[$name] -Destination $destination -Force
@@ -532,9 +536,12 @@ try {
     Log "OpenVPN $openVpnVersion -> $binOutputDir"
 
     $cabinetDir = Join-Path $BuildDir "openvpn-cab-$Arch"
-    Get-DriverPackage $openVpnMsi $adminImageDir $cabinetDir $driverOutputDir $archKey $versions
-    foreach ($name in @('ovpn-dco.inf', 'ovpn-dco.sys', 'ovpn-dco.cat')) {
-        $outputFiles += Join-Path $driverOutputDir $name
+    foreach ($variant in @('Win10', 'Win11')) {
+        $variantOutputDir = Join-Path $driverOutputDir $variant
+        Get-DriverPackage $openVpnMsi $adminImageDir $cabinetDir $variantOutputDir $archKey $versions $variant
+        foreach ($name in @('ovpn-dco.inf', 'ovpn-dco.sys', 'ovpn-dco.cat')) {
+            $outputFiles += Join-Path $variantOutputDir $name
+        }
     }
     Log "ovpn-dco -> $driverOutputDir"
 

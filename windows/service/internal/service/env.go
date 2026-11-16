@@ -52,8 +52,8 @@ func (e Environment) BlockListPath() string {
 
 // DriverInfPath is the bundled ovpn-dco package the installer publishes with pnputil
 // (docs/design/08-windows.md, "Installer").
-func (e Environment) DriverInfPath() string {
-	return filepath.Join(e.InstallDir, "drivers", "ovpn-dco", core.DriverOriginalName)
+func (e Environment) DriverInfPath(build uint32) string {
+	return filepath.Join(e.InstallDir, "drivers", "ovpn-dco", core.DriverVariant(build), core.DriverOriginalName)
 }
 
 func executable(name string) string {

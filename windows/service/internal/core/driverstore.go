@@ -2,8 +2,62 @@ package core
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 )
+
+// DriverVariant selects the NetAdapterCx build for the actual OS (not the manifest).
+func DriverVariant(build uint32) string {
+	if build >= 22000 {
+		return "Win11"
+	}
+	return "Win10"
+}
+
+// DriverVersionAtLeast compares INF dotted quads numerically, failing closed on
+// missing or malformed versions. Lexical comparison gets 2.8.10 vs 2.8.4 wrong.
+func DriverVersionAtLeast(candidate, bundled string) bool {
+	parse := func(value string) ([]uint64, bool) {
+		parts := strings.Split(value, ".")
+		if len(parts) != 4 {
+			return nil, false
+		}
+		numbers := make([]uint64, 4)
+		for i, part := range parts {
+			n, err := strconv.ParseUint(part, 10, 16)
+			if err != nil {
+				return nil, false
+			}
+			numbers[i] = n
+		}
+		return numbers, true
+	}
+	a, aOK := parse(candidate)
+	b, bOK := parse(bundled)
+	if !aOK || !bOK {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return a[i] > b[i]
+		}
+	}
+	return true
+}
+
+// DriverPublishSucceeded accepts NO_MORE_ITEMS only with evidence that the
+// requested driver (or a newer one) is available in the store afterwards.
+func DriverPublishSucceeded(exitCode uint32, after []DriverPackage, version string) bool {
+	if exitCode != 0 && exitCode != 3010 && exitCode != 259 {
+		return false
+	}
+	for _, candidate := range FindDriverPackages(after, DriverOriginalName) {
+		if DriverVersionAtLeast(candidate.Version, version) {
+			return true
+		}
+	}
+	return false
+}
 
 const (
 	// DriverOriginalName is the INF of the bundled ovpn-dco package

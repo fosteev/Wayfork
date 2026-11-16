@@ -228,19 +228,26 @@ WiX (MSI). Contents: `%ProgramFiles%\Wayfork\` payload, the service registered v
   the embedded `openvpn.cab` carries two `ovpn-dco` builds (File-table directories
   `OpenVPN\Common Files\ovpn-dco\Win10` = NetAdapterCx 2.0 and `Win11` = 2.1, both
   2.8.4.0). `scripts/fetch-win-bins.ps1` reads the cabinet through the `WindowsInstaller`
-  COM object, expands it, maps the `nx21` members via the File table and verifies each file
-  against `scripts/versions.env` — so no OpenVPN install is needed to build. The `Win11`
-  package is what ships in `drivers\ovpn-dco\`. Install is
+  COM object, expands it, maps the `nx20`/`nx21` members via the File table and verifies each
+  file against `scripts/versions.env` — so no OpenVPN install is needed to build. Both
+  packages ship in `drivers\ovpn-dco\Win10` and `Win11`; the installer uses the actual OS
+  build from `RtlGetVersion` (22000 and later selects Win11). Install is
   `pnputil /add-driver ovpn-dco.inf /install` (a WiX custom action, or `DifxApp`-free): silent,
-  **no reboot**, WHQL/attestation-signed (S2.2). The signature is checked before install.
+  WHQL/attestation-signed (S2.2). The signature is checked before install. An equal or newer
+  driver already in the store is preserved (numeric dotted-quad comparison). Exit 259
+  (`ERROR_NO_MORE_ITEMS`) is accepted only if the post-install store contains the bundled
+  version or a newer one; an empty store or a real failure still aborts installation.
 - **Uninstall ordering (trap).** Delete adapters **first**, then the driver:
-  `tapctl delete Wayfork-*` for every adapter, then `pnputil /delete-driver <oemNN.inf>
-  /uninstall`. Reversed, `/uninstall` leaves the root devnodes (`ROOT\NET\000N`) as driverless
+  `tapctl delete Wayfork-*` for every adapter, then `pnputil /delete-driver <oemNN.inf>`
+  only for the package recorded as newly published by Wayfork. Do not use `/uninstall` or
+  `/force`: a package now used by another application's adapter must remain installed.
+  Forced removal leaves the root devnodes (`ROOT\NET\000N`) as driverless
   devices and the next `add-driver` re-binds them as `Local Area Connection N` with **new GUIDs
   and the Wayfork names lost** (S2.2). Uninstall also **removes the NRPT rule** and deletes the
   `Wayfork` service; it keeps user data under `%LOCALAPPDATA%`.
 - **Upgrade** stops the service (`ServiceControl` stop) so the binaries are unlocked, replaces
-  the payload, and restarts it; the driver is re-published only if the pinned version changed.
+  the payload, and restarts it; driver publication is skipped when the store has the same
+  or a newer version.
 - **Auto-start, not delayed (2026-08-28).** Delayed-auto looked free — nothing routes until
   the user turns Wayfork on — but the app starts at login and wants the pipe right then. On
   the ARM64 VM the app was up 33 s after boot and the service only at 2 min 10 s, so for

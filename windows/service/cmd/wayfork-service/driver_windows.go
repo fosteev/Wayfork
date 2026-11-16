@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sys/windows"
+
 	"wayfork/service/internal/core"
 	"wayfork/service/internal/service"
 	"wayfork/service/internal/winnet"
@@ -34,7 +36,7 @@ func installDriver() error {
 	if err != nil {
 		return err
 	}
-	inf := env.DriverInfPath()
+	inf := env.DriverInfPath(windows.RtlGetVersion().BuildNumber)
 	contents, err := os.ReadFile(inf)
 	if err != nil {
 		return fmt.Errorf("driver package: %w", err)
@@ -54,13 +56,13 @@ func installDriver() error {
 	if err != nil {
 		return err
 	}
-	// An upgrade must not re-publish the same package: after a pnputil re-install OpenVPN
+	// Preserve the same or a newer driver: after a pnputil re-install OpenVPN
 	// reports the driver missing until a reboot (spike gotcha).
 	version := core.InfDriverVersion(string(contents))
 	for _, candidate := range core.FindDriverPackages(before, core.DriverOriginalName) {
-		if version != "" && candidate.Version == version {
+		if core.DriverVersionAtLeast(candidate.Version, version) {
 			fmt.Printf("ovpn-dco %s is already in the driver store as %s\n",
-				version, candidate.PublishedName)
+				candidate.Version, candidate.PublishedName)
 			return nil
 		}
 	}
@@ -72,12 +74,15 @@ func installDriver() error {
 	}
 	// 3010 is "installed, reboot required"; the dco package does not need one, but a
 	// machine that asks is not a failure.
-	if !result.Succeeded() && result.ExitCode != 3010 {
+	if result.TimedOut || (!result.Succeeded() && result.ExitCode != 3010 && result.ExitCode != 259) {
 		return fmt.Errorf("pnputil /add-driver failed (exit %d): %s", result.ExitCode, result.Output())
 	}
 	after, err := driverStore(ctx, runner)
 	if err != nil {
 		return err
+	}
+	if !core.DriverPublishSucceeded(result.ExitCode, after, version) {
+		return fmt.Errorf("pnputil /add-driver did not publish a usable ovpn-dco package (exit %d): %s", result.ExitCode, result.Output())
 	}
 	published, ok := core.NewlyPublished(before, after, core.DriverOriginalName)
 	if !ok {
@@ -184,7 +189,9 @@ func deleteDriverPackage(ctx context.Context, env service.Environment, runner *w
 	if present {
 		result, err := runner.Run(ctx, service.ProcessSpec{
 			Executable: pnputilPath(),
-			Args:       []string{"/delete-driver", record.PublishedName, "/uninstall"},
+			// Without /uninstall, Windows refuses to remove a package still used by
+			// another application's adapter. Publication does not imply ownership.
+			Args: []string{"/delete-driver", record.PublishedName},
 		})
 		switch {
 		case err != nil:

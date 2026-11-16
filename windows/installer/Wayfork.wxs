@@ -132,7 +132,7 @@
 
     <InstallExecuteSequence>
       <!-- After the payload is on disk and before the service starts. The subcommand
-           itself skips a package the store already has in the same version. -->
+           itself skips a package the store already has in the same or a newer version. -->
       <Custom Action="PublishDriver" After="InstallFiles" Condition="NOT REMOVE" />
       <!-- Uninstall only, and never the removal half of an upgrade: an upgrade must keep
            the adapters and the driver in place. -->

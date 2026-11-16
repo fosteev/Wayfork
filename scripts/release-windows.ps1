@@ -230,6 +230,14 @@ try {
         }
         $binDir = Join-Path $root "windows\bin\$architecture"
         $driverDir = Join-Path $root "windows\drivers\$architecture\ovpn-dco"
+        # -SkipFetch must not silently reuse a payload from before OS-specific drivers.
+        foreach ($variant in @('Win10', 'Win11')) {
+            foreach ($name in @('ovpn-dco.inf', 'ovpn-dco.sys', 'ovpn-dco.cat')) {
+                if (-not (Test-Path -LiteralPath (Join-Path $driverDir "$variant\$name") -PathType Leaf)) {
+                    throw "Missing $variant driver file $name; run fetch-win-bins.ps1 for $architecture"
+                }
+            }
+        }
         $rulesetsDir = Join-Path $root 'windows\rulesets'
         foreach ($required in @($binDir, $driverDir)) {
             if (-not (Test-Path -LiteralPath $required)) {

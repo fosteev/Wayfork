@@ -20,10 +20,11 @@ func TestEnvironmentPathsDeriveFromTheExecutable(t *testing.T) {
 		suffix = ".exe"
 	}
 	cases := map[string]string{
-		env.SingBoxPath():   filepath.Join(installDir, "bin", "sing-box"+suffix),
-		env.OpenVPNPath():   filepath.Join(installDir, "bin", "openvpn"+suffix),
-		env.TapctlPath():    filepath.Join(installDir, "bin", "tapctl"+suffix),
-		env.DriverInfPath(): filepath.Join(installDir, "drivers", "ovpn-dco", core.DriverOriginalName),
+		env.SingBoxPath():        filepath.Join(installDir, "bin", "sing-box"+suffix),
+		env.OpenVPNPath():        filepath.Join(installDir, "bin", "openvpn"+suffix),
+		env.TapctlPath():         filepath.Join(installDir, "bin", "tapctl"+suffix),
+		env.DriverInfPath(19044): filepath.Join(installDir, "drivers", "ovpn-dco", "Win10", core.DriverOriginalName),
+		env.DriverInfPath(22000): filepath.Join(installDir, "drivers", "ovpn-dco", "Win11", core.DriverOriginalName),
 		env.RunPath(core.DriverRecordFile): filepath.Join(
 			"C:", "ProgramData", "Wayfork", "run", core.DriverRecordFile),
 	}
