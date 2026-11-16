@@ -22,8 +22,17 @@ Verification:
   An isolated local harness was used. Windows COM/cabinet extraction
   and a complete MSI build still need the native acceptance below.
 - Native acceptance is pending: `ssh wf-win` timed out on 2026-11-16.
-- Commit and push to `main` authorized on 2026-11-16. No release or live driver/VPN
-  changes performed; native acceptance remains pending.
+- Fix committed as `e9466b5`; Windows 0.11.1 stamped at `c0df7ff` and published as
+  a Windows-only pre-release on 2026-11-16. No live driver/VPN changes performed.
+- [Windows CI](https://github.com/fosteev/Wayfork/actions/runs/43902575841) passed
+  Go tests/vet/build and Flutter formatting, analysis, tests and Windows build.
+- [Release build](https://github.com/fosteev/Wayfork/actions/runs/43902576447) passed
+  on Windows, including cabinet extraction and hash verification for both OS variants
+  and both architectures. Both MSI ProductVersion values are 0.11.1; both contain
+  Win10 and Win11 driver packages. All three artifact SHA256 checks passed.
+- [Release 0.11.1](https://github.com/fosteev/Wayfork/releases/tag/v0.11.1) includes
+  the bundle EXE, both MSIs and their checksums. Reporter retest requested in
+  [issue #6](https://github.com/fosteev/Wayfork/issues/6#issuecomment-6921849457).
 
 Native acceptance required before release:
 - Windows 10 and 11: clean installation and repair.
@@ -31,7 +40,10 @@ Native acceptance required before release:
   Wayfork can create an adapter and establish an OpenVPN tunnel.
 - Genuine publication failure still aborts; exit 259 with no usable package fails.
 - Uninstall preserves an existing OpenVPN installation and any shared adapter.
-- Fetch both architectures normally and with `-ForceCabinet`; build both MSIs.
+- The actual Windows cabinet fallback and both MSI builds passed. The Windows
+  administrative-image extraction path and explicit `-ForceCabinet` switch remain
+  separate checks; the package-copy function was exercised locally for all variants.
 
-Next: run the native matrix when the Windows test host is available. Current code
-and checks do not establish native installer acceptance or release readiness.
+Next: collect the reporter's result and run the native installation matrix when
+the Windows test host is available. The pre-release is available for testing;
+native installation acceptance and promotion to stable remain pending.
