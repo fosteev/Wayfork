@@ -6,6 +6,21 @@ All notable changes to Wayfork are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.11.1] — 2026-11-16
+
+Windows installer fixes for issue #6. Windows-only pre-release for installation
+testing; macOS remains on 0.11.0.
+
+### Fixed
+
+- Preserve an equal or newer OpenVPN DCO driver already installed on the system.
+  Accept `pnputil` exit 259 only when the driver store contains the required version
+  or a newer one, instead of unconditionally rolling back installation.
+- Bundle separate signed DCO packages for Windows 10 and Windows 11 and select the
+  package matching the OS.
+- Leave shared driver packages in place when another application's adapter still
+  uses them during Wayfork uninstall.
+
 ## [0.11.0] — 2026-10-30
 
 VLESS over XHTTP on macOS through a bundled Xray-core; the Windows build only carries the
